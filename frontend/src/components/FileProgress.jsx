@@ -1,15 +1,18 @@
 // src/components/FileProgress.jsx
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import http from '../api/http';
 
 export default function FileUpload({ roomId }) {
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const inputRef = useRef(null);
 
   async function handleFileChange(e) {
     const file = e.target.files[0];
     if (!file) return;
 
+    setError('');
     const formData = new FormData();
     formData.append('file', file);
     setUploading(true);
@@ -22,6 +25,10 @@ export default function FileUpload({ roomId }) {
           if (evt.total) setProgress(Math.round((evt.loaded / evt.total) * 100));
         },
       });
+      // Reset so the same file can be re-uploaded
+      if (inputRef.current) inputRef.current.value = '';
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Upload failed');
     } finally {
       setUploading(false);
       setProgress(0);
@@ -29,16 +36,17 @@ export default function FileUpload({ roomId }) {
   }
 
   return (
-    <div>
-      <input type="file" onChange={handleFileChange} disabled={uploading} />
+    <div style={{ padding: '4px 12px', borderTop: '1px solid #eee' }}>
+      <input ref={inputRef} type="file" onChange={handleFileChange} disabled={uploading} />
       {uploading && (
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: 4 }}>
           <div style={{ width: '100%', background: '#eee', borderRadius: 4 }}>
-            <div style={{ width: `${progress}%`, background: '#4a9eed', height: 8, borderRadius: 4, transition: 'width 0.2s' }} />
+            <div style={{ width: `${progress}%`, background: '#4a9eed', height: 6, borderRadius: 4, transition: 'width 0.2s' }} />
           </div>
-          <small>{progress}%</small>
+          <small style={{ color: '#555' }}>Uploading… {progress}%</small>
         </div>
       )}
+      {error && <small style={{ color: 'red' }}>{error}</small>}
     </div>
   );
 }

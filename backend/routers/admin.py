@@ -1,5 +1,5 @@
 # routers/admin.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
 from auth import require_admin
@@ -13,9 +13,9 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 @router.get("/users")
 def get_connected_users(_=Depends(require_admin)):
-    """Old: tornadoWeb UsersHandler — polled every 5 seconds. Now: on-demand."""
+    """Return currently connected users per room."""
     all_users = {}
-    for room_id, sockets in manager.rooms.items():
+    for room_id in manager.rooms:
         all_users[room_id] = manager.get_users_in_room(room_id)
     return all_users
 
@@ -26,38 +26,66 @@ def get_rooms(db: Session = Depends(get_db), _=Depends(require_admin)):
 
 
 @router.post("/chat/close")
-async def close_chat(db: Session = Depends(get_db), _=Depends(require_admin)):
-    """Old: tornadoWeb BlockHandler — kick all users and block new connections."""
+async def close_all_rooms(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Close ALL rooms — kick all users and block new connections."""
     for room in db.query(models.Room).all():
         room.is_active = False
-        # Kick all connected users from this room
         await manager.broadcast(room.id, {"type": "chat_closed", "detail": "Admin has closed the chat"})
     db.commit()
-    # Close all active WebSocket connections
     for room_id, sockets in list(manager.rooms.items()):
         for ws in list(sockets):
-            await ws.close()
-    return {"message": "Chat closed"}
+            try:
+                await ws.close()
+            except Exception:
+                pass
+    return {"message": "All rooms closed"}
 
 
 @router.post("/chat/open")
-def open_chat(db: Session = Depends(get_db), _=Depends(require_admin)):
-    """Old: tornadoWeb OpenHandler."""
+def open_all_rooms(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Open ALL rooms."""
     for room in db.query(models.Room).all():
         room.is_active = True
     db.commit()
-    return {"message": "Chat opened"}
+    return {"message": "All rooms opened"}
+
+
+@router.post("/rooms/{room_id}/close")
+async def close_room(room_id: int, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Close a specific room — kick its users and block new connections."""
+    room = db.query(models.Room).filter(models.Room.id == room_id).first()
+    if not room:
+        raise HTTPException(404, "Room not found")
+    room.is_active = False
+    db.commit()
+    await manager.broadcast(room_id, {"type": "chat_closed", "detail": f"Room '{room.name}' has been closed by admin"})
+    for ws in list(manager.rooms.get(room_id, [])):
+        try:
+            await ws.close()
+        except Exception:
+            pass
+    return {"message": f"Room '{room.name}' closed"}
+
+
+@router.post("/rooms/{room_id}/open")
+def open_room(room_id: int, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Reopen a specific room."""
+    room = db.query(models.Room).filter(models.Room.id == room_id).first()
+    if not room:
+        raise HTTPException(404, "Room not found")
+    room.is_active = True
+    db.commit()
+    return {"message": f"Room '{room.name}' opened"}
 
 
 @router.delete("/db")
 def reset_database(db: Session = Depends(get_db), _=Depends(require_admin)):
-    """Old: tornadoWeb DatabaseHandler — wipe users so they must re-register.
-    Admin user is recreated immediately after the wipe."""
+    """Wipe all users/admins/mutes. Admin user is recreated immediately."""
     db.query(models.RoomAdmin).delete()
     db.query(models.MutedUser).delete()
+    db.query(models.Message).delete()
     db.query(models.User).delete()
     db.commit()
-    # Re-create admin user
     db.add(models.User(
         username=ADMIN_USERNAME,
         password_hash=hash_password(ADMIN_PASSWORD),
@@ -69,10 +97,10 @@ def reset_database(db: Session = Depends(get_db), _=Depends(require_admin)):
 
 @router.post("/promote")
 def promote_user(username: str, db: Session = Depends(get_db), _=Depends(require_admin)):
-    """Old: tornadoWeb addAdminHandler — promote user to admin in ALL rooms."""
+    """Promote a user to admin in ALL rooms."""
     user = db.query(models.User).filter(models.User.username == username).first()
     if not user:
-        return {"error": "User not found"}
+        raise HTTPException(404, "User not found")
     for room in db.query(models.Room).all():
         exists = db.query(models.RoomAdmin).filter(
             models.RoomAdmin.user_id == user.id,

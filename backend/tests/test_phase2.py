@@ -50,7 +50,6 @@ with TestSessionLocal() as _db:
     _db.commit()
 
 # Use a persistent TestClient context so all WS connections share ONE event loop
-# This lets manager.broadcast() work correctly across connections in tests.
 _client_ctx = TestClient(app).__enter__()
 
 
@@ -75,13 +74,22 @@ def _make_room(name: str) -> int:
         return room.id
 
 
+def _drain_until(ws, expected_type: str) -> dict:
+    """Receive and discard messages until one of the expected type arrives."""
+    while True:
+        msg = ws.receive_json()
+        if msg["type"] == expected_type:
+            return msg
+
+
 # ── Test 1: WebSocket connect ─────────────────────────────────────────────────
 
 def test_connect_to_room_via_websocket():
-    """First user can connect to a room via WebSocket and receives user_join."""
+    """First user can connect to a room via WebSocket and receives user_join.
+    The server now sends a history frame first, so we drain until user_join."""
     token = _register_and_login("ws_conn_user")
     with _client_ctx.websocket_connect(f"/ws/1?token={token}") as ws:
-        data = ws.receive_json()
+        data = _drain_until(ws, "user_join")
         assert data["type"] == "user_join"
         assert "ws_conn_user" in data["users"]
 
@@ -89,52 +97,53 @@ def test_connect_to_room_via_websocket():
 # ── Test 2: Send message received by second user ──────────────────────────────
 
 def test_send_message_received_by_second_user():
-    """Message sent by user1 is delivered to user2 in the same room."""
+    """Message sent by user1 is delivered to user2 (and also back to user1).
+    Server now broadcasts to ALL users including the sender."""
     token1 = _register_and_login("msg_u1")
     token2 = _register_and_login("msg_u2")
     room_id = _make_room("msg_test_room")
 
-    received_messages = []
+    received_by_u2 = []
     user2_joined = threading.Event()
     message_received = threading.Event()
 
     def user2_thread():
         with _client_ctx.websocket_connect(f"/ws/{room_id}?token={token2}") as ws2:
-            ws2.receive_json()         # own join event
-            user2_joined.set()         # user2 is in the room
-            msg = ws2.receive_json()   # wait for user1's broadcast
-            received_messages.append(msg)
+            _drain_until(ws2, "user_join")   # skip history, stop at own join
+            user2_joined.set()
+            msg = _drain_until(ws2, "message")  # skip any system msgs, get the chat msg
+            received_by_u2.append(msg)
             message_received.set()
 
     t2 = threading.Thread(target=user2_thread, daemon=True)
 
     with _client_ctx.websocket_connect(f"/ws/{room_id}?token={token1}") as ws1:
-        ws1.receive_json()           # user1's own join event
+        _drain_until(ws1, "user_join")   # skip history, get own join
         t2.start()
         user2_joined.wait(timeout=5)
-        ws1.receive_json()           # consume user2's join broadcast on ws1
+        _drain_until(ws1, "user_join")   # drain system msgs, get user2's join broadcast
         ws1.send_json({"type": "message", "text": "hello from user1"})
         message_received.wait(timeout=5)
 
     t2.join(timeout=5)
 
-    assert len(received_messages) == 1
-    assert received_messages[0]["type"] == "message"
-    assert received_messages[0]["from"] == "msg_u1"
-    assert received_messages[0]["text"] == "hello from user1"
+    assert len(received_by_u2) == 1
+    assert received_by_u2[0]["type"] == "message"
+    assert received_by_u2[0]["from"] == "msg_u1"
+    assert received_by_u2[0]["text"] == "hello from user1"
 
 
 # ── Test 3: First user in room becomes admin ──────────────────────────────────
 
 def test_first_user_in_room_is_admin():
-    """First user to join a fresh room is automatically promoted to room admin."""
+    """First user to join a fresh room is automatically promoted to room admin.
+    Admin row is committed before user_join is broadcast, so the DB check works."""
     token = _register_and_login("first_admin_user")
     room_id = _make_room("admin_test_room")
 
     with _client_ctx.websocket_connect(f"/ws/{room_id}?token={token}") as ws:
-        ws.receive_json()   # join event — the ASGI thread has already committed the admin row
+        _drain_until(ws, "user_join")  # skip history frame, stop at user_join
 
-        # Check DB WHILE the user is still connected (before disconnect handler removes it)
         with TestSessionLocal() as db:
             user = db.query(models.User).filter(models.User.username == "first_admin_user").first()
             assert user is not None
@@ -159,21 +168,21 @@ def test_admin_succession_when_admin_disconnects():
 
     def next_user_thread():
         with _client_ctx.websocket_connect(f"/ws/{room_id}?token={token_next}") as ws_next:
-            ws_next.receive_json()    # own join event
-            next_user_ready.set()     # next user is in the room
-            msg = ws_next.receive_json()   # expect new_admin broadcast
+            _drain_until(ws_next, "user_join")  # skip history, stop at own join
+            next_user_ready.set()
+            msg = _drain_until(ws_next, "new_admin")  # skip user_left/system, get new_admin
             new_admin_events.append(msg)
             succession_done.set()
 
     t_next = threading.Thread(target=next_user_thread, daemon=True)
 
     with _client_ctx.websocket_connect(f"/ws/{room_id}?token={token_admin}") as ws_admin:
-        ws_admin.receive_json()          # admin's own join event
+        _drain_until(ws_admin, "user_join")       # skip history, get own join
         t_next.start()
-        next_user_ready.wait(timeout=5)  # wait for next user to join
-        ws_admin.receive_json()          # consume next user's join broadcast
+        next_user_ready.wait(timeout=5)
+        _drain_until(ws_admin, "user_join")       # drain system msgs, get next user's join
 
-    # ws_admin context exits → disconnect → admin succession triggered
+    # ws_admin exits → disconnect → admin succession triggered
     succession_done.wait(timeout=5)
     t_next.join(timeout=5)
 

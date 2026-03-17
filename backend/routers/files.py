@@ -1,10 +1,10 @@
 # routers/files.py
-from fastapi import APIRouter, Depends, UploadFile, File as FastAPIFile, HTTPException
+from fastapi import APIRouter, Depends, Request, UploadFile, File as FastAPIFile, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
 from database import get_db
-from auth import get_current_user
+from auth import get_current_user, get_current_user_flexible
 from services.file_service import save_file
 from ws_manager import manager
 import models, schemas
@@ -44,8 +44,9 @@ async def upload_file(
 @router.get("/download/{file_id}")
 def download_file(
     file_id: int,
+    request: Request,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    _: models.User = Depends(get_current_user_flexible),
 ):
     # Old: chatServer._serverSendFile() sent raw bytes over socket
     record = db.query(models.File).filter(models.File.id == file_id).first()

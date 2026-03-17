@@ -1,6 +1,6 @@
 # ws_manager.py
 from fastapi import WebSocket
-from typing import Dict, List
+from typing import Dict, List, Set
 
 
 class ConnectionManager:
@@ -18,10 +18,12 @@ class ConnectionManager:
         self.rooms: Dict[int, List[WebSocket]] = {}
         # WebSocket -> username
         self.socket_to_user: Dict[WebSocket, str] = {}
-        # username -> WebSocket (one connection per user for personal messages)
-        self.user_to_socket: Dict[str, WebSocket] = {}
-        # room_id -> first socket (for admin succession)
+        # username -> set of WebSockets (user may be in multiple rooms simultaneously)
+        self.user_to_socket: Dict[str, Set[WebSocket]] = {}
+        # room_id -> join order list (for admin succession)
         self.room_join_order: Dict[int, List[str]] = {}
+        # usernames currently being kicked (suppress duplicate "has left" system message)
+        self.kicked_users: Set[str] = set()
 
     async def connect(self, websocket: WebSocket, room_id: int, username: str):
         await websocket.accept()
@@ -30,7 +32,9 @@ class ConnectionManager:
             self.room_join_order[room_id] = []
         self.rooms[room_id].append(websocket)
         self.socket_to_user[websocket] = username
-        self.user_to_socket[username] = websocket
+        if username not in self.user_to_socket:
+            self.user_to_socket[username] = set()
+        self.user_to_socket[username].add(websocket)
         self.room_join_order[room_id].append(username)
 
     def disconnect(self, websocket: WebSocket, room_id: int):
@@ -40,7 +44,9 @@ class ConnectionManager:
         if websocket in self.socket_to_user:
             del self.socket_to_user[websocket]
         if username and username in self.user_to_socket:
-            del self.user_to_socket[username]
+            self.user_to_socket[username].discard(websocket)
+            if not self.user_to_socket[username]:
+                del self.user_to_socket[username]
         if username and room_id in self.room_join_order:
             if username in self.room_join_order[room_id]:
                 self.room_join_order[room_id].remove(username)
@@ -55,9 +61,8 @@ class ConnectionManager:
                     pass
 
     async def send_personal(self, username: str, message: dict):
-        """Send to a specific user. Old equivalent: the private message flow."""
-        ws = self.user_to_socket.get(username)
-        if ws:
+        """Send to a specific user across all their active connections."""
+        for ws in list(self.user_to_socket.get(username, set())):
             try:
                 await ws.send_json(message)
             except Exception:

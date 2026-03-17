@@ -18,6 +18,11 @@ function chatReducer(state, action) {
       return { ...state, rooms: action.rooms };
     case 'SET_ACTIVE_ROOM':
       return { ...state, activeRoomId: action.roomId };
+    case 'SET_HISTORY':
+      return {
+        ...state,
+        messages: { ...state.messages, [action.roomId]: action.messages },
+      };
     case 'ADD_MESSAGE': {
       const roomMsgs = state.messages[action.roomId] || [];
       return {
@@ -27,12 +32,14 @@ function chatReducer(state, action) {
     }
     case 'SET_USERS':
       return { ...state, onlineUsers: { ...state.onlineUsers, [action.roomId]: action.users } };
+    case 'SET_ADMINS':
+      return { ...state, admins: { ...state.admins, [action.roomId]: action.admins } };
     case 'SET_ADMIN':
       return {
         ...state,
         admins: {
           ...state.admins,
-          [action.roomId]: [...(state.admins[action.roomId] || []), action.username],
+          [action.roomId]: [...new Set([...(state.admins[action.roomId] || []), action.username])],
         },
       };
     case 'ADD_MUTED':

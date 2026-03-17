@@ -1,5 +1,5 @@
 // src/pages/ChatPage.jsx
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
@@ -15,6 +15,7 @@ export default function ChatPage() {
   const { user, token, logout } = useAuth();
   const { state, dispatch } = useChat();
   const navigate = useNavigate();
+  const [closedRooms, setClosedRooms] = useState(new Set());
 
   // Load rooms on mount
   useEffect(() => {
@@ -23,45 +24,115 @@ export default function ChatPage() {
     });
   }, []);
 
+  function refreshRooms() {
+    return http.get('/rooms/').then(res => {
+      dispatch({ type: 'SET_ROOMS', rooms: res.data });
+      // Only rooms returned by /rooms/ are active; clear stale closed state for active rooms
+      const activeIds = new Set(res.data.map(r => r.id));
+      setClosedRooms(prev => {
+        const next = new Set(prev);
+        activeIds.forEach(id => next.delete(id));
+        return next;
+      });
+      return res.data;
+    });
+  }
+
   function handleSelectRoom(roomId) {
     if (state.activeRoomId && state.activeRoomId !== roomId) {
       disconnectFromRoom(state.activeRoomId);
     }
     dispatch({ type: 'SET_ACTIVE_ROOM', roomId });
+    // Refresh room list before connecting to get latest is_active status
+    refreshRooms();
     connectToRoom(roomId, token, (msg) => handleWsMessage(msg, roomId));
   }
 
   function handleWsMessage(msg, roomId) {
     switch (msg.type) {
+      case 'history':
+        dispatch({ type: 'SET_HISTORY', roomId: msg.room_id, messages: msg.messages });
+        break;
+
       case 'user_join':
       case 'user_left':
         dispatch({ type: 'SET_USERS', roomId: msg.room_id, users: msg.users });
+        if (msg.admins) dispatch({ type: 'SET_ADMINS', roomId: msg.room_id, admins: msg.admins });
         break;
+
+      case 'system':
+        dispatch({
+          type: 'ADD_MESSAGE',
+          roomId: msg.room_id,
+          message: { isSystem: true, text: msg.text },
+        });
+        break;
+
       case 'message':
-        dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { from: msg.from, text: msg.text } });
+        dispatch({
+          type: 'ADD_MESSAGE',
+          roomId: msg.room_id,
+          message: { from: msg.from, text: msg.text },
+        });
         break;
+
       case 'private_message':
-        dispatch({ type: 'ADD_MESSAGE', roomId, message: { from: msg.from, text: msg.text, isPrivate: true } });
+        dispatch({
+          type: 'ADD_MESSAGE',
+          roomId,
+          message: {
+            from: msg.from,
+            text: msg.text,
+            isPrivate: true,
+            to: msg.to,
+            isSelf: msg.self || false,
+          },
+        });
         break;
+
+      case 'file_shared':
+        dispatch({
+          type: 'ADD_MESSAGE',
+          roomId: msg.room_id,
+          message: {
+            isFile: true,
+            from: msg.from,
+            text: msg.filename,
+            fileId: msg.file_id,
+            fileSize: msg.size,
+          },
+        });
+        break;
+
       case 'kicked':
         disconnectFromRoom(msg.room_id);
+        dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
         alert('You were kicked from the room');
         break;
+
       case 'muted':
         dispatch({ type: 'ADD_MUTED', roomId: msg.room_id, username: msg.username });
         break;
+
       case 'unmuted':
         dispatch({ type: 'REMOVE_MUTED', roomId: msg.room_id, username: msg.username });
         break;
+
       case 'new_admin':
         dispatch({ type: 'SET_ADMIN', roomId: msg.room_id, username: msg.username });
         break;
+
+      case 'chat_closed':
+        setClosedRooms(prev => new Set([...prev, msg.room_id ?? roomId]));
+        disconnectFromRoom(msg.room_id ?? roomId);
+        refreshRooms();
+        alert(msg.detail);
+        break;
+
       case 'error':
         alert(msg.detail);
         break;
-      case 'chat_closed':
-        alert(msg.detail);
-        break;
+
       default:
         break;
     }
@@ -70,8 +141,6 @@ export default function ChatPage() {
   function handleSend(text) {
     if (!state.activeRoomId) return;
     sendMessage(state.activeRoomId, { type: 'message', text });
-    // Also add to local messages so sender sees their own message
-    dispatch({ type: 'ADD_MESSAGE', roomId: state.activeRoomId, message: { from: user.username, text } });
   }
 
   function handleKick(target) {
@@ -80,6 +149,10 @@ export default function ChatPage() {
 
   function handleMute(target) {
     sendMessage(state.activeRoomId, { type: 'mute', target });
+  }
+
+  function handleUnmute(target) {
+    sendMessage(state.activeRoomId, { type: 'unmute', target });
   }
 
   function handlePromote(target) {
@@ -96,6 +169,8 @@ export default function ChatPage() {
   const activeUsers = state.onlineUsers[state.activeRoomId] || [];
   const activeAdmins = state.admins[state.activeRoomId] || [];
   const activeMuted = state.mutedUsers[state.activeRoomId] || [];
+  const isRoomClosed = state.activeRoomId ? closedRooms.has(state.activeRoomId) : false;
+  const isCurrentUserAdmin = activeAdmins.includes(user?.username);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -119,9 +194,18 @@ export default function ChatPage() {
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
           {state.activeRoomId ? (
             <>
+              {isRoomClosed && (
+                <div style={{ padding: '8px 12px', background: '#ffebee', color: '#c62828', borderBottom: '1px solid #ef9a9a', fontWeight: 'bold' }}>
+                  🔒 This room is closed. Messaging is disabled.
+                </div>
+              )}
               <MessageList messages={activeMessages} />
-              <FileUpload roomId={state.activeRoomId} />
-              <MessageInput onSend={handleSend} />
+              {!isRoomClosed && (
+                <>
+                  <FileUpload roomId={state.activeRoomId} />
+                  <MessageInput onSend={handleSend} />
+                </>
+              )}
             </>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: '#999' }}>
@@ -135,8 +219,10 @@ export default function ChatPage() {
           admins={activeAdmins}
           mutedUsers={activeMuted}
           currentUser={user?.username}
+          isCurrentUserAdmin={isCurrentUserAdmin}
           onKick={handleKick}
           onMute={handleMute}
+          onUnmute={handleUnmute}
           onPromote={handlePromote}
         />
       </div>

@@ -32,7 +32,10 @@ def promote_to_admin(actor: str, target: str, room_id: int, db: Session):
     if not is_admin_in_room(actor, room_id, db):
         raise HTTPException(403, "Only admins can promote users")
     if is_admin_in_room(target, room_id, db):
-        raise HTTPException(409, "User is already an admin")  # old: server sent error message to client
+        raise HTTPException(409, "User is already an admin")
+    # Old: 'This user muted, cant become to admin!'
+    if is_muted_in_room(target, room_id, db):
+        raise HTTPException(403, "Cannot promote a muted user — unmute first")
 
     target_user = db.query(models.User).filter(models.User.username == target).first()
     if not target_user:
@@ -93,6 +96,19 @@ async def handle_admin_succession(room_id: int, leaving_username: str, db: Sessi
         ).delete()
         db.commit()
 
+    # Clear all mutes in the room (admin leaving = amnesty for muted users)
+    mutes = (
+        db.query(models.MutedUser, models.User)
+        .join(models.User, models.MutedUser.user_id == models.User.id)
+        .filter(models.MutedUser.room_id == room_id)
+        .all()
+    )
+    muted_usernames = [u.username for _, u in mutes]
+    db.query(models.MutedUser).filter(models.MutedUser.room_id == room_id).delete()
+    db.commit()
+    for username in muted_usernames:
+        await manager.broadcast(room_id, {"type": "unmuted", "username": username, "room_id": room_id})
+
     # Promote the next user in join order
     successor = manager.get_admin_successor(room_id)
     if successor:
@@ -103,5 +119,10 @@ async def handle_admin_succession(room_id: int, leaving_username: str, db: Sessi
             await manager.broadcast(room_id, {
                 "type": "new_admin",
                 "username": successor,
+                "room_id": room_id,
+            })
+            await manager.broadcast(room_id, {
+                "type": "system",
+                "text": f"{successor} has become admin",
                 "room_id": room_id,
             })
