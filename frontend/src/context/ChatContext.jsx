@@ -42,6 +42,8 @@ function chatReducer(state, action) {
           [action.roomId]: [...new Set([...(state.admins[action.roomId] || []), action.username])],
         },
       };
+    case 'SET_MUTED_USERS':
+      return { ...state, mutedUsers: { ...state.mutedUsers, [action.roomId]: action.muted } };
     case 'ADD_MUTED':
       return {
         ...state,

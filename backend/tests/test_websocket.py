@@ -351,6 +351,77 @@ def test_muted_user_unmuted_on_disconnect():
         assert mute is None, "Mute should be cleared when user disconnects"
 
 
+# ── Broadcast message received by second user ────────────────────────────────
+
+def test_broadcast_message_received_by_second_user():
+    """Message sent by user1 is delivered to user2 in the same room."""
+    rid = _room("broadcast_room")
+    token1 = _login("broadcast_u1")
+    token2 = _login("broadcast_u2")
+
+    received_by_u2 = []
+    u2_ready = threading.Event()
+    msg_received = threading.Event()
+
+    def u2_thread():
+        with _client_ctx.websocket_connect(f"/ws/{rid}?token={token2}") as ws2:
+            _drain(ws2, "user_join")
+            u2_ready.set()
+            msg = _drain(ws2, "message")
+            received_by_u2.append(msg)
+            msg_received.set()
+
+    t = threading.Thread(target=u2_thread, daemon=True)
+
+    with _client_ctx.websocket_connect(f"/ws/{rid}?token={token1}") as ws1:
+        _drain(ws1, "user_join")
+        t.start()
+        u2_ready.wait(timeout=5)
+        _drain(ws1, "user_join")  # consume u2's join broadcast
+        ws1.send_json({"type": "message", "text": "hello from u1"})
+        msg_received.wait(timeout=5)
+
+    t.join(timeout=5)
+    assert len(received_by_u2) == 1
+    assert received_by_u2[0]["from"] == "broadcast_u1"
+    assert received_by_u2[0]["text"] == "hello from u1"
+
+
+# ── Admin succession end-to-end via WebSocket ─────────────────────────────────
+
+def test_admin_succession_e2e():
+    """When admin disconnects, next user in join order receives new_admin event."""
+    rid = _room("succ_e2e_room")
+    token_admin = _login("succ_e2e_admin")
+    token_next = _login("succ_e2e_next")
+
+    new_admin_events = []
+    next_ready = threading.Event()
+    succession_done = threading.Event()
+
+    def next_thread():
+        with _client_ctx.websocket_connect(f"/ws/{rid}?token={token_next}") as ws_next:
+            _drain(ws_next, "user_join")
+            next_ready.set()
+            msg = _drain(ws_next, "new_admin")
+            new_admin_events.append(msg)
+            succession_done.set()
+
+    t = threading.Thread(target=next_thread, daemon=True)
+
+    with _client_ctx.websocket_connect(f"/ws/{rid}?token={token_admin}") as ws_admin:
+        _drain(ws_admin, "user_join")
+        t.start()
+        next_ready.wait(timeout=5)
+        _drain(ws_admin, "user_join")  # consume next user's join
+
+    succession_done.wait(timeout=5)
+    t.join(timeout=5)
+
+    assert len(new_admin_events) == 1
+    assert new_admin_events[0]["username"] == "succ_e2e_next"
+
+
 # ── Kick suppresses duplicate has-left message ────────────────────────────────
 
 def test_kick_sends_kicked_event_to_victim():

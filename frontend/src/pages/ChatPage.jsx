@@ -58,6 +58,7 @@ export default function ChatPage() {
       case 'user_left':
         dispatch({ type: 'SET_USERS', roomId: msg.room_id, users: msg.users });
         if (msg.admins) dispatch({ type: 'SET_ADMINS', roomId: msg.room_id, admins: msg.admins });
+        if (msg.muted !== undefined) dispatch({ type: 'SET_MUTED_USERS', roomId: msg.room_id, muted: msg.muted });
         break;
 
       case 'system':

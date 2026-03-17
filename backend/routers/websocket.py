@@ -28,6 +28,11 @@ def _get_room_admins(room_id: int, db: Session, users_in_room: list) -> list:
     return [u for u in users_in_room if room_service.is_admin_in_room(u, room_id, db)]
 
 
+def _get_room_muted(room_id: int, db: Session, users_in_room: list) -> list:
+    """Return list of muted usernames in this room (among currently connected users)."""
+    return [u for u in users_in_room if room_service.is_muted_in_room(u, room_id, db)]
+
+
 @router.websocket("/ws/{room_id}")
 async def websocket_endpoint(
     websocket: WebSocket,
@@ -88,13 +93,15 @@ async def websocket_endpoint(
         "room_id": room_id,
     })
 
-    # Announce join to everyone — include admins list so frontend can track admin state
+    # Announce join to everyone — include admins + muted lists so frontend state is authoritative
     admins_now = _get_room_admins(room_id, db, users_now)
+    muted_now = _get_room_muted(room_id, db, users_now)
     await manager.broadcast(room_id, {
         "type": "user_join",
         "username": user.username,
         "users": users_now,
         "admins": admins_now,
+        "muted": muted_now,
         "room_id": room_id,
     })
     await manager.broadcast(room_id, {
@@ -202,7 +209,8 @@ async def websocket_endpoint(
                         "room_id": room_id,
                     })
                 except Exception as e:
-                    await websocket.send_json({"type": "error", "detail": str(e)})
+                    detail = e.detail if hasattr(e, "detail") else str(e)
+                    await websocket.send_json({"type": "error", "detail": detail})
 
             # --- Admin: unmute ---
             elif msg_type == "unmute":
@@ -216,7 +224,8 @@ async def websocket_endpoint(
                         "room_id": room_id,
                     })
                 except Exception as e:
-                    await websocket.send_json({"type": "error", "detail": str(e)})
+                    detail = e.detail if hasattr(e, "detail") else str(e)
+                    await websocket.send_json({"type": "error", "detail": detail})
 
             # --- Admin: promote ---
             elif msg_type == "promote":
@@ -230,7 +239,8 @@ async def websocket_endpoint(
                         "room_id": room_id,
                     })
                 except Exception as e:
-                    await websocket.send_json({"type": "error", "detail": str(e)})
+                    detail = e.detail if hasattr(e, "detail") else str(e)
+                    await websocket.send_json({"type": "error", "detail": detail})
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, room_id)
@@ -249,13 +259,14 @@ async def websocket_endpoint(
         if was_admin:
             await room_service.handle_admin_succession(room_id, user.username, db, manager)
 
-        # Broadcast updated user list
+        # Broadcast updated user list with authoritative admins + muted state
         remaining = manager.get_users_in_room(room_id)
         await manager.broadcast(room_id, {
             "type": "user_left",
             "username": user.username,
             "users": remaining,
             "admins": _get_room_admins(room_id, db, remaining),
+            "muted": _get_room_muted(room_id, db, remaining),
             "room_id": room_id,
         })
 
