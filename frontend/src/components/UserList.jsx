@@ -2,14 +2,30 @@
 import { useState } from 'react';
 import ContextMenu from './ContextMenu';
 
-export default function UserList({ users, admins, mutedUsers, currentUser, isCurrentUserAdmin, onKick, onMute, onUnmute, onPromote }) {
+export default function UserList({
+  users,
+  admins,
+  mutedUsers,
+  currentUser,
+  isCurrentUserAdmin,
+  onKick,
+  onMute,
+  onUnmute,
+  onPromote,
+  onStartPM,   // new: called with username when user clicks another user's name
+}) {
   const [menu, setMenu] = useState(null); // { x, y, target }
 
   function handleRightClick(e, username) {
     if (username === currentUser) return;
-    if (!isCurrentUserAdmin) return; // only admins can perform actions
+    if (!isCurrentUserAdmin) return;
     e.preventDefault();
     setMenu({ x: e.clientX, y: e.clientY, target: username });
+  }
+
+  function handleLeftClick(username) {
+    if (username === currentUser) return;
+    if (onStartPM) onStartPM(username);
   }
 
   return (
@@ -18,13 +34,14 @@ export default function UserList({ users, admins, mutedUsers, currentUser, isCur
       {(users || []).map(u => (
         <div
           key={u}
+          onClick={() => handleLeftClick(u)}
           onContextMenu={e => handleRightClick(e, u)}
           style={{
             padding: '4px 0',
-            cursor: isCurrentUserAdmin && u !== currentUser ? 'context-menu' : 'default',
+            cursor: u !== currentUser ? 'pointer' : 'default',
             userSelect: 'none',
           }}
-          title={isCurrentUserAdmin && u !== currentUser ? 'Right-click for options' : undefined}
+          title={u !== currentUser ? 'Click to send private message' : undefined}
         >
           {(admins || []).includes(u) ? '★ ' : ''}
           {u}
