@@ -54,9 +54,14 @@ export function useMultiRoomChat() {
         break;
 
       case 'private_message': {
-        // Deduplicate using msg_id (arrives on each joined room's socket)
+        // Deduplicate using msg_id (arrives on each joined room's socket).
+        // Cap the dedup Set at 500 entries to prevent unbounded growth in long sessions.
         if (msg.msg_id) {
           if (seenMsgIdsRef.current.has(msg.msg_id)) break;
+          if (seenMsgIdsRef.current.size >= 500) {
+            // Evict the oldest entry (insertion-order first element of the Set)
+            seenMsgIdsRef.current.delete(seenMsgIdsRef.current.values().next().value);
+          }
           seenMsgIdsRef.current.add(msg.msg_id);
         }
         const otherUser = msg.self ? msg.to : msg.from;
@@ -221,12 +226,16 @@ export function useMultiRoomChat() {
           // consistent with the chat_closed WS handler which also uses window.alert.
           const serverIds = new Set(roomRes.data.map(r => r.id));
           const joined = stateRef.current.joinedRooms;
+          // Compute surviving rooms BEFORE the loop so that when multiple rooms disappear
+          // in the same poll tick, nextJoined is always chosen from rooms that will persist
+          // (not from a room that is also about to be exited in a later loop iteration).
+          const survivingJoined = [...joined].filter(id => serverIds.has(id));
           joined.forEach(roomId => {
             if (!serverIds.has(roomId)) {
               exitRoomRef.current(roomId);
               if (activeRoomIdRef.current === roomId) {
                 // Prefer switching to another joined room; fall back to placeholder
-                const nextJoined = [...stateRef.current.joinedRooms].find(id => id !== roomId);
+                const nextJoined = survivingJoined.find(id => id !== roomId);
                 dispatch({ type: 'SET_ACTIVE_ROOM', roomId: nextJoined ?? null });
               }
               window.alert('A room you were in was closed by the admin.');
