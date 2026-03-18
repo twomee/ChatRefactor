@@ -12,15 +12,12 @@ export default function RoomList({
   const available = rooms.filter(r => !joinedRooms.has(r.id));
 
   return (
-    <div style={{ width: 200, borderRight: '1px solid #ccc', padding: 8, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
-
+    <div>
       {/* YOUR ROOMS */}
       <div>
-        <h4 style={{ margin: '0 0 6px', fontSize: '0.75em', textTransform: 'uppercase', color: '#666', letterSpacing: 1 }}>
-          Your Rooms
-        </h4>
+        <div className="section-title">Your Rooms</div>
         {joined.length === 0 && (
-          <div style={{ fontSize: '0.8em', color: '#aaa' }}>No rooms joined yet</div>
+          <div className="section-empty">No rooms joined yet</div>
         )}
         {joined.map(room => {
           const unread = unreadCounts[room.id] || 0;
@@ -28,35 +25,22 @@ export default function RoomList({
           return (
             <div
               key={room.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '4px 6px',
-                borderRadius: 4,
-                background: isActive ? '#dce8ff' : 'transparent',
-                marginBottom: 2,
-              }}
+              className={`room-item ${isActive ? 'active' : ''}`}
+              onClick={() => onSelect(room.id)}
             >
-              <span
-                onClick={() => onSelect(room.id)}
-                style={{ flex: 1, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-              >
-                # {room.name}
-              </span>
+              <span className="room-hash">#</span>
+              <span className="room-name">{room.name}</span>
               {unread > 0 && (
-                <span style={{
-                  background: '#e53935', color: '#fff', borderRadius: 10,
-                  fontSize: '0.7em', padding: '1px 5px', marginRight: 4, minWidth: 18, textAlign: 'center',
-                }}>
+                <span className="unread-badge">
                   {unread > 99 ? '99+' : unread}
                 </span>
               )}
               <button
-                onClick={() => onExit(room.id)}
+                className="room-exit-btn"
+                onClick={e => { e.stopPropagation(); onExit(room.id); }}
                 title="Exit room"
-                style={{ fontSize: '0.7em', padding: '1px 4px', cursor: 'pointer', background: 'transparent', border: '1px solid #ccc', borderRadius: 3 }}
               >
-                ✕
+                &times;
               </button>
             </div>
           );
@@ -64,24 +48,18 @@ export default function RoomList({
       </div>
 
       {/* AVAILABLE */}
-      <div>
-        <h4 style={{ margin: '0 0 6px', fontSize: '0.75em', textTransform: 'uppercase', color: '#666', letterSpacing: 1 }}>
-          Available
-        </h4>
+      <div style={{ marginTop: 16 }}>
+        <div className="section-title">Available</div>
         {available.length === 0 && (
-          <div style={{ fontSize: '0.8em', color: '#aaa' }}>No other rooms</div>
+          <div className="section-empty">No other rooms</div>
         )}
         {available.map(room => (
-          <div
-            key={room.id}
-            style={{ display: 'flex', alignItems: 'center', padding: '4px 6px', borderRadius: 4, marginBottom: 2 }}
-          >
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#555' }}>
-              # {room.name}
-            </span>
+          <div key={room.id} className="room-item room-item-available">
+            <span className="room-hash">#</span>
+            <span className="room-name">{room.name}</span>
             <button
+              className="room-join-btn"
               onClick={() => onJoin(room.id)}
-              style={{ fontSize: '0.7em', padding: '1px 6px', cursor: 'pointer', background: '#1976d2', color: '#fff', border: 'none', borderRadius: 3 }}
             >
               Join
             </button>

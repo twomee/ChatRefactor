@@ -1,14 +1,18 @@
 // src/components/PMList.jsx
+
+function getInitials(name) {
+  if (!name) return '?';
+  return name.slice(0, 2).toUpperCase();
+}
+
 export default function PMList({ threads = {}, pmUnread = {}, activePM, onSelectPM }) {
   const usernames = Object.keys(threads);
 
   return (
     <div>
-      <h4 style={{ margin: '0 0 6px', fontSize: '0.75em', textTransform: 'uppercase', color: '#666', letterSpacing: 1 }}>
-        Private Messages
-      </h4>
+      <div className="section-title">Private Messages</div>
       {usernames.length === 0 && (
-        <div style={{ fontSize: '0.8em', color: '#aaa' }}>No conversations yet</div>
+        <div className="section-empty">No conversations yet</div>
       )}
       {usernames.map(username => {
         const unread = pmUnread[username] || 0;
@@ -16,25 +20,13 @@ export default function PMList({ threads = {}, pmUnread = {}, activePM, onSelect
         return (
           <div
             key={username}
+            className={`pm-item ${isActive ? 'active' : ''}`}
             onClick={() => onSelectPM(username)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              padding: '4px 6px',
-              borderRadius: 4,
-              background: isActive ? '#f3e5f5' : 'transparent',
-              cursor: 'pointer',
-              marginBottom: 2,
-            }}
           >
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              @ {username}
-            </span>
+            <div className="pm-avatar">{getInitials(username)}</div>
+            <span className="pm-name">{username}</span>
             {unread > 0 && (
-              <span style={{
-                background: '#9c27b0', color: '#fff', borderRadius: 10,
-                fontSize: '0.7em', padding: '1px 5px', minWidth: 18, textAlign: 'center',
-              }}>
+              <span className="pm-badge">
                 {unread > 99 ? '99+' : unread}
               </span>
             )}

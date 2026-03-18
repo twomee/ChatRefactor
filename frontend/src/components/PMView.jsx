@@ -2,6 +2,11 @@
 import { useState } from 'react';
 import MessageList from './MessageList';
 
+function getInitials(name) {
+  if (!name) return '?';
+  return name.slice(0, 2).toUpperCase();
+}
+
 export default function PMView({ username, messages = [], onSend, onScrollToBottom }) {
   const [text, setText] = useState('');
 
@@ -20,31 +25,37 @@ export default function PMView({ username, messages = [], onSend, onScrollToBott
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+    <div className="pm-view">
       {/* Header */}
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid #eee', fontWeight: 'bold', color: '#7b1fa2' }}>
-        💬 Private chat with {username}
+      <div className="pm-header">
+        <div className="pm-header-avatar">{getInitials(username)}</div>
+        <div className="pm-header-info">
+          <div className="pm-header-name">{username}</div>
+          <div className="pm-header-label">Private conversation</div>
+        </div>
       </div>
 
       {/* Message list */}
       <MessageList messages={messages} onScrollToBottom={onScrollToBottom} />
 
       {/* Input */}
-      <div style={{ display: 'flex', padding: 8, borderTop: '1px solid #ccc', gap: 8 }}>
-        <input
-          value={text}
-          onChange={e => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={`Message ${username}...`}
-          style={{ flex: 1, padding: '6px 10px', borderRadius: 4, border: '1px solid #ccc' }}
-        />
-        <button
-          onClick={handleSend}
-          disabled={!text.trim()}
-          style={{ padding: '6px 14px', background: '#9c27b0', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-        >
-          Send
-        </button>
+      <div className="message-input-wrapper">
+        <div className="message-input-form">
+          <input
+            className="message-input"
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={`Message ${username}...`}
+          />
+          <button
+            className="message-send-btn"
+            onClick={handleSend}
+            disabled={!text.trim()}
+          >
+            Send
+          </button>
+        </div>
       </div>
     </div>
   );

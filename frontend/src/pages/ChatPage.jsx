@@ -7,6 +7,7 @@ import { usePM } from '../context/PMContext';
 import { useChatConnection } from '../App';
 import * as pmApi from '../services/pmApi';
 import * as authApi from '../services/authApi';
+import Logo from '../components/Logo';
 import RoomList from '../components/RoomList';
 import MessageList from '../components/MessageList';
 import MessageInput from '../components/MessageInput';
@@ -14,6 +15,11 @@ import UserList from '../components/UserList';
 import FileUpload from '../components/FileProgress';
 import PMList from '../components/PMList';
 import PMView from '../components/PMView';
+
+function getInitials(name) {
+  if (!name) return '?';
+  return name.slice(0, 2).toUpperCase();
+}
 
 export default function ChatPage() {
   const { user, logout } = useAuth();
@@ -26,28 +32,16 @@ export default function ChatPage() {
   // ── Handlers ─────────────────────────────────────────────────────────────
 
   function handleJoinRoom(roomId) {
-    // Set active room BEFORE opening the WebSocket so that activeRoomIdRef is
-    // already correct when the first WS events (history, user_join) arrive —
-    // prevents INCREMENT_UNREAD firing against a stale null activeRoomId.
-    // NOTE: The localStorage-restore path (on mount) calls joinRoom() on the hook
-    // directly — NOT this handler — so SET_ACTIVE_ROOM is never auto-dispatched
-    // during restore; the user's last active room is not overwritten.
     dispatch({ type: 'SET_ACTIVE_ROOM', roomId });
-    pmDispatch({ type: 'SET_ACTIVE_PM', username: null }); // joining a room shifts focus to it, closing any open PM view
+    pmDispatch({ type: 'SET_ACTIVE_PM', username: null });
     joinRoom(roomId);
   }
 
   function handleExitRoom(roomId) {
-    // exitRoom() also dispatches EXIT_ROOM internally, clearing all per-room state
-    // (messages, onlineUsers, admins, mutedUsers, unreadCounts) for this room.
     exitRoom(roomId);
     if (state.activeRoomId === roomId) {
-      // Switch to next joined room or placeholder.
-      // state.joinedRooms still contains roomId here (EXIT_ROOM hasn't rendered yet)
-      // so we filter it out manually.
       const remaining = [...state.joinedRooms].filter(id => id !== roomId);
       dispatch({ type: 'SET_ACTIVE_ROOM', roomId: remaining[0] ?? null });
-      // Clear any open PM view — the room view takes precedence when switching rooms
       pmDispatch({ type: 'SET_ACTIVE_PM', username: null });
     }
   }
@@ -124,11 +118,9 @@ export default function ChatPage() {
       }))
     : [];
 
-  // What to show in the main panel
   const showRoom = !!state.activeRoomId;
   const showPM = !showRoom && !!pmState.activePM;
 
-  // Unread clear callbacks
   const handleRoomScrollBottom = useCallback(() => {
     if (state.activeRoomId) dispatch({ type: 'CLEAR_UNREAD', roomId: state.activeRoomId });
   }, [state.activeRoomId, dispatch]);
@@ -139,51 +131,71 @@ export default function ChatPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div className="chat-layout">
       {/* Header */}
-      <div style={{ padding: '8px 16px', borderBottom: '1px solid #ccc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <strong>cHATBOX</strong>
-        <div>
-          <span style={{ marginRight: 12 }}>👤 {user?.username}</span>
+      <header className="chat-header">
+        <Logo />
+        <div className="chat-header-actions">
+          <div className="user-badge">
+            <div className="user-avatar">{getInitials(user?.username)}</div>
+            {user?.username}
+          </div>
           {user?.is_global_admin && (
-            <button onClick={handleGoToAdmin} style={{ marginRight: 8 }}>Admin Panel</button>
-          )}
-          <button onClick={handleLogout}>Logout</button>
-        </div>
-      </div>
-
-      {/* Main layout */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-
-        {/* Left sidebar */}
-        <div style={{ width: 210, borderRight: '1px solid #ccc', padding: 8, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <RoomList
-            rooms={state.rooms}
-            joinedRooms={state.joinedRooms}
-            activeRoomId={state.activeRoomId}
-            unreadCounts={state.unreadCounts}
-            onJoin={handleJoinRoom}
-            onExit={handleExitRoom}
-            onSelect={handleSelectRoom}
-          />
-          <PMList
-            threads={pmState.threads}
-            pmUnread={pmState.pmUnread}
-            activePM={pmState.activePM}
-            onSelectPM={handleSelectPM}
-          />
-          {user?.is_global_admin && (
-            <button
-              onClick={handleGoToAdmin}
-              style={{ marginTop: 'auto', padding: '6px 0', background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              ⚙ Admin Panel
+            <button onClick={handleGoToAdmin} className="btn-ghost">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+              </svg>
+              Admin
             </button>
           )}
+          <button onClick={handleLogout} className="btn-ghost">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            Logout
+          </button>
         </div>
+      </header>
+
+      {/* Main layout */}
+      <div className="chat-main">
+        {/* Left sidebar */}
+        <aside className="sidebar">
+          <div className="sidebar-content">
+            <RoomList
+              rooms={state.rooms}
+              joinedRooms={state.joinedRooms}
+              activeRoomId={state.activeRoomId}
+              unreadCounts={state.unreadCounts}
+              onJoin={handleJoinRoom}
+              onExit={handleExitRoom}
+              onSelect={handleSelectRoom}
+            />
+            <PMList
+              threads={pmState.threads}
+              pmUnread={pmState.pmUnread}
+              activePM={pmState.activePM}
+              onSelectPM={handleSelectPM}
+            />
+          </div>
+          {user?.is_global_admin && (
+            <div className="sidebar-footer">
+              <button onClick={handleGoToAdmin} className="btn-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+                </svg>
+                Admin Panel
+              </button>
+            </div>
+          )}
+        </aside>
 
         {/* Center panel */}
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+        <main className="center-panel">
           {showRoom && (
             <>
               <MessageList
@@ -203,13 +215,21 @@ export default function ChatPage() {
             />
           )}
           {!showRoom && !showPM && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: '#999' }}>
-              Select a room or conversation to start chatting
+            <div className="empty-state">
+              <div className="empty-state-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+              </div>
+              <div className="empty-state-title">No conversation selected</div>
+              <div className="empty-state-text">
+                Choose a room or start a private message to begin chatting
+              </div>
             </div>
           )}
-        </div>
+        </main>
 
-        {/* Right panel — user list, only in room view */}
+        {/* Right panel */}
         {showRoom && (
           <UserList
             users={activeUsers}
