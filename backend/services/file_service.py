@@ -1,31 +1,41 @@
-# services/file_service.py
+# services/file_service.py — Business logic for file operations
 import uuid
-from pathlib import Path
+
 from fastapi import UploadFile, HTTPException
 from sqlalchemy.orm import Session
+
 from config import UPLOAD_DIR, MAX_FILE_SIZE_BYTES
+from dal import file_dal
 import models
+import schemas
 
 
 async def save_file(file: UploadFile, sender_id: int, room_id: int, db: Session) -> models.File:
-    # Check file size — old: chatServer checked size before sending, rejected if > 150MB
     content = await file.read()
     if len(content) > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(413, f"File exceeds maximum size of 150 MB")
-
-    # Store with a unique name to prevent collisions — old: chatServer used _fileCount integer
+        raise HTTPException(413, "File exceeds maximum size of 150 MB")
     safe_name = f"{uuid.uuid4().hex}_{file.filename}"
     dest = UPLOAD_DIR / safe_name
     dest.write_bytes(content)
+    return file_dal.create(db, file.filename, str(dest), len(content), sender_id, room_id)
 
-    file_record = models.File(
-        original_name=file.filename,
-        stored_path=str(dest),
-        file_size=len(content),
-        sender_id=sender_id,
-        room_id=room_id,
-    )
-    db.add(file_record)
-    db.commit()
-    db.refresh(file_record)
-    return file_record
+
+def get_file(db: Session, file_id: int) -> models.File:
+    record = file_dal.get_by_id(db, file_id)
+    if not record:
+        raise HTTPException(404, "File not found")
+    return record
+
+
+def list_room_files(db: Session, room_id: int) -> list[schemas.FileResponse]:
+    files = file_dal.list_by_room(db, room_id)
+    return [
+        schemas.FileResponse(
+            id=f.id,
+            original_name=f.original_name,
+            file_size=f.file_size,
+            sender=f.sender.username,
+            room_id=f.room_id,
+            uploaded_at=f.uploaded_at,
+        ) for f in files
+    ]

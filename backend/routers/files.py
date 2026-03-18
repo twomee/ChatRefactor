@@ -1,11 +1,12 @@
-# routers/files.py
-from fastapi import APIRouter, Depends, Request, UploadFile, File as FastAPIFile, HTTPException
+# routers/files.py — Thin controller for file upload, download, and listing
+from fastapi import APIRouter, Depends, Request, UploadFile, File as FastAPIFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
-from database import get_db
+
 from auth import get_current_user, get_current_user_flexible
-from services.file_service import save_file
+from database import get_db
+from services import file_service
 from ws_manager import manager
 import models, schemas
 
@@ -19,9 +20,7 @@ async def upload_file(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    file_record = await save_file(file, current_user.id, room_id, db)
-
-    # Notify all users in the room that a file is available — old: server sent 'filename:' message
+    file_record = await file_service.save_file(file, current_user.id, room_id, db)
     await manager.broadcast(room_id, {
         "type": "file_shared",
         "file_id": file_record.id,
@@ -30,7 +29,6 @@ async def upload_file(
         "from": current_user.username,
         "room_id": room_id,
     })
-
     return schemas.FileResponse(
         id=file_record.id,
         original_name=file_record.original_name,
@@ -48,10 +46,7 @@ def download_file(
     db: Session = Depends(get_db),
     _: models.User = Depends(get_current_user_flexible),
 ):
-    # Old: chatServer._serverSendFile() sent raw bytes over socket
-    record = db.query(models.File).filter(models.File.id == file_id).first()
-    if not record:
-        raise HTTPException(404, "File not found")
+    record = file_service.get_file(db, file_id)
     return FileResponse(
         path=record.stored_path,
         filename=record.original_name,
@@ -60,15 +55,5 @@ def download_file(
 
 
 @router.get("/room/{room_id}", response_model=List[schemas.FileResponse])
-def list_room_files(room_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    files = db.query(models.File).filter(models.File.room_id == room_id).all()
-    return [
-        schemas.FileResponse(
-            id=f.id,
-            original_name=f.original_name,
-            file_size=f.file_size,
-            sender=f.sender.username,
-            room_id=f.room_id,
-            uploaded_at=f.uploaded_at,
-        ) for f in files
-    ]
+def list_room_files(room_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return file_service.list_room_files(db, room_id)
