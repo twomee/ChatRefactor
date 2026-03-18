@@ -5,12 +5,12 @@ import { usePM } from '../context/PMContext';
 import { useAuth } from '../context/AuthContext';
 import http from '../api/http';
 
-const STORAGE_KEY = 'chatbox_joined_rooms';
-
 export function useMultiRoomChat() {
   const { state, dispatch } = useChat();
   const { pmState, pmDispatch } = usePM();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  // Namespaced per user so different accounts on the same browser don't share rooms
+  const storageKey = `chatbox_joined_rooms_${user?.username ?? 'anonymous'}`;
 
   // Mutable refs — changes don't need re-renders
   const socketsRef = useRef(new Map());         // roomId -> WebSocket
@@ -138,9 +138,9 @@ export function useMultiRoomChat() {
 
     if (!isRetry) {
       dispatch({ type: 'JOIN_ROOM', roomId });
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
       if (!saved.includes(roomId)) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify([...saved, roomId]));
+        localStorage.setItem(storageKey, JSON.stringify([...saved, roomId]));
       }
     }
 
@@ -156,7 +156,7 @@ export function useMultiRoomChat() {
       if (event.code === 4003 && !isRetry) {
         // Already-in-room: retry once after 1s (server may not have processed prior disconnect)
         setTimeout(() => {
-          const saved2 = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+          const saved2 = JSON.parse(localStorage.getItem(storageKey) || '[]');
           if (saved2.includes(roomId)) {
             joinRoom(roomId, true);
           }
@@ -164,8 +164,8 @@ export function useMultiRoomChat() {
       } else if (event.code === 4003 && isRetry) {
         // Second failure — give up, remove from joined
         dispatch({ type: 'EXIT_ROOM', roomId });
-        const saved3 = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(saved3.filter(id => id !== roomId)));
+        const saved3 = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        localStorage.setItem(storageKey, JSON.stringify(saved3.filter(id => id !== roomId)));
       }
     };
 
@@ -180,8 +180,8 @@ export function useMultiRoomChat() {
       socketsRef.current.delete(roomId);
     }
     dispatch({ type: 'EXIT_ROOM', roomId });
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved.filter(id => id !== roomId)));
+    const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    localStorage.setItem(storageKey, JSON.stringify(saved.filter(id => id !== roomId)));
   }, [dispatch]);
 
   // ── exitAllRooms ──────────────────────────────────────────────────────────
@@ -270,12 +270,17 @@ export function useMultiRoomChat() {
 
   // ── Mount: restore joined rooms from localStorage ────────────────────────
   useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
     saved.forEach(roomId => joinRoom(roomId));
 
-    // Cleanup: close all sockets on unmount
+    // Cleanup: close all sockets on unmount.
+    // IMPORTANT: also clear the Map so that React 18 StrictMode's double-mount
+    // (cleanup → remount) doesn't leave stale closed-socket entries that would
+    // make joinRoom's `socketsRef.current.has(roomId)` guard fire incorrectly,
+    // preventing reconnection and causing a blank screen for the second user.
     return () => {
       socketsRef.current.forEach(ws => ws.close());
+      socketsRef.current.clear();
       seenMsgIdsRef.current.clear();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
