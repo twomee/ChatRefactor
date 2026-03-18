@@ -82,5 +82,9 @@ class ConnectionManager:
     def is_user_in_room(self, username: str, room_id: int) -> bool:
         return username in self.get_users_in_room(room_id)
 
+    def is_user_online(self, username: str) -> bool:
+        """Return True if the user has at least one active WebSocket connection."""
+        return bool(self.user_to_socket.get(username))
+
 
 manager = ConnectionManager()  # singleton shared across requests

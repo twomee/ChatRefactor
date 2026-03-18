@@ -156,7 +156,7 @@ async def websocket_endpoint(
                     await websocket.send_json({"type": "error", "detail": "Cannot send empty private message"})
                     continue
                 # Error if target is not online
-                if not manager.user_to_socket.get(target):
+                if not manager.is_user_online(target):
                     await websocket.send_json({"type": "error", "detail": "User is not online"})
                     continue
                 msg_id = str(uuid.uuid4())
