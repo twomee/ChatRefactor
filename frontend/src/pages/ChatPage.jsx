@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
-import { useMultiRoomChat } from '../hooks/useMultiRoomChat';
+import { useChatConnection } from '../App';
 import * as pmApi from '../services/pmApi';
 import * as authApi from '../services/authApi';
 import RoomList from '../components/RoomList';
@@ -21,7 +21,7 @@ export default function ChatPage() {
   const { pmState, pmDispatch } = usePM();
   const navigate = useNavigate();
 
-  const { joinRoom, exitRoom, exitAllRooms, sendMessage } = useMultiRoomChat();
+  const { joinRoom, exitRoom, exitAllRooms, sendMessage } = useChatConnection();
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -94,6 +94,12 @@ export default function ChatPage() {
   function handleUnmute(target) { sendMessage(state.activeRoomId, { type: 'unmute', target }); }
   function handlePromote(target) { sendMessage(state.activeRoomId, { type: 'promote', target }); }
 
+  function handleGoToAdmin() {
+    pmDispatch({ type: 'SET_ACTIVE_PM', username: null });
+    dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
+    navigate('/admin');
+  }
+
   async function handleLogout() {
     exitAllRooms();
     try { await authApi.logout(); } catch (_) {}
@@ -140,7 +146,7 @@ export default function ChatPage() {
         <div>
           <span style={{ marginRight: 12 }}>👤 {user?.username}</span>
           {user?.is_global_admin && (
-            <button onClick={() => navigate('/admin')} style={{ marginRight: 8 }}>Admin Panel</button>
+            <button onClick={handleGoToAdmin} style={{ marginRight: 8 }}>Admin Panel</button>
           )}
           <button onClick={handleLogout}>Logout</button>
         </div>
@@ -168,7 +174,7 @@ export default function ChatPage() {
           />
           {user?.is_global_admin && (
             <button
-              onClick={() => navigate('/admin')}
+              onClick={handleGoToAdmin}
               style={{ marginTop: 'auto', padding: '6px 0', background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold' }}
             >
               ⚙ Admin Panel
