@@ -47,3 +47,10 @@ def login(body: schemas.UserLogin, db: Session = Depends(get_db)):
 def logout(current_user: models.User = Depends(get_current_user)):
     manager.mark_logged_out(current_user.username)
     return {"message": "Logged out"}
+
+
+@router.post("/ping")
+def ping(current_user: models.User = Depends(get_current_user)):
+    """Re-register user as logged-in. Called on app load to survive server restarts."""
+    manager.mark_logged_in(current_user.username)
+    return {"ok": True}
