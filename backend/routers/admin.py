@@ -7,6 +7,7 @@ from ws_manager import manager
 import models
 from auth import hash_password
 from config import ADMIN_USERNAME, ADMIN_PASSWORD
+from routers.rooms import invalidate_rooms_cache
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -32,6 +33,7 @@ async def close_all_rooms(db: Session = Depends(get_db), _=Depends(require_admin
         room.is_active = False
         await manager.broadcast(room.id, {"type": "chat_closed", "detail": "Admin has closed the chat"})
     db.commit()
+    invalidate_rooms_cache()
     for room_id, sockets in list(manager.rooms.items()):
         for ws in list(sockets):
             try:
@@ -47,6 +49,7 @@ def open_all_rooms(db: Session = Depends(get_db), _=Depends(require_admin)):
     for room in db.query(models.Room).all():
         room.is_active = True
     db.commit()
+    invalidate_rooms_cache()
     return {"message": "All rooms opened"}
 
 
@@ -58,6 +61,7 @@ async def close_room(room_id: int, db: Session = Depends(get_db), _=Depends(requ
         raise HTTPException(404, "Room not found")
     room.is_active = False
     db.commit()
+    invalidate_rooms_cache()
     await manager.broadcast(room_id, {"type": "chat_closed", "detail": f"Room '{room.name}' has been closed by admin"})
     for ws in list(manager.rooms.get(room_id, [])):
         try:
@@ -75,6 +79,7 @@ def open_room(room_id: int, db: Session = Depends(get_db), _=Depends(require_adm
         raise HTTPException(404, "Room not found")
     room.is_active = True
     db.commit()
+    invalidate_rooms_cache()
     return {"message": f"Room '{room.name}' opened"}
 
 

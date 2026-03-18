@@ -607,3 +607,62 @@ def test_private_message_to_offline_user_returns_error():
         resp = ws1.receive_json()
         assert resp["type"] == "error"
         assert "not online" in resp["detail"].lower()
+
+
+def test_get_room_users_returns_online_users():
+    """GET /rooms/{id}/users returns usernames of connected users."""
+    room_id = _room("users_endpoint_room")
+    t1 = _login("users_ep_user1")
+    t2 = _login("users_ep_user2")
+
+    # No one connected yet
+    resp = _client_ctx.get(f"/rooms/{room_id}/users",
+                           headers={"Authorization": f"Bearer {t1}"})
+    assert resp.status_code == 200
+    assert resp.json()["users"] == []
+
+    with _client_ctx.websocket_connect(f"/ws/{room_id}?token={t1}") as ws1, \
+         _client_ctx.websocket_connect(f"/ws/{room_id}?token={t2}") as ws2:
+        import time; time.sleep(0.1)
+        resp2 = _client_ctx.get(f"/rooms/{room_id}/users",
+                                headers={"Authorization": f"Bearer {t1}"})
+        assert resp2.status_code == 200
+        assert set(resp2.json()["users"]) == {"users_ep_user1", "users_ep_user2"}
+
+
+def test_get_room_users_requires_auth():
+    """GET /rooms/{id}/users must return 401 without a token."""
+    room_id = _room("users_auth_room")
+    resp = _client_ctx.get(f"/rooms/{room_id}/users")
+    assert resp.status_code == 401
+
+
+def test_get_room_users_returns_etag():
+    """GET /rooms/{id}/users must return an ETag header."""
+    room_id = _room("users_etag_room")
+    t1 = _login("users_etag_user")
+    resp = _client_ctx.get(f"/rooms/{room_id}/users",
+                           headers={"Authorization": f"Bearer {t1}"})
+    assert resp.status_code == 200
+    assert "etag" in resp.headers
+
+
+def test_get_rooms_returns_etag():
+    """GET /rooms/ must return an ETag header."""
+    t1 = _login("rooms_etag_user")
+    resp = _client_ctx.get("/rooms/", headers={"Authorization": f"Bearer {t1}"})
+    assert resp.status_code == 200
+    assert "etag" in resp.headers
+
+
+def test_get_rooms_304_on_matching_etag():
+    """GET /rooms/ with a matching If-None-Match returns 304."""
+    from routers.rooms import invalidate_rooms_cache
+    invalidate_rooms_cache()  # ensure cache is fresh for this test
+    t1 = _login("rooms_304_user")
+    resp = _client_ctx.get("/rooms/", headers={"Authorization": f"Bearer {t1}"})
+    etag = resp.headers["etag"]
+    resp2 = _client_ctx.get("/rooms/",
+                             headers={"Authorization": f"Bearer {t1}",
+                                      "If-None-Match": etag})
+    assert resp2.status_code == 304
