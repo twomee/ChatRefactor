@@ -1,0 +1,3 @@
+// src/config/constants.js — Single source of truth for environment configuration
+export const API_BASE = 'http://localhost:8000';
+export const WS_BASE = 'ws://localhost:8000';

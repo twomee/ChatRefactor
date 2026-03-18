@@ -5,7 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
 import { useMultiRoomChat } from '../hooks/useMultiRoomChat';
-import http from '../api/http';
+import * as pmApi from '../services/pmApi';
+import * as authApi from '../services/authApi';
 import RoomList from '../components/RoomList';
 import MessageList from '../components/MessageList';
 import MessageInput from '../components/MessageInput';
@@ -77,7 +78,7 @@ export default function ChatPage() {
   async function handleSendPM(text) {
     if (!pmState.activePM) return;
     try {
-      await http.post('/pm/send', { to: pmState.activePM, text });
+      await pmApi.sendPM(pmState.activePM, text);
       pmDispatch({
         type: 'ADD_PM_MESSAGE',
         username: pmState.activePM,
@@ -95,7 +96,7 @@ export default function ChatPage() {
 
   async function handleLogout() {
     exitAllRooms();
-    try { await http.post('/auth/logout'); } catch (_) {}
+    try { await authApi.logout(); } catch (_) {}
     logout();
     navigate('/login');
   }

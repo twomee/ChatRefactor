@@ -1,6 +1,6 @@
 // src/components/FileProgress.jsx
 import { useState, useRef } from 'react';
-import http from '../api/http';
+import { uploadFile } from '../services/fileApi';
 
 export default function FileUpload({ roomId }) {
   const [progress, setProgress] = useState(0);
@@ -13,19 +13,13 @@ export default function FileUpload({ roomId }) {
     if (!file) return;
 
     setError('');
-    const formData = new FormData();
-    formData.append('file', file);
     setUploading(true);
     setProgress(0);
 
     try {
-      await http.post(`/files/upload?room_id=${roomId}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: (evt) => {
-          if (evt.total) setProgress(Math.round((evt.loaded / evt.total) * 100));
-        },
+      await uploadFile(roomId, file, (evt) => {
+        if (evt.total) setProgress(Math.round((evt.loaded / evt.total) * 100));
       });
-      // Reset so the same file can be re-uploaded
       if (inputRef.current) inputRef.current.value = '';
     } catch (err) {
       setError(err.response?.data?.detail || 'Upload failed');

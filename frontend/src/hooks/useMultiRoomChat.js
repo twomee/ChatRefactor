@@ -3,32 +3,32 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
 import { useAuth } from '../context/AuthContext';
-import http from '../api/http';
+import { WS_BASE } from '../config/constants';
+import { listRooms, getRoomUsers } from '../services/roomApi';
+import { getJoinedRooms, addJoinedRoom, removeJoinedRoom } from '../utils/storage';
 
 export function useMultiRoomChat() {
   const { state, dispatch } = useChat();
   const { pmState, pmDispatch } = usePM();
   const { token, user } = useAuth();
-  // Namespaced per user so different accounts on the same browser don't share rooms
-  const storageKey = `chatbox_joined_rooms_${user?.username ?? 'anonymous'}`;
+  const username = user?.username ?? 'anonymous';
 
   // Mutable refs — changes don't need re-renders
-  const socketsRef = useRef(new Map());         // roomId -> WebSocket
-  const seenMsgIdsRef = useRef(new Set());      // for PM deduplication
+  const socketsRef = useRef(new Map());
+  const seenMsgIdsRef = useRef(new Set());
   const roomsEtagRef = useRef(null);
   const usersEtagRef = useRef(null);
   const activeRoomIdRef = useRef(state.activeRoomId);
-  const stateRef = useRef(state);               // always-current state for callbacks
-  const pmStateRef = useRef(pmState);           // always-current pmState for callbacks
+  const stateRef = useRef(state);
+  const pmStateRef = useRef(pmState);
 
   // Keep refs in sync with latest state
   useEffect(() => { activeRoomIdRef.current = state.activeRoomId; }, [state.activeRoomId]);
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { pmStateRef.current = pmState; }, [pmState]);
-  // Reset users ETag when active room changes — old ETag is invalid for the new room
   useEffect(() => { usersEtagRef.current = null; }, [state.activeRoomId]);
 
-  // ── Message handler (uses refs so it's always current) ─────────────────
+  // ── Message handler ────────────────────────────────────────────────
   const handleMessage = useCallback((msg, roomId) => {
     switch (msg.type) {
       case 'history':
@@ -54,12 +54,9 @@ export function useMultiRoomChat() {
         break;
 
       case 'private_message': {
-        // Deduplicate using msg_id (arrives on each joined room's socket).
-        // Cap the dedup Set at 500 entries to prevent unbounded growth in long sessions.
         if (msg.msg_id) {
           if (seenMsgIdsRef.current.has(msg.msg_id)) break;
           if (seenMsgIdsRef.current.size >= 500) {
-            // Evict the oldest entry (insertion-order first element of the Set)
             seenMsgIdsRef.current.delete(seenMsgIdsRef.current.values().next().value);
           }
           seenMsgIdsRef.current.add(msg.msg_id);
@@ -70,7 +67,6 @@ export function useMultiRoomChat() {
           username: otherUser,
           message: { from: msg.from, text: msg.text, isSelf: !!msg.self, to: msg.to },
         });
-        // Increment unread if this PM thread is not the active one
         if (otherUser !== pmStateRef.current.activePM) {
           pmDispatch({ type: 'INCREMENT_PM_UNREAD', username: otherUser });
         }
@@ -90,7 +86,6 @@ export function useMultiRoomChat() {
 
       case 'kicked': {
         const roomName = stateRef.current.rooms.find(r => r.id === msg.room_id)?.name || 'a room';
-        // exitAllRooms inline to avoid stale closure (exitAllRoomsRef set below)
         exitAllRoomsRef.current();
         dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
         window.alert(`You were kicked from ${roomName}`);
@@ -112,10 +107,6 @@ export function useMultiRoomChat() {
       case 'chat_closed': {
         const closedId = msg.room_id ?? roomId;
         exitRoomRef.current(closedId);
-        // Only clear the active room if this was the room being viewed.
-        // If the user is in a PM conversation (activeRoomId already null) or
-        // viewing a different room, leave the active selection alone so the
-        // PM view / other room view is not disrupted.
         if (activeRoomIdRef.current === closedId) {
           dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
         }
@@ -133,26 +124,23 @@ export function useMultiRoomChat() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, pmDispatch]);
 
-  // ── Stable refs for functions that call each other ──────────────────────
+  // ── Stable refs for functions that call each other ──────────────────
   const handleMessageRef = useRef(handleMessage);
   useEffect(() => { handleMessageRef.current = handleMessage; }, [handleMessage]);
 
   const exitRoomRef = useRef(() => {});
   const exitAllRoomsRef = useRef(() => {});
 
-  // ── joinRoom ─────────────────────────────────────────────────────────────
+  // ── joinRoom ───────────────────────────────────────────────────────
   const joinRoom = useCallback((roomId, isRetry = false) => {
     if (socketsRef.current.has(roomId)) return;
 
     if (!isRetry) {
       dispatch({ type: 'JOIN_ROOM', roomId });
-      const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
-      if (!saved.includes(roomId)) {
-        localStorage.setItem(storageKey, JSON.stringify([...saved, roomId]));
-      }
+      addJoinedRoom(username, roomId);
     }
 
-    const ws = new WebSocket(`ws://localhost:8000/ws/${roomId}?token=${token}`);
+    const ws = new WebSocket(`${WS_BASE}/ws/${roomId}?token=${token}`);
 
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
@@ -162,25 +150,21 @@ export function useMultiRoomChat() {
     ws.onclose = (event) => {
       socketsRef.current.delete(roomId);
       if (event.code === 4003 && !isRetry) {
-        // Already-in-room: retry once after 1s (server may not have processed prior disconnect)
         setTimeout(() => {
-          const saved2 = JSON.parse(localStorage.getItem(storageKey) || '[]');
-          if (saved2.includes(roomId)) {
+          if (getJoinedRooms(username).includes(roomId)) {
             joinRoom(roomId, true);
           }
         }, 1000);
       } else if (event.code === 4003 && isRetry) {
-        // Second failure — give up, remove from joined
         dispatch({ type: 'EXIT_ROOM', roomId });
-        const saved3 = JSON.parse(localStorage.getItem(storageKey) || '[]');
-        localStorage.setItem(storageKey, JSON.stringify(saved3.filter(id => id !== roomId)));
+        removeJoinedRoom(username, roomId);
       }
     };
 
     socketsRef.current.set(roomId, ws);
-  }, [token, dispatch]);
+  }, [token, username, dispatch]);
 
-  // ── exitRoom ─────────────────────────────────────────────────────────────
+  // ── exitRoom ───────────────────────────────────────────────────────
   const exitRoom = useCallback((roomId) => {
     const ws = socketsRef.current.get(roomId);
     if (ws) {
@@ -188,20 +172,18 @@ export function useMultiRoomChat() {
       socketsRef.current.delete(roomId);
     }
     dispatch({ type: 'EXIT_ROOM', roomId });
-    const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
-    localStorage.setItem(storageKey, JSON.stringify(saved.filter(id => id !== roomId)));
-  }, [dispatch]);
+    removeJoinedRoom(username, roomId);
+  }, [username, dispatch]);
 
-  // ── exitAllRooms ──────────────────────────────────────────────────────────
+  // ── exitAllRooms ───────────────────────────────────────────────────
   const exitAllRooms = useCallback(() => {
     [...socketsRef.current.keys()].forEach(roomId => exitRoom(roomId));
   }, [exitRoom]);
 
-  // Keep refs current so handleMessage can call them without stale closure
   useEffect(() => { exitRoomRef.current = exitRoom; }, [exitRoom]);
   useEffect(() => { exitAllRoomsRef.current = exitAllRooms; }, [exitAllRooms]);
 
-  // ── sendMessage ──────────────────────────────────────────────────────────
+  // ── sendMessage ────────────────────────────────────────────────────
   const sendMessage = useCallback((roomId, payload) => {
     const ws = socketsRef.current.get(roomId);
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -209,40 +191,23 @@ export function useMultiRoomChat() {
     }
   }, []);
 
-  // ── Polling loop (1-second interval) ─────────────────────────────────────
+  // ── Polling loop ───────────────────────────────────────────────────
   useEffect(() => {
     const poll = async () => {
       try {
-        // --- Poll room list ---
-        const roomHeaders = roomsEtagRef.current
-          ? { 'If-None-Match': roomsEtagRef.current }
-          : {};
-        const roomRes = await http.get('/rooms/', {
-          headers: roomHeaders,
-          validateStatus: s => s < 500,
-        });
+        const roomRes = await listRooms(roomsEtagRef.current);
 
         if (roomRes.status === 200) {
           roomsEtagRef.current = roomRes.headers['etag'] || null;
           dispatch({ type: 'SET_ROOMS', rooms: roomRes.data });
 
-          // Auto-exit any joined rooms that disappeared from the server list.
-          // NOTE: We use window.alert rather than an ADD_MESSAGE system notice because
-          // React 18 automatic batching merges ADD_MESSAGE + EXIT_ROOM into one render,
-          // showing the post-EXIT_ROOM state (messages[roomId] = cleared) — the notice
-          // would never be visible. window.alert is the reliable user notification here,
-          // consistent with the chat_closed WS handler which also uses window.alert.
           const serverIds = new Set(roomRes.data.map(r => r.id));
           const joined = stateRef.current.joinedRooms;
-          // Compute surviving rooms BEFORE the loop so that when multiple rooms disappear
-          // in the same poll tick, nextJoined is always chosen from rooms that will persist
-          // (not from a room that is also about to be exited in a later loop iteration).
           const survivingJoined = [...joined].filter(id => serverIds.has(id));
           joined.forEach(roomId => {
             if (!serverIds.has(roomId)) {
               exitRoomRef.current(roomId);
               if (activeRoomIdRef.current === roomId) {
-                // Prefer switching to another joined room; fall back to placeholder
                 const nextJoined = survivingJoined.find(id => id !== roomId);
                 dispatch({ type: 'SET_ACTIVE_ROOM', roomId: nextJoined ?? null });
               }
@@ -251,16 +216,9 @@ export function useMultiRoomChat() {
           });
         }
 
-        // --- Poll active room users ---
         const activeId = activeRoomIdRef.current;
         if (activeId) {
-          const userHeaders = usersEtagRef.current
-            ? { 'If-None-Match': usersEtagRef.current }
-            : {};
-          const userRes = await http.get(`/rooms/${activeId}/users`, {
-            headers: userHeaders,
-            validateStatus: s => s < 500,
-          });
+          const userRes = await getRoomUsers(activeId, usersEtagRef.current);
           if (userRes.status === 200) {
             usersEtagRef.current = userRes.headers['etag'] || null;
             dispatch({ type: 'SET_USERS', roomId: activeId, users: userRes.data.users });
@@ -276,23 +234,18 @@ export function useMultiRoomChat() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]);
 
-  // ── Mount: restore joined rooms from localStorage ────────────────────────
+  // ── Mount: restore joined rooms from localStorage ──────────────────
   useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    const saved = getJoinedRooms(username);
     saved.forEach(roomId => joinRoom(roomId));
 
-    // Cleanup: close all sockets on unmount.
-    // IMPORTANT: also clear the Map so that React 18 StrictMode's double-mount
-    // (cleanup → remount) doesn't leave stale closed-socket entries that would
-    // make joinRoom's `socketsRef.current.has(roomId)` guard fire incorrectly,
-    // preventing reconnection and causing a blank screen for the second user.
     return () => {
       socketsRef.current.forEach(ws => ws.close());
       socketsRef.current.clear();
       seenMsgIdsRef.current.clear();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally run once on mount
+  }, []);
 
   return { joinRoom, exitRoom, exitAllRooms, sendMessage };
 }

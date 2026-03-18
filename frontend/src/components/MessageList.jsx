@@ -1,25 +1,16 @@
 // src/components/MessageList.jsx
 import { useEffect, useRef, useCallback } from 'react';
-
-const API_BASE = 'http://localhost:8000';
-
-function formatSize(bytes) {
-  if (!bytes) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+import { formatSize } from '../utils/formatting';
+import { getDownloadUrl } from '../services/fileApi';
 
 export default function MessageList({ messages, onScrollToBottom }) {
   const endRef = useRef(null);
   const containerRef = useRef(null);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Fire onScrollToBottom when user scrolls within 50px of the bottom
   const handleScroll = useCallback(() => {
     if (!onScrollToBottom) return;
     const el = containerRef.current;
@@ -30,7 +21,6 @@ export default function MessageList({ messages, onScrollToBottom }) {
     }
   }, [onScrollToBottom]);
 
-  // Also fire on mount / messages change if already at bottom
   useEffect(() => {
     handleScroll();
   }, [messages, handleScroll]);
@@ -50,12 +40,11 @@ export default function MessageList({ messages, onScrollToBottom }) {
           );
         }
         if (msg.isFile) {
-          const token = sessionStorage.getItem('token');
           return (
             <div key={i} style={{ marginBottom: 6 }}>
               <strong>{msg.from}: </strong>
               <a
-                href={`${API_BASE}/files/download/${msg.fileId}?token=${token}`}
+                href={getDownloadUrl(msg.fileId)}
                 target="_blank"
                 rel="noreferrer"
                 style={{ color: '#1976d2' }}

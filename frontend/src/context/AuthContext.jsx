@@ -1,6 +1,6 @@
 // src/context/AuthContext.jsx
 import { createContext, useContext, useState, useEffect } from 'react';
-import http from '../api/http';
+import { ping } from '../services/authApi';
 
 const AuthContext = createContext(null);
 
@@ -17,7 +17,7 @@ export function AuthProvider({ children }) {
   // Re-register with backend on every app load so logged_in_users survives server restarts
   useEffect(() => {
     if (token) {
-      http.post('/auth/ping').catch(() => {});
+      ping().catch(() => {});
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

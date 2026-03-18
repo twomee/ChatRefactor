@@ -1,7 +1,8 @@
 // src/api/http.js
 import axios from 'axios';
+import { API_BASE } from '../config/constants';
 
-const http = axios.create({ baseURL: 'http://localhost:8000' });
+const http = axios.create({ baseURL: API_BASE });
 
 // Attach JWT to every request automatically
 http.interceptors.request.use(config => {
