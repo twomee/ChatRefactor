@@ -165,6 +165,14 @@ export default function ChatPage() {
             activePM={pmState.activePM}
             onSelectPM={handleSelectPM}
           />
+          {user?.is_global_admin && (
+            <button
+              onClick={() => navigate('/admin')}
+              style={{ marginTop: 'auto', padding: '6px 0', background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold' }}
+            >
+              ⚙ Admin Panel
+            </button>
+          )}
         </div>
 
         {/* Center panel */}
