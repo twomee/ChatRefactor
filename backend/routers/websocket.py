@@ -156,9 +156,10 @@ async def _handle_kick(websocket, user, room_id, data, db):
     if room_service.is_admin_in_room(target, room_id, db):
         await websocket.send_json({"type": "error", "detail": "Cannot kick another admin"})
         return
-    # Counter-based kick tracking: snapshot sockets, set counter, then close.
-    # Each socket's disconnect handler decrements; at 0 the entry is removed.
-    target_sockets = list(manager.user_to_socket.get(target, set()))
+    # Counter-based kick tracking: only count ROOM sockets (not lobby).
+    # Each room socket's disconnect handler decrements; at 0 the entry is removed.
+    lobby_set = set(manager.lobby_sockets.keys())
+    target_sockets = [ws for ws in manager.user_to_socket.get(target, set()) if ws not in lobby_set]
     if target_sockets:
         manager.kicked_users[target] = len(target_sockets)
     for target_ws in target_sockets:
@@ -219,14 +220,24 @@ async def _handle_promote(user, room_id, data, db, websocket):
 async def _handle_disconnect(websocket, user, room_id, db):
     manager.disconnect(websocket, room_id)
 
-    # Counter-based kick: decrement counter, skip post-disconnect processing.
+    # Counter-based kick: decrement counter, skip "has left" message & admin succession.
     if user.username in manager.kicked_users:
         manager.kicked_users[user.username] -= 1
         if manager.kicked_users[user.username] <= 0:
             del manager.kicked_users[user.username]
         # Still clear mute so rejoining user isn't shown as muted
         room_service.force_clear_mute(user.id, room_id, db)
-        return  # skip user_left broadcast, admin succession
+        # Broadcast updated user list so kicked user disappears from the sidebar
+        remaining = manager.get_users_in_room(room_id)
+        await manager.broadcast(room_id, {
+            "type": "user_left",
+            "username": user.username,
+            "users": remaining,
+            "admins": room_service.get_admins_in_room(room_id, db, remaining),
+            "muted": room_service.get_muted_in_room(room_id, db, remaining),
+            "room_id": room_id,
+        })
+        return  # skip "has left" system message & admin succession
 
     # Normal disconnect: clear mute on leave
     was_muted = room_service.clear_user_mute_on_leave(user, room_id, db)

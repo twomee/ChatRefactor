@@ -26,6 +26,8 @@ class ConnectionManager:
         self.kicked_users: Dict[str, int] = {}
         # users who have logged in via POST /auth/login (independent of WebSocket state)
         self.logged_in_users: Set[str] = set()
+        # lobby WebSockets — one per user, for push updates + PM delivery
+        self.lobby_sockets: Dict[WebSocket, str] = {}  # ws -> username
 
     async def connect(self, websocket: WebSocket, room_id: int, username: str):
         await websocket.accept()
@@ -93,6 +95,30 @@ class ConnectionManager:
     def is_user_online(self, username: str) -> bool:
         """Return True if the user has at least one active WebSocket connection."""
         return bool(self.user_to_socket.get(username))
+
+    # ── Lobby connections ──────────────────────────────────────────────
+
+    async def connect_lobby(self, websocket: WebSocket, username: str):
+        await websocket.accept()
+        self.lobby_sockets[websocket] = username
+        if username not in self.user_to_socket:
+            self.user_to_socket[username] = set()
+        self.user_to_socket[username].add(websocket)
+
+    def disconnect_lobby(self, websocket: WebSocket):
+        username = self.lobby_sockets.pop(websocket, None)
+        if username and username in self.user_to_socket:
+            self.user_to_socket[username].discard(websocket)
+            if not self.user_to_socket[username]:
+                del self.user_to_socket[username]
+
+    async def broadcast_all(self, message: dict):
+        """Send a message to every connected lobby socket."""
+        for ws in list(self.lobby_sockets):
+            try:
+                await ws.send_json(message)
+            except Exception:
+                pass
 
 
 manager = ConnectionManager()  # singleton shared across requests
