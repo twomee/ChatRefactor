@@ -623,7 +623,15 @@ def test_get_room_users_returns_online_users():
 
     with _client_ctx.websocket_connect(f"/ws/{room_id}?token={t1}") as ws1, \
          _client_ctx.websocket_connect(f"/ws/{room_id}?token={t2}") as ws2:
-        import time; time.sleep(0.1)
+        # Drain all setup messages to confirm both connections are registered
+        ws1.receive_json()        # history
+        _drain(ws1, "user_join")  # self join
+        _drain(ws1, "system")     # "ws1 has joined"
+        _drain(ws1, "system")     # "ws1 has become admin automatically"
+        _drain(ws1, "user_join")  # ws2 joined (users_now=[ws1, ws2])
+        _drain(ws1, "system")     # "ws2 has joined"
+        ws2.receive_json()        # history
+        _drain(ws2, "user_join")  # join broadcast (both users visible)
         resp2 = _client_ctx.get(f"/rooms/{room_id}/users",
                                 headers={"Authorization": f"Bearer {t1}"})
         assert resp2.status_code == 200
@@ -635,6 +643,27 @@ def test_get_room_users_requires_auth():
     room_id = _room("users_auth_room")
     resp = _client_ctx.get(f"/rooms/{room_id}/users")
     assert resp.status_code == 401
+
+
+def test_get_room_users_404_on_missing_room():
+    """GET /rooms/{id}/users returns 404 for a room ID that doesn't exist."""
+    t1 = _login("users_404_user")
+    resp = _client_ctx.get("/rooms/999999/users",
+                           headers={"Authorization": f"Bearer {t1}"})
+    assert resp.status_code == 404
+
+
+def test_get_room_users_304_on_matching_etag():
+    """GET /rooms/{id}/users with a matching If-None-Match returns 304."""
+    room_id = _room("users_304_room")
+    t1 = _login("users_304_test_user")
+    resp = _client_ctx.get(f"/rooms/{room_id}/users",
+                           headers={"Authorization": f"Bearer {t1}"})
+    etag = resp.headers["etag"]
+    resp2 = _client_ctx.get(f"/rooms/{room_id}/users",
+                             headers={"Authorization": f"Bearer {t1}",
+                                      "If-None-Match": etag})
+    assert resp2.status_code == 304
 
 
 def test_get_room_users_returns_etag():

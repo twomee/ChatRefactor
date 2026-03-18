@@ -34,7 +34,7 @@ def list_rooms(request: Request, db: Session = Depends(get_db), _=Depends(get_cu
     if _rooms_cache["data"] is None or now - _rooms_cache["ts"] > CACHE_TTL:
         rooms = db.query(models.Room).filter(models.Room.is_active == True).all()
         data = [{"id": r.id, "name": r.name, "is_active": r.is_active} for r in rooms]
-        etag = hashlib.md5(str(data).encode()).hexdigest()
+        etag = f'"{hashlib.md5(str(data).encode()).hexdigest()}"'
         _rooms_cache.update({"data": data, "etag": etag, "ts": now})
 
     etag = _rooms_cache["etag"]
@@ -62,8 +62,11 @@ def get_room_users(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
+    room = db.query(models.Room).filter(models.Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
     users = ws_manager.get_users_in_room(room_id)
-    etag = hashlib.md5(",".join(sorted(users)).encode()).hexdigest()
+    etag = f'"{hashlib.md5(",".join(sorted(users)).encode()).hexdigest()}"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304)
     return JSONResponse({"users": users}, headers={"ETag": etag})
