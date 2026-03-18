@@ -23,7 +23,7 @@ def get_connected_users(_=Depends(require_admin)):
       }
     """
     per_room = {room_id: manager.get_users_in_room(room_id) for room_id in manager.rooms}
-    all_online = list(manager.user_to_socket.keys())
+    all_online = list(manager.logged_in_users)
     return {"all_online": all_online, "per_room": per_room}
 
 

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
 import { useMultiRoomChat } from '../hooks/useMultiRoomChat';
+import http from '../api/http';
 import RoomList from '../components/RoomList';
 import MessageList from '../components/MessageList';
 import MessageInput from '../components/MessageInput';
@@ -73,16 +74,18 @@ export default function ChatPage() {
     sendMessage(state.activeRoomId, { type: 'message', text });
   }
 
-  function handleSendPM(text) {
+  async function handleSendPM(text) {
     if (!pmState.activePM) return;
-    // Backend uses a global user_to_socket map (not per-room), so any joined room's
-    // socket can deliver the PM to the target regardless of which room they're in.
-    const anyRoomId = [...state.joinedRooms][0];
-    if (!anyRoomId) {
-      window.alert('You must be in a room to send private messages.');
-      return;
+    try {
+      await http.post('/pm/send', { to: pmState.activePM, text });
+      pmDispatch({
+        type: 'ADD_PM_MESSAGE',
+        username: pmState.activePM,
+        message: { from: user.username, text, isSelf: true, to: pmState.activePM },
+      });
+    } catch (e) {
+      window.alert(e.response?.data?.detail || 'Could not send message');
     }
-    sendMessage(anyRoomId, { type: 'private_message', to: pmState.activePM, text });
   }
 
   function handleKick(target) { sendMessage(state.activeRoomId, { type: 'kick', target }); }
@@ -90,8 +93,9 @@ export default function ChatPage() {
   function handleUnmute(target) { sendMessage(state.activeRoomId, { type: 'unmute', target }); }
   function handlePromote(target) { sendMessage(state.activeRoomId, { type: 'promote', target }); }
 
-  function handleLogout() {
+  async function handleLogout() {
     exitAllRooms();
+    try { await http.post('/auth/logout'); } catch (_) {}
     logout();
     navigate('/login');
   }
