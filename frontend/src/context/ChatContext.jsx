@@ -76,6 +76,8 @@ function chatReducer(state, action) {
 
     // ── New actions ────────────────────────────────────────────────────────
     case 'JOIN_ROOM': {
+      // Idempotent — no-op (and no re-render) if room is already joined
+      if (state.joinedRooms.has(action.roomId)) return state;
       const next = new Set(state.joinedRooms);
       next.add(action.roomId);
       return { ...state, joinedRooms: next };
