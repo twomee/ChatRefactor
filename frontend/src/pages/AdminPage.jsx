@@ -1,12 +1,15 @@
 // src/pages/AdminPage.jsx
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import http from '../api/http';
+import * as adminApi from '../services/adminApi';
+import { createRoom } from '../services/roomApi';
+import { listRoomFiles, getDownloadUrl } from '../services/fileApi';
+import { formatSize } from '../utils/formatting';
 
 export default function AdminPage() {
   const [rooms, setRooms] = useState([]);
-  const [onlineUsers, setOnlineUsers] = useState([]);   // flat list — all users with any WS
-  const [roomUsers, setRoomUsers] = useState({});        // per-room for the table
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [roomUsers, setRoomUsers] = useState({});
   const [roomFiles, setRoomFiles] = useState({});
   const [status, setStatus] = useState('');
   const [promoteUsername, setPromoteUsername] = useState('');
@@ -14,19 +17,16 @@ export default function AdminPage() {
   const [expandedRoomFiles, setExpandedRoomFiles] = useState(null);
   const navigate = useNavigate();
 
-  const API_BASE = 'http://localhost:8000';
-
   const loadData = useCallback(async () => {
     const [roomsRes, usersRes] = await Promise.all([
-      http.get('/admin/rooms').catch(() => ({ data: [] })),
-      http.get('/admin/users').catch(() => ({ data: { all_online: [], per_room: {} } })),
+      adminApi.getRooms().catch(() => ({ data: [] })),
+      adminApi.getUsers().catch(() => ({ data: { all_online: [], per_room: {} } })),
     ]);
     setRooms(roomsRes.data);
     setOnlineUsers(usersRes.data.all_online || []);
     setRoomUsers(usersRes.data.per_room || {});
   }, []);
 
-  // Initial load + auto-refresh every 3 s so connected-user counts stay current
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 3000);
@@ -43,21 +43,19 @@ export default function AdminPage() {
     }
   }
 
-  async function loadRoomFiles(roomId) {
+  async function handleLoadRoomFiles(roomId) {
     if (expandedRoomFiles === roomId) {
       setExpandedRoomFiles(null);
       return;
     }
     try {
-      const res = await http.get(`/files/room/${roomId}`);
+      const res = await listRoomFiles(roomId);
       setRoomFiles(prev => ({ ...prev, [roomId]: res.data }));
       setExpandedRoomFiles(roomId);
-    } catch (e) {
+    } catch {
       setStatus('Failed to load files');
     }
   }
-
-  const token = sessionStorage.getItem('token');
 
   return (
     <div style={{ padding: 24, maxWidth: 960, margin: '0 auto' }}>
@@ -75,16 +73,16 @@ export default function AdminPage() {
       {/* Global controls */}
       <section style={{ marginBottom: 24 }}>
         <h3>Global Chat Controls</h3>
-        <button onClick={() => run(() => http.post('/admin/chat/close'), 'All rooms closed')} style={{ marginRight: 8 }}>
+        <button onClick={() => run(() => adminApi.closeAllRooms(), 'All rooms closed')} style={{ marginRight: 8 }}>
           Close All Rooms
         </button>
-        <button onClick={() => run(() => http.post('/admin/chat/open'), 'All rooms opened')} style={{ marginRight: 8 }}>
+        <button onClick={() => run(() => adminApi.openAllRooms(), 'All rooms opened')} style={{ marginRight: 8 }}>
           Open All Rooms
         </button>
         <button
           onClick={() => {
             if (!confirm('Reset ALL user accounts? This cannot be undone.')) return;
-            run(() => http.delete('/admin/db'), 'Database reset');
+            run(() => adminApi.resetDatabase(), 'Database reset');
           }}
           style={{ background: '#f44', color: '#fff' }}
         >
@@ -102,7 +100,7 @@ export default function AdminPage() {
             value={newRoomName}
             onChange={e => setNewRoomName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && newRoomName.trim() && run(
-              () => http.post('/rooms/', { name: newRoomName.trim() }),
+              () => createRoom(newRoomName.trim()),
               `Room "${newRoomName}" created`
             ) && setNewRoomName('')}
             style={{ padding: '4px 8px', flex: 1, maxWidth: 240 }}
@@ -110,7 +108,7 @@ export default function AdminPage() {
           <button
             disabled={!newRoomName.trim()}
             onClick={() => {
-              run(() => http.post('/rooms/', { name: newRoomName.trim() }), `Room "${newRoomName}" created`);
+              run(() => createRoom(newRoomName.trim()), `Room "${newRoomName}" created`);
               setNewRoomName('');
             }}
           >
@@ -129,7 +127,7 @@ export default function AdminPage() {
             value={promoteUsername}
             onChange={e => setPromoteUsername(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && promoteUsername.trim() && run(
-              () => http.post(`/admin/promote?username=${encodeURIComponent(promoteUsername.trim())}`),
+              () => adminApi.promoteUser(promoteUsername.trim()),
               `${promoteUsername} promoted`
             ) && setPromoteUsername('')}
             style={{ padding: '4px 8px', flex: 1, maxWidth: 240 }}
@@ -138,7 +136,7 @@ export default function AdminPage() {
             disabled={!promoteUsername.trim()}
             onClick={() => {
               run(
-                () => http.post(`/admin/promote?username=${encodeURIComponent(promoteUsername.trim())}`),
+                () => adminApi.promoteUser(promoteUsername.trim()),
                 `${promoteUsername} promoted to admin in all rooms`
               );
               setPromoteUsername('');
@@ -149,7 +147,7 @@ export default function AdminPage() {
         </div>
       </section>
 
-      {/* Connected Users — all users with at least one active WebSocket */}
+      {/* Connected Users */}
       <section style={{ marginBottom: 24 }}>
         <h3>Connected Users ({onlineUsers.length})</h3>
         {onlineUsers.length === 0 ? (
@@ -191,21 +189,21 @@ export default function AdminPage() {
                   <td style={{ padding: 8 }}>
                     {room.is_active ? (
                       <button
-                        onClick={() => run(() => http.post(`/admin/rooms/${room.id}/close`), `Room "${room.name}" closed`)}
+                        onClick={() => run(() => adminApi.closeRoom(room.id), `Room "${room.name}" closed`)}
                         style={{ fontSize: '0.8em', marginRight: 4 }}
                       >
                         Close
                       </button>
                     ) : (
                       <button
-                        onClick={() => run(() => http.post(`/admin/rooms/${room.id}/open`), `Room "${room.name}" opened`)}
+                        onClick={() => run(() => adminApi.openRoom(room.id), `Room "${room.name}" opened`)}
                         style={{ fontSize: '0.8em', marginRight: 4 }}
                       >
                         Open
                       </button>
                     )}
                     <button
-                      onClick={() => loadRoomFiles(room.id)}
+                      onClick={() => handleLoadRoomFiles(room.id)}
                       style={{ fontSize: '0.8em' }}
                     >
                       {expandedRoomFiles === room.id ? 'Hide Files' : 'Files'}
@@ -213,7 +211,6 @@ export default function AdminPage() {
                   </td>
                 </tr>
 
-                {/* Expandable files section per room */}
                 {expandedRoomFiles === room.id && (
                   <tr key={`files-${room.id}`}>
                     <td colSpan={5} style={{ padding: '0 16px 12px 16px', background: '#fafafa' }}>
@@ -239,7 +236,7 @@ export default function AdminPage() {
                                 <td style={{ padding: '4px 8px', color: '#888' }}>{new Date(f.uploaded_at).toLocaleString()}</td>
                                 <td style={{ padding: '4px 8px' }}>
                                   <a
-                                    href={`${API_BASE}/files/download/${f.id}?token=${token}`}
+                                    href={getDownloadUrl(f.id)}
                                     target="_blank"
                                     rel="noreferrer"
                                     style={{ color: '#1976d2' }}
@@ -262,11 +259,4 @@ export default function AdminPage() {
       </section>
     </div>
   );
-}
-
-function formatSize(bytes) {
-  if (!bytes) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

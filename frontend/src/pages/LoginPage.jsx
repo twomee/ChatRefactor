@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import http from '../api/http';
+import * as authApi from '../services/authApi';
 
 export default function LoginPage() {
   const [mode, setMode] = useState('login');   // 'login' | 'register'
@@ -17,11 +17,11 @@ export default function LoginPage() {
     setError('');
     try {
       if (mode === 'register') {
-        await http.post('/auth/register', { username, password });
+        await authApi.register(username, password);
         setMode('login');
         setError('Registered! Now log in.');
       } else {
-        const res = await http.post('/auth/login', { username, password });
+        const res = await authApi.login(username, password);
         login(res.data.access_token, {
           username: res.data.username,
           is_global_admin: res.data.is_global_admin,
