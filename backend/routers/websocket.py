@@ -267,7 +267,15 @@ async def websocket_endpoint(
             # can transiently go negative, which is safe to treat as zero.
             if manager.kicked_users[user.username] <= 0:
                 del manager.kicked_users[user.username]
-            return  # skip user_left broadcast, admin succession, mute clearing
+            # Clear any mute record so that if the user rejoins they are not still
+            # shown as muted. Normal disconnect does this too; we must mirror it
+            # here because we skip the rest of the handler with `return`.
+            db.query(models.MutedUser).filter(
+                models.MutedUser.user_id == user.id,
+                models.MutedUser.room_id == room_id,
+            ).delete()
+            db.commit()
+            return  # skip user_left broadcast, admin succession
 
         # Clear mute if user was muted in this room (user left → mute reset)
         mute_record = db.query(models.MutedUser).filter(

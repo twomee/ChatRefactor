@@ -109,11 +109,19 @@ export function useMultiRoomChat() {
         dispatch({ type: 'SET_ADMIN', roomId: msg.room_id, username: msg.username });
         break;
 
-      case 'chat_closed':
-        exitRoomRef.current(msg.room_id ?? roomId);
-        dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
+      case 'chat_closed': {
+        const closedId = msg.room_id ?? roomId;
+        exitRoomRef.current(closedId);
+        // Only clear the active room if this was the room being viewed.
+        // If the user is in a PM conversation (activeRoomId already null) or
+        // viewing a different room, leave the active selection alone so the
+        // PM view / other room view is not disrupted.
+        if (activeRoomIdRef.current === closedId) {
+          dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
+        }
         window.alert(msg.detail || 'Room was closed');
         break;
+      }
 
       case 'error':
         window.alert(msg.detail);

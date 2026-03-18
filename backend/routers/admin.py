@@ -14,11 +14,17 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 @router.get("/users")
 def get_connected_users(_=Depends(require_admin)):
-    """Return currently connected users per room."""
-    all_users = {}
-    for room_id in manager.rooms:
-        all_users[room_id] = manager.get_users_in_room(room_id)
-    return all_users
+    """Return all online users plus a per-room breakdown.
+
+    Response shape:
+      {
+        "all_online": ["alice", "bob", ...],  # every user with any active WS
+        "per_room":   {room_id: [usernames]}   # for the per-room columns
+      }
+    """
+    per_room = {room_id: manager.get_users_in_room(room_id) for room_id in manager.rooms}
+    all_online = list(manager.user_to_socket.keys())
+    return {"all_online": all_online, "per_room": per_room}
 
 
 @router.get("/rooms")
@@ -101,17 +107,42 @@ def reset_database(db: Session = Depends(get_db), _=Depends(require_admin)):
 
 
 @router.post("/promote")
-def promote_user(username: str, db: Session = Depends(get_db), _=Depends(require_admin)):
-    """Promote a user to admin in ALL rooms."""
+async def promote_user(username: str, db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Promote a user to admin in rooms they are currently connected to.
+
+    Only rooms where the user has an active WebSocket are affected.
+    Rooms they join in the future are not touched.
+    """
     user = db.query(models.User).filter(models.User.username == username).first()
     if not user:
         raise HTTPException(404, "User not found")
-    for room in db.query(models.Room).all():
-        exists = db.query(models.RoomAdmin).filter(
-            models.RoomAdmin.user_id == user.id,
-            models.RoomAdmin.room_id == room.id,
-        ).first()
-        if not exists:
-            db.add(models.RoomAdmin(user_id=user.id, room_id=room.id))
+
+    # Find rooms the user is currently in (active WebSocket connections only)
+    rooms_promoted = []
+    for room_id in list(manager.rooms.keys()):
+        if manager.is_user_in_room(username, room_id):
+            exists = db.query(models.RoomAdmin).filter(
+                models.RoomAdmin.user_id == user.id,
+                models.RoomAdmin.room_id == room_id,
+            ).first()
+            if not exists:
+                db.add(models.RoomAdmin(user_id=user.id, room_id=room_id))
+                rooms_promoted.append(room_id)
     db.commit()
-    return {"message": f"{username} promoted to admin in all rooms"}
+
+    # Notify each affected room in real time
+    for room_id in rooms_promoted:
+        await manager.broadcast(room_id, {
+            "type": "new_admin",
+            "username": username,
+            "room_id": room_id,
+        })
+        await manager.broadcast(room_id, {
+            "type": "system",
+            "text": f"{username} has been promoted to admin by the global admin",
+            "room_id": room_id,
+        })
+
+    if not rooms_promoted:
+        return {"message": f"{username} is not currently connected to any rooms"}
+    return {"message": f"{username} promoted to admin in {len(rooms_promoted)} room(s)"}
