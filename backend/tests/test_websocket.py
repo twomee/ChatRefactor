@@ -2,6 +2,7 @@
 import sys
 import os
 import threading
+import time
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -449,3 +450,104 @@ def test_kick_sends_kicked_event_to_victim():
 
     t.join(timeout=5)
     assert kick_received.is_set()
+
+
+def test_kick_does_not_broadcast_user_left_in_other_room():
+    """When user is kicked from room A while also in room B,
+    room B must NOT receive a user_left event for the kicked user.
+
+    Note: In the TestClient environment, the server-side ws.close() does not
+    automatically trigger WebSocketDisconnect in the handler loop.  We must
+    explicitly call client-side close() on each victim socket after the kick
+    so the disconnect handlers fire and the kicked_users counter (Dict) vs set
+    (Set) bug manifests.  We also drain ALL witness messages in a loop so that
+    user_left arriving after new_admin/system is not missed.
+    """
+    room_a_id = _room("kick_test_a")
+    room_b_id = _room("kick_test_b")
+    admin_token = _login("kick_admin_1")
+    victim_token = _login("kick_victim_1")
+    witness_token = _login("kick_witness_1")  # witness stays in room_b
+
+    with _client_ctx.websocket_connect(f"/ws/{room_a_id}?token={admin_token}") as ws_admin_a, \
+         _client_ctx.websocket_connect(f"/ws/{room_a_id}?token={victim_token}") as ws_victim_a, \
+         _client_ctx.websocket_connect(f"/ws/{room_b_id}?token={victim_token}") as ws_victim_b, \
+         _client_ctx.websocket_connect(f"/ws/{room_b_id}?token={witness_token}") as ws_witness_b:
+
+        # Drain setup for ws_admin_a
+        ws_admin_a.receive_json()               # history
+        _drain(ws_admin_a, "user_join")         # self join
+        _drain(ws_admin_a, "system")            # joined system
+        _drain(ws_admin_a, "system")            # became admin
+
+        # Drain setup for ws_victim_a (joins room_a after admin)
+        ws_victim_a.receive_json()              # history
+        _drain(ws_victim_a, "user_join")        # user_join broadcast
+
+        # ws_admin_a sees victim join
+        _drain(ws_admin_a, "user_join")
+        _drain(ws_admin_a, "system")            # "has joined"
+
+        # Drain setup for ws_victim_b (victim's socket in room_b, first user → auto admin)
+        ws_victim_b.receive_json()              # history
+        _drain(ws_victim_b, "user_join")        # self join
+        _drain(ws_victim_b, "system")           # joined system
+        _drain(ws_victim_b, "system")           # became admin in room_b
+
+        # Drain setup for ws_witness_b (witness joins room_b)
+        ws_witness_b.receive_json()             # history
+        _drain(ws_witness_b, "user_join")       # sees both users in room_b
+        _drain(ws_witness_b, "system")          # "witness has joined" system msg
+
+        # victim_b sees witness join
+        _drain(ws_victim_b, "user_join")
+        _drain(ws_victim_b, "system")           # "witness has joined"
+
+        # Admin kicks victim from room_a (server closes ALL victim sockets)
+        ws_admin_a.send_json({"type": "kick", "target": "kick_victim_1"})
+
+        # Victim receives kicked event on room_a socket
+        kicked_msg = _drain(ws_victim_a, "kicked")
+        assert kicked_msg["room_id"] == room_a_id
+
+        # Admin receives system message about kick
+        _drain(ws_admin_a, "system")
+
+        # In the TestClient the server-side ws.close() does NOT trigger
+        # WebSocketDisconnect in the handler loop.  We must close each victim
+        # socket from the client side so the disconnect handlers fire and the
+        # kicked_users counter (Dict) / set (Set) is exercised.
+        try:
+            ws_victim_a.close()
+        except Exception:
+            pass
+        try:
+            ws_victim_b.close()
+        except Exception:
+            pass
+
+        # Give the event loop a moment to process both disconnects
+        time.sleep(0.2)
+
+        # Collect ALL witness messages until the socket closes or 1 s passes.
+        # With the buggy Set implementation the witness receives new_admin,
+        # system, user_left, system — user_left arrives after new_admin so a
+        # single-receive check would miss it.
+        received_in_b = []
+        done = threading.Event()
+
+        def drain_witness():
+            while True:
+                try:
+                    msg = ws_witness_b.receive_json()
+                    received_in_b.append(msg)
+                except Exception:
+                    break
+            done.set()
+
+        t = threading.Thread(target=drain_witness, daemon=True)
+        t.start()
+        done.wait(timeout=1.0)
+
+        user_left_events = [m for m in received_in_b if m.get("type") == "user_left"]
+        assert user_left_events == [], f"room_b witness should not receive user_left, got: {user_left_events}"

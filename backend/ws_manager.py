@@ -22,8 +22,8 @@ class ConnectionManager:
         self.user_to_socket: Dict[str, Set[WebSocket]] = {}
         # room_id -> join order list (for admin succession)
         self.room_join_order: Dict[int, List[str]] = {}
-        # usernames currently being kicked (suppress duplicate "has left" system message)
-        self.kicked_users: Set[str] = set()
+        # usernames currently being kicked → count of remaining sockets to process
+        self.kicked_users: Dict[str, int] = {}
 
     async def connect(self, websocket: WebSocket, room_id: int, username: str):
         await websocket.accept()
