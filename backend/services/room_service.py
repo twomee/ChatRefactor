@@ -1,127 +1,130 @@
-# services/room_service.py
-from sqlalchemy.orm import Session
+# services/room_service.py — Business logic for room operations (admin, mute, promote)
 from fastapi import HTTPException
-import models
+from sqlalchemy.orm import Session
+
+from dal import user_dal, room_dal
 from ws_manager import ConnectionManager
 
 
+def _require_user(db: Session, username: str):
+    """Lookup user by username; raise 404 if not found."""
+    user = user_dal.get_by_username(db, username)
+    if not user:
+        raise HTTPException(404, "Target user not found")
+    return user
+
+
+# ── Query helpers ─────────────────────────────────────────────────────
+
 def is_admin_in_room(username: str, room_id: int, db: Session) -> bool:
-    user = db.query(models.User).filter(models.User.username == username).first()
+    user = user_dal.get_by_username(db, username)
     if not user:
         return False
-    return db.query(models.RoomAdmin).filter(
-        models.RoomAdmin.user_id == user.id,
-        models.RoomAdmin.room_id == room_id,
-    ).first() is not None
+    return room_dal.is_admin(db, user.id, room_id)
 
 
 def is_muted_in_room(username: str, room_id: int, db: Session) -> bool:
-    user = db.query(models.User).filter(models.User.username == username).first()
+    user = user_dal.get_by_username(db, username)
     if not user:
         return False
-    return db.query(models.MutedUser).filter(
-        models.MutedUser.user_id == user.id,
-        models.MutedUser.room_id == room_id,
-    ).first() is not None
+    return room_dal.is_muted(db, user.id, room_id)
 
+
+def get_admins_in_room(room_id: int, db: Session, users_in_room: list[str]) -> list[str]:
+    """Filter connected users to those who are admins in this room."""
+    return [u for u in users_in_room if is_admin_in_room(u, room_id, db)]
+
+
+def get_muted_in_room(room_id: int, db: Session, users_in_room: list[str]) -> list[str]:
+    """Filter connected users to those who are muted in this room."""
+    return [u for u in users_in_room if is_muted_in_room(u, room_id, db)]
+
+
+# ── Room CRUD (used by rooms router) ─────────────────────────────────
+
+def list_active_rooms(db: Session):
+    return room_dal.list_active(db)
+
+
+def create_room(db: Session, name: str):
+    if room_dal.get_by_name(db, name):
+        raise HTTPException(status_code=409, detail="Room name already exists")
+    return room_dal.create(db, name.strip())
+
+
+# ── Admin actions ─────────────────────────────────────────────────────
 
 def promote_to_admin(actor: str, target: str, room_id: int, db: Session):
-    """Old: chatServer._adminAppendToAdmins() — admin adds user to admin text file."""
     if actor == target:
         raise HTTPException(400, "Cannot promote yourself")
     if not is_admin_in_room(actor, room_id, db):
         raise HTTPException(403, "Only admins can promote users")
     if is_admin_in_room(target, room_id, db):
         raise HTTPException(409, "User is already an admin")
-    # Old: 'This user muted, cant become to admin!'
     if is_muted_in_room(target, room_id, db):
         raise HTTPException(403, "Cannot promote a muted user — unmute first")
-
-    target_user = db.query(models.User).filter(models.User.username == target).first()
-    if not target_user:
-        raise HTTPException(404, "Target user not found")
-
-    db.add(models.RoomAdmin(user_id=target_user.id, room_id=room_id))
-    db.commit()
+    target_user = _require_user(db, target)
+    room_dal.add_admin(db, target_user.id, room_id)
 
 
 def mute_user(actor: str, target: str, room_id: int, db: Session):
-    """Old: chatServer._adminMute() — added to _usersToMute list (lost on restart)."""
     if actor == target:
         raise HTTPException(400, "Cannot mute yourself")
     if is_admin_in_room(target, room_id, db):
-        raise HTTPException(403, "Cannot mute another admin")  # old: security rule
+        raise HTTPException(403, "Cannot mute another admin")
     if not is_admin_in_room(actor, room_id, db):
         raise HTTPException(403, "Only admins can mute users")
     if is_muted_in_room(target, room_id, db):
         raise HTTPException(409, "User is already muted")
-
-    target_user = db.query(models.User).filter(models.User.username == target).first()
-    if not target_user:
-        raise HTTPException(404, "Target user not found")
-
-    db.add(models.MutedUser(user_id=target_user.id, room_id=room_id))
-    db.commit()
+    target_user = _require_user(db, target)
+    room_dal.add_mute(db, target_user.id, room_id)
 
 
 def unmute_user(actor: str, target: str, room_id: int, db: Session):
-    """Old: chatServer._adminUnMute()."""
     if not is_admin_in_room(actor, room_id, db):
         raise HTTPException(403, "Only admins can unmute users")
-    target_user = db.query(models.User).filter(models.User.username == target).first()
-    if not target_user:
-        raise HTTPException(404, "Target user not found")
-
-    mute = db.query(models.MutedUser).filter(
-        models.MutedUser.user_id == target_user.id,
-        models.MutedUser.room_id == room_id,
-    ).first()
-    if not mute:
-        raise HTTPException(409, "User is not muted")  # old: server sent error to client
-    db.delete(mute)
-    db.commit()
+    target_user = _require_user(db, target)
+    if not room_dal.is_muted(db, target_user.id, room_id):
+        raise HTTPException(409, "User is not muted")
+    room_dal.remove_mute(db, target_user.id, room_id)
 
 
-async def handle_admin_succession(room_id: int, leaving_username: str, db: Session, manager: ConnectionManager):
-    """
-    Old: chatServer logic — when admin leaves, next user in join order becomes admin.
-    'כאשר מנהל יוצא מן החדר, המשתמש שנכנס אחרי המנהל הוא זה שיהפוך למנהל'
-    """
-    # Remove admin status for the leaving user
-    leaving_user = db.query(models.User).filter(models.User.username == leaving_username).first()
+# ── Connection lifecycle helpers ──────────────────────────────────────
+
+def auto_promote_first_user(user, room_id: int, db: Session) -> bool:
+    """Make the first user in a room the admin automatically. Returns True if promoted."""
+    if not is_admin_in_room(user.username, room_id, db):
+        room_dal.add_admin(db, user.id, room_id)
+        return True
+    return False
+
+
+def clear_user_mute_on_leave(user, room_id: int, db: Session) -> bool:
+    """Clear mute for a user leaving a room. Returns True if was muted."""
+    if room_dal.is_muted(db, user.id, room_id):
+        room_dal.remove_mute(db, user.id, room_id)
+        return True
+    return False
+
+
+async def handle_admin_succession(room_id: int, leaving_username: str, db: Session, mgr: ConnectionManager):
+    """When an admin leaves, remove their admin status, clear all mutes (amnesty),
+    and promote the next user in join order."""
+    leaving_user = user_dal.get_by_username(db, leaving_username)
     if leaving_user:
-        db.query(models.RoomAdmin).filter(
-            models.RoomAdmin.user_id == leaving_user.id,
-            models.RoomAdmin.room_id == room_id,
-        ).delete()
-        db.commit()
+        room_dal.remove_admin(db, leaving_user.id, room_id)
 
-    # Clear all mutes in the room (admin leaving = amnesty for muted users)
-    mutes = (
-        db.query(models.MutedUser, models.User)
-        .join(models.User, models.MutedUser.user_id == models.User.id)
-        .filter(models.MutedUser.room_id == room_id)
-        .all()
-    )
-    muted_usernames = [u.username for _, u in mutes]
-    db.query(models.MutedUser).filter(models.MutedUser.room_id == room_id).delete()
-    db.commit()
-    for username in muted_usernames:
-        await manager.broadcast(room_id, {"type": "unmuted", "username": username, "room_id": room_id})
+    unmuted_usernames = room_dal.clear_room_mutes(db, room_id)
+    for username in unmuted_usernames:
+        await mgr.broadcast(room_id, {"type": "unmuted", "username": username, "room_id": room_id})
 
-    # Promote the next user in join order
-    successor = manager.get_admin_successor(room_id)
+    successor = mgr.get_admin_successor(room_id)
     if successor:
-        successor_user = db.query(models.User).filter(models.User.username == successor).first()
-        if successor_user and not is_admin_in_room(successor, room_id, db):
-            db.add(models.RoomAdmin(user_id=successor_user.id, room_id=room_id))
-            db.commit()
-            await manager.broadcast(room_id, {
-                "type": "new_admin",
-                "username": successor,
-                "room_id": room_id,
-            })
-            await manager.broadcast(room_id, {
+        successor_user = user_dal.get_by_username(db, successor)
+        if successor_user and not room_dal.is_admin(db, successor_user.id, room_id):
+            room_dal.add_admin(db, successor_user.id, room_id)
+            await mgr.broadcast(room_id, {"type": "new_admin", "username": successor, "room_id": room_id})
+            await mgr.broadcast(room_id, {
                 "type": "system",
                 "text": f"{successor} has become admin",
                 "room_id": room_id,
