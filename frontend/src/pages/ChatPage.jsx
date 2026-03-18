@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
-import { useMultiRoomChat } from '../hooks/useMultiRoomChat';
+import { useChatConnection } from '../App';
 import * as pmApi from '../services/pmApi';
 import * as authApi from '../services/authApi';
 import RoomList from '../components/RoomList';
@@ -21,7 +21,7 @@ export default function ChatPage() {
   const { pmState, pmDispatch } = usePM();
   const navigate = useNavigate();
 
-  const { joinRoom, exitRoom, exitAllRooms, sendMessage } = useMultiRoomChat();
+  const { joinRoom, exitRoom, exitAllRooms, sendMessage } = useChatConnection();
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
