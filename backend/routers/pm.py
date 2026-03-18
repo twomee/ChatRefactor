@@ -1,7 +1,9 @@
-# routers/pm.py
+# routers/pm.py — Thin controller for HTTP-based private messaging
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
 from auth import get_current_user
 from ws_manager import manager
 import models
