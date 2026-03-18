@@ -1,5 +1,5 @@
 // src/hooks/useMultiRoomChat.js
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, startTransition } from 'react';
 import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
 import { useAuth } from '../context/AuthContext';
@@ -200,7 +200,11 @@ export function useMultiRoomChat() {
 
         if (roomRes.status === 200) {
           roomsEtagRef.current = roomRes.headers['etag'] || null;
-          dispatch({ type: 'SET_ROOMS', rooms: roomRes.data });
+          // Wrap in startTransition so polling updates (low priority) can't
+          // interrupt React Router's startTransition-based route changes.
+          startTransition(() => {
+            dispatch({ type: 'SET_ROOMS', rooms: roomRes.data });
+          });
 
           const serverIds = new Set(roomRes.data.map(r => r.id));
           const joined = stateRef.current.joinedRooms;
@@ -222,7 +226,9 @@ export function useMultiRoomChat() {
           const userRes = await getRoomUsers(activeId, usersEtagRef.current);
           if (userRes.status === 200) {
             usersEtagRef.current = userRes.headers['etag'] || null;
-            dispatch({ type: 'SET_USERS', roomId: activeId, users: userRes.data.users });
+            startTransition(() => {
+              dispatch({ type: 'SET_USERS', roomId: activeId, users: userRes.data.users });
+            });
           }
         }
       } catch {
