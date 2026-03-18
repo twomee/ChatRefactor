@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import * as authApi from '../services/authApi';
+import Logo from '../components/Logo';
 
 export default function LoginPage() {
-  const [mode, setMode] = useState('login');   // 'login' | 'register'
+  const [mode, setMode] = useState('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -34,18 +35,53 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ maxWidth: 360, margin: '100px auto', padding: 24, border: '1px solid #ccc', borderRadius: 8 }}>
-      <h2>cHATBOX</h2>
-      <div style={{ marginBottom: 16 }}>
-        <button onClick={() => setMode('login')} disabled={mode === 'login'}>Login</button>
-        <button onClick={() => setMode('register')} disabled={mode === 'register'} style={{ marginLeft: 8 }}>Register</button>
+    <div className="login-wrapper">
+      <div className="login-card">
+        <div className="login-header">
+          <Logo />
+          <p className="login-subtitle">Connect and chat in real time</p>
+        </div>
+
+        <div className="login-tabs">
+          <button
+            className={`login-tab ${mode === 'login' ? 'active' : ''}`}
+            onClick={() => setMode('login')}
+          >
+            Sign In
+          </button>
+          <button
+            className={`login-tab ${mode === 'register' ? 'active' : ''}`}
+            onClick={() => setMode('register')}
+          >
+            Register
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="login-form">
+          <input
+            placeholder="Username"
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+            required
+            autoFocus
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+          />
+          {error && (
+            <p className={`login-error ${mode === 'login' && !error.includes('Registered') ? 'error' : 'success'}`}>
+              {error}
+            </p>
+          )}
+          <button type="submit" className="btn-primary">
+            {mode === 'login' ? 'Sign In' : 'Create Account'}
+          </button>
+        </form>
       </div>
-      <form onSubmit={handleSubmit}>
-        <input placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} required style={{ display: 'block', width: '100%', marginBottom: 8 }} />
-        <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required style={{ display: 'block', width: '100%', marginBottom: 8 }} />
-        {error && <p style={{ color: mode === 'login' ? 'red' : 'green' }}>{error}</p>}
-        <button type="submit" style={{ width: '100%' }}>{mode === 'login' ? 'Login' : 'Register'}</button>
-      </form>
     </div>
   );
 }

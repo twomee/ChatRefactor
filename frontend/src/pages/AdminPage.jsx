@@ -1,5 +1,5 @@
 // src/pages/AdminPage.jsx
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as adminApi from '../services/adminApi';
 import { createRoom } from '../services/roomApi';
@@ -58,42 +58,46 @@ export default function AdminPage() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 960, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+    <div className="admin-page">
+      <div className="admin-header">
         <h2>Admin Panel</h2>
-        <button onClick={() => navigate('/chat')}>← Back to Chat</button>
+        <button onClick={() => navigate('/chat')}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"/>
+            <polyline points="12 19 5 12 12 5"/>
+          </svg>
+          Back to Chat
+        </button>
       </div>
 
-      {status && (
-        <div style={{ padding: 8, background: '#e8f5e9', borderRadius: 4, marginBottom: 16 }}>
-          {status}
-        </div>
-      )}
+      {status && <div className="admin-status">{status}</div>}
 
       {/* Global controls */}
-      <section style={{ marginBottom: 24 }}>
+      <section className="admin-section">
         <h3>Global Chat Controls</h3>
-        <button onClick={() => run(() => adminApi.closeAllRooms(), 'All rooms closed')} style={{ marginRight: 8 }}>
-          Close All Rooms
-        </button>
-        <button onClick={() => run(() => adminApi.openAllRooms(), 'All rooms opened')} style={{ marginRight: 8 }}>
-          Open All Rooms
-        </button>
-        <button
-          onClick={() => {
-            if (!confirm('Reset ALL user accounts? This cannot be undone.')) return;
-            run(() => adminApi.resetDatabase(), 'Database reset');
-          }}
-          style={{ background: '#f44', color: '#fff' }}
-        >
-          Reset Database
-        </button>
+        <div className="actions">
+          <button onClick={() => run(() => adminApi.closeAllRooms(), 'All rooms closed')}>
+            Close All Rooms
+          </button>
+          <button onClick={() => run(() => adminApi.openAllRooms(), 'All rooms opened')}>
+            Open All Rooms
+          </button>
+          <button
+            className="btn-danger"
+            onClick={() => {
+              if (!confirm('Reset ALL user accounts? This cannot be undone.')) return;
+              run(() => adminApi.resetDatabase(), 'Database reset');
+            }}
+          >
+            Reset Database
+          </button>
+        </div>
       </section>
 
       {/* Add Room */}
-      <section style={{ marginBottom: 24 }}>
+      <section className="admin-section">
         <h3>Add Room</h3>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="admin-input-row">
           <input
             type="text"
             placeholder="Room name"
@@ -103,9 +107,9 @@ export default function AdminPage() {
               () => createRoom(newRoomName.trim()),
               `Room "${newRoomName}" created`
             ) && setNewRoomName('')}
-            style={{ padding: '4px 8px', flex: 1, maxWidth: 240 }}
           />
           <button
+            className="btn-primary"
             disabled={!newRoomName.trim()}
             onClick={() => {
               run(() => createRoom(newRoomName.trim()), `Room "${newRoomName}" created`);
@@ -118,9 +122,9 @@ export default function AdminPage() {
       </section>
 
       {/* Promote User */}
-      <section style={{ marginBottom: 24 }}>
+      <section className="admin-section">
         <h3>Promote User (all rooms)</h3>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="admin-input-row">
           <input
             type="text"
             placeholder="Username"
@@ -130,9 +134,9 @@ export default function AdminPage() {
               () => adminApi.promoteUser(promoteUsername.trim()),
               `${promoteUsername} promoted`
             ) && setPromoteUsername('')}
-            style={{ padding: '4px 8px', flex: 1, maxWidth: 240 }}
           />
           <button
+            className="btn-primary"
             disabled={!promoteUsername.trim()}
             onClick={() => {
               run(
@@ -148,14 +152,15 @@ export default function AdminPage() {
       </section>
 
       {/* Connected Users */}
-      <section style={{ marginBottom: 24 }}>
+      <section className="admin-section">
         <h3>Connected Users ({onlineUsers.length})</h3>
         {onlineUsers.length === 0 ? (
-          <p style={{ color: '#999' }}>No users connected</p>
+          <p className="section-empty">No users connected</p>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <div className="admin-users-grid">
             {onlineUsers.map(u => (
-              <span key={u} style={{ padding: '2px 8px', background: '#e3f2fd', borderRadius: 12, fontSize: 13 }}>
+              <span key={u} className="admin-user-chip">
+                <span className="dot" />
                 {u}
               </span>
             ))}
@@ -164,83 +169,85 @@ export default function AdminPage() {
       </section>
 
       {/* Rooms table */}
-      <section>
+      <section className="admin-section">
         <h3>Rooms</h3>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <table className="admin-table">
           <thead>
-            <tr style={{ background: '#f5f5f5' }}>
-              <th style={{ padding: 8, textAlign: 'left' }}>ID</th>
-              <th style={{ padding: 8, textAlign: 'left' }}>Name</th>
-              <th style={{ padding: 8, textAlign: 'left' }}>Status</th>
-              <th style={{ padding: 8, textAlign: 'left' }}>Users in room</th>
-              <th style={{ padding: 8, textAlign: 'left' }}>Actions</th>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Users in room</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {rooms.map(room => (
-              <>
-                <tr key={room.id} style={{ borderBottom: '1px solid #eee', background: room.is_active ? 'inherit' : '#fff3f3' }}>
-                  <td style={{ padding: 8 }}>{room.id}</td>
-                  <td style={{ padding: 8 }}>{room.name}</td>
-                  <td style={{ padding: 8 }}>{room.is_active ? '🟢 Open' : '🔴 Closed'}</td>
-                  <td style={{ padding: 8, color: '#555' }}>
-                    {(roomUsers[room.id] || []).join(', ') || <span style={{ color: '#bbb' }}>—</span>}
+              <Fragment key={room.id}>
+                <tr className={room.is_active ? '' : 'admin-room-closed'}>
+                  <td>{room.id}</td>
+                  <td style={{ fontWeight: 500 }}>{room.name}</td>
+                  <td>
+                    <span className="admin-room-status">
+                      <span className={`dot ${room.is_active ? 'open' : 'closed'}`} />
+                      {room.is_active ? 'Open' : 'Closed'}
+                    </span>
                   </td>
-                  <td style={{ padding: 8 }}>
-                    {room.is_active ? (
+                  <td style={{ color: 'var(--text-secondary)' }}>
+                    {(roomUsers[room.id] || []).join(', ') || <span style={{ color: 'var(--text-muted)' }}>&mdash;</span>}
+                  </td>
+                  <td>
+                    <div className="actions">
+                      {room.is_active ? (
+                        <button
+                          className="btn-sm"
+                          onClick={() => run(() => adminApi.closeRoom(room.id), `Room "${room.name}" closed`)}
+                        >
+                          Close
+                        </button>
+                      ) : (
+                        <button
+                          className="btn-sm btn-primary"
+                          onClick={() => run(() => adminApi.openRoom(room.id), `Room "${room.name}" opened`)}
+                        >
+                          Open
+                        </button>
+                      )}
                       <button
-                        onClick={() => run(() => adminApi.closeRoom(room.id), `Room "${room.name}" closed`)}
-                        style={{ fontSize: '0.8em', marginRight: 4 }}
+                        className="btn-sm"
+                        onClick={() => handleLoadRoomFiles(room.id)}
                       >
-                        Close
+                        {expandedRoomFiles === room.id ? 'Hide Files' : 'Files'}
                       </button>
-                    ) : (
-                      <button
-                        onClick={() => run(() => adminApi.openRoom(room.id), `Room "${room.name}" opened`)}
-                        style={{ fontSize: '0.8em', marginRight: 4 }}
-                      >
-                        Open
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleLoadRoomFiles(room.id)}
-                      style={{ fontSize: '0.8em' }}
-                    >
-                      {expandedRoomFiles === room.id ? 'Hide Files' : 'Files'}
-                    </button>
+                    </div>
                   </td>
                 </tr>
 
                 {expandedRoomFiles === room.id && (
-                  <tr key={`files-${room.id}`}>
-                    <td colSpan={5} style={{ padding: '0 16px 12px 16px', background: '#fafafa' }}>
+                  <tr className="admin-files-row">
+                    <td colSpan={5}>
                       {(roomFiles[room.id] || []).length === 0 ? (
-                        <p style={{ color: '#999', margin: '8px 0' }}>No files in this room</p>
+                        <p className="admin-no-files">No files in this room</p>
                       ) : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <table className="admin-files-table">
                           <thead>
-                            <tr style={{ borderBottom: '1px solid #ddd' }}>
-                              <th style={{ padding: '4px 8px', textAlign: 'left' }}>File</th>
-                              <th style={{ padding: '4px 8px', textAlign: 'left' }}>Sender</th>
-                              <th style={{ padding: '4px 8px', textAlign: 'left' }}>Size</th>
-                              <th style={{ padding: '4px 8px', textAlign: 'left' }}>Uploaded</th>
-                              <th style={{ padding: '4px 8px' }}></th>
+                            <tr>
+                              <th>File</th>
+                              <th>Sender</th>
+                              <th>Size</th>
+                              <th>Uploaded</th>
+                              <th></th>
                             </tr>
                           </thead>
                           <tbody>
                             {(roomFiles[room.id] || []).map(f => (
-                              <tr key={f.id} style={{ borderBottom: '1px solid #eee' }}>
-                                <td style={{ padding: '4px 8px' }}>📎 {f.original_name}</td>
-                                <td style={{ padding: '4px 8px' }}>{f.sender}</td>
-                                <td style={{ padding: '4px 8px', color: '#888' }}>{formatSize(f.file_size)}</td>
-                                <td style={{ padding: '4px 8px', color: '#888' }}>{new Date(f.uploaded_at).toLocaleString()}</td>
-                                <td style={{ padding: '4px 8px' }}>
-                                  <a
-                                    href={getDownloadUrl(f.id)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    style={{ color: '#1976d2' }}
-                                  >
+                              <tr key={f.id}>
+                                <td>{f.original_name}</td>
+                                <td>{f.sender}</td>
+                                <td>{formatSize(f.file_size)}</td>
+                                <td>{new Date(f.uploaded_at).toLocaleString()}</td>
+                                <td>
+                                  <a href={getDownloadUrl(f.id)} target="_blank" rel="noreferrer">
                                     Download
                                   </a>
                                 </td>
@@ -252,7 +259,7 @@ export default function AdminPage() {
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>

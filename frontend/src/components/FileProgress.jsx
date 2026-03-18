@@ -30,17 +30,30 @@ export default function FileUpload({ roomId }) {
   }
 
   return (
-    <div style={{ padding: '4px 12px', borderTop: '1px solid #eee' }}>
-      <input ref={inputRef} type="file" onChange={handleFileChange} disabled={uploading} />
+    <div className="file-upload-wrapper">
+      <label className={`file-upload-label ${uploading ? 'disabled' : ''}`}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+        </svg>
+        Attach file
+        <input
+          ref={inputRef}
+          className="file-upload-input"
+          type="file"
+          onChange={handleFileChange}
+          disabled={uploading}
+        />
+      </label>
+
       {uploading && (
-        <div style={{ marginTop: 4 }}>
-          <div style={{ width: '100%', background: '#eee', borderRadius: 4 }}>
-            <div style={{ width: `${progress}%`, background: '#4a9eed', height: 6, borderRadius: 4, transition: 'width 0.2s' }} />
+        <>
+          <div className="file-progress-bar">
+            <div className="file-progress-fill" style={{ width: `${progress}%` }} />
           </div>
-          <small style={{ color: '#555' }}>Uploading… {progress}%</small>
-        </div>
+          <span className="file-progress-text">{progress}%</span>
+        </>
       )}
-      {error && <small style={{ color: 'red' }}>{error}</small>}
+      {error && <span className="file-error">{error}</span>}
     </div>
   );
 }

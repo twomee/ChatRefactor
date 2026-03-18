@@ -12,14 +12,18 @@ export default function MessageInput({ onSend }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', padding: 8, borderTop: '1px solid #ccc' }}>
-      <input
-        value={text}
-        onChange={e => setText(e.target.value)}
-        placeholder="Type a message..."
-        style={{ flex: 1, marginRight: 8, padding: '6px 10px' }}
-      />
-      <button type="submit">Send</button>
-    </form>
+    <div className="message-input-wrapper">
+      <form onSubmit={handleSubmit} className="message-input-form">
+        <input
+          className="message-input"
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="Type a message..."
+        />
+        <button type="submit" className="message-send-btn" disabled={!text.trim()}>
+          Send
+        </button>
+      </form>
+    </div>
   );
 }

@@ -2,6 +2,11 @@
 import { useState } from 'react';
 import ContextMenu from './ContextMenu';
 
+function getInitials(name) {
+  if (!name) return '?';
+  return name.slice(0, 2).toUpperCase();
+}
+
 export default function UserList({
   users,
   admins,
@@ -12,9 +17,9 @@ export default function UserList({
   onMute,
   onUnmute,
   onPromote,
-  onStartPM,   // new: called with username when user clicks another user's name
+  onStartPM,
 }) {
-  const [menu, setMenu] = useState(null); // { x, y, target }
+  const [menu, setMenu] = useState(null);
 
   function handleRightClick(e, username) {
     if (username === currentUser) return;
@@ -28,31 +33,45 @@ export default function UserList({
     if (onStartPM) onStartPM(username);
   }
 
+  const isAdmin = (u) => (admins || []).includes(u);
+  const isMuted = (u) => (mutedUsers || []).includes(u);
+
   return (
-    <div style={{ width: 160, borderLeft: '1px solid #ccc', padding: 8, overflowY: 'auto' }}>
-      <h4 style={{ margin: '0 0 8px' }}>Online ({(users || []).length})</h4>
-      {(users || []).map(u => (
-        <div
-          key={u}
-          onClick={() => handleLeftClick(u)}
-          onContextMenu={e => handleRightClick(e, u)}
-          style={{
-            padding: '4px 0',
-            cursor: u !== currentUser ? 'pointer' : 'default',
-            userSelect: 'none',
-          }}
-          title={u !== currentUser ? 'Click to send private message' : undefined}
-        >
-          {(admins || []).includes(u) ? '★ ' : ''}
-          {u}
-          {(mutedUsers || []).includes(u) ? ' 🔇' : ''}
-        </div>
-      ))}
+    <div className="user-list-panel">
+      <div className="user-list-header">
+        <span className="user-list-title">
+          Online
+          <span className="user-list-count">({(users || []).length})</span>
+        </span>
+      </div>
+      <div className="user-list-content">
+        {(users || []).map(u => (
+          <div
+            key={u}
+            className={`user-item ${u === currentUser ? 'is-self' : ''}`}
+            onClick={() => handleLeftClick(u)}
+            onContextMenu={e => handleRightClick(e, u)}
+            title={u !== currentUser ? 'Click to send private message' : undefined}
+          >
+            <div className="user-item-avatar">
+              {getInitials(u)}
+              <span className="user-online-dot" />
+            </div>
+            <div className="user-item-info">
+              <div className="user-item-name">{u}</div>
+              {isAdmin(u) && <div className="user-item-role">Admin</div>}
+              {isMuted(u) && <div className="user-item-role" style={{ color: 'var(--danger)' }}>Muted</div>}
+            </div>
+            {isAdmin(u) && <span className="user-admin-star" title="Room admin">&#9733;</span>}
+            {isMuted(u) && <span className="user-muted-icon" title="Muted">&#128263;</span>}
+          </div>
+        ))}
+      </div>
       {menu && (
         <ContextMenu
           x={menu.x} y={menu.y} target={menu.target}
-          isMuted={(mutedUsers || []).includes(menu.target)}
-          isTargetAdmin={(admins || []).includes(menu.target)}
+          isMuted={isMuted(menu.target)}
+          isTargetAdmin={isAdmin(menu.target)}
           onKick={onKick}
           onMute={onMute}
           onUnmute={onUnmute}
