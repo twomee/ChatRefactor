@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from auth import require_admin
 from database import get_db
-from routers.rooms import invalidate_rooms_cache
+from routers.rooms import broadcast_room_list
 from services import admin_service
 from ws_manager import manager
 
@@ -24,34 +24,36 @@ def get_rooms(db: Session = Depends(get_db), _=Depends(require_admin)):
 @router.post("/chat/close")
 async def close_all_rooms(db: Session = Depends(get_db), _=Depends(require_admin)):
     result = await admin_service.close_all_rooms(db, manager)
-    invalidate_rooms_cache()
+    await broadcast_room_list(db)
     return result
 
 
 @router.post("/chat/open")
-def open_all_rooms(db: Session = Depends(get_db), _=Depends(require_admin)):
+async def open_all_rooms(db: Session = Depends(get_db), _=Depends(require_admin)):
     result = admin_service.open_all_rooms(db)
-    invalidate_rooms_cache()
+    await broadcast_room_list(db)
     return result
 
 
 @router.post("/rooms/{room_id}/close")
 async def close_room(room_id: int, db: Session = Depends(get_db), _=Depends(require_admin)):
     result = await admin_service.close_room(db, room_id, manager)
-    invalidate_rooms_cache()
+    await broadcast_room_list(db)
     return result
 
 
 @router.post("/rooms/{room_id}/open")
-def open_room(room_id: int, db: Session = Depends(get_db), _=Depends(require_admin)):
+async def open_room(room_id: int, db: Session = Depends(get_db), _=Depends(require_admin)):
     result = admin_service.open_room(db, room_id)
-    invalidate_rooms_cache()
+    await broadcast_room_list(db)
     return result
 
 
 @router.delete("/db")
-def reset_database(db: Session = Depends(get_db), _=Depends(require_admin)):
-    return admin_service.reset_database(db)
+async def reset_database(db: Session = Depends(get_db), _=Depends(require_admin)):
+    result = admin_service.reset_database(db)
+    await broadcast_room_list(db)
+    return result
 
 
 @router.post("/promote")

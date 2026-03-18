@@ -4,7 +4,7 @@ import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
 import { useAuth } from '../context/AuthContext';
 import { WS_BASE } from '../config/constants';
-import { listRooms, getRoomUsers } from '../services/roomApi';
+import { listRooms } from '../services/roomApi';
 import { getJoinedRooms, addJoinedRoom, removeJoinedRoom } from '../utils/storage';
 
 export function useMultiRoomChat() {
@@ -17,8 +17,6 @@ export function useMultiRoomChat() {
   const socketsRef = useRef(new Map());
   const lobbyRef = useRef(null);              // lobby WebSocket for PM delivery
   const seenMsgIdsRef = useRef(new Set());
-  const roomsEtagRef = useRef(null);
-  const usersEtagRef = useRef(null);
   const activeRoomIdRef = useRef(state.activeRoomId);
   const stateRef = useRef(state);
   const pmStateRef = useRef(pmState);
@@ -27,7 +25,6 @@ export function useMultiRoomChat() {
   useEffect(() => { activeRoomIdRef.current = state.activeRoomId; }, [state.activeRoomId]);
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { pmStateRef.current = pmState; }, [pmState]);
-  useEffect(() => { usersEtagRef.current = null; }, [state.activeRoomId]);
 
   // ── Message handler ────────────────────────────────────────────────
   const handleMessage = useCallback((msg, roomId) => {
@@ -105,6 +102,26 @@ export function useMultiRoomChat() {
         dispatch({ type: 'SET_ADMIN', roomId: msg.room_id, username: msg.username });
         break;
 
+      case 'room_list_updated':
+        startTransition(() => {
+          dispatch({ type: 'SET_ROOMS', rooms: msg.rooms });
+        });
+        // Auto-exit rooms that no longer exist on the server
+        {
+          const serverIds = new Set(msg.rooms.map(r => r.id));
+          const joined = stateRef.current.joinedRooms;
+          joined.forEach(id => {
+            if (!serverIds.has(id)) {
+              exitRoomRef.current(id);
+              if (activeRoomIdRef.current === id) {
+                const next = [...joined].find(jid => jid !== id && serverIds.has(jid));
+                dispatch({ type: 'SET_ACTIVE_ROOM', roomId: next ?? null });
+              }
+            }
+          });
+        }
+        break;
+
       case 'chat_closed': {
         const closedId = msg.room_id ?? roomId;
         exitRoomRef.current(closedId);
@@ -149,7 +166,11 @@ export function useMultiRoomChat() {
     };
 
     ws.onclose = (event) => {
-      socketsRef.current.delete(roomId);
+      // Only clean up if this is still the active socket for this room
+      // (StrictMode double-mount can fire stale onclose for the first socket)
+      if (socketsRef.current.get(roomId) === ws) {
+        socketsRef.current.delete(roomId);
+      }
       if (event.code === 4003 && !isRetry) {
         setTimeout(() => {
           if (getJoinedRooms(username).includes(roomId)) {
@@ -192,72 +213,49 @@ export function useMultiRoomChat() {
     }
   }, []);
 
-  // ── Polling loop ───────────────────────────────────────────────────
+  // ── Initial room list fetch (once on mount) ─────────────────────────
   useEffect(() => {
-    const poll = async () => {
-      try {
-        const roomRes = await listRooms(roomsEtagRef.current);
-
-        if (roomRes.status === 200) {
-          roomsEtagRef.current = roomRes.headers['etag'] || null;
-          // startTransition so polling can't interrupt route transitions
-          startTransition(() => {
-            dispatch({ type: 'SET_ROOMS', rooms: roomRes.data });
-          });
-
-          const serverIds = new Set(roomRes.data.map(r => r.id));
-          const joined = stateRef.current.joinedRooms;
-          const survivingJoined = [...joined].filter(id => serverIds.has(id));
-          joined.forEach(roomId => {
-            if (!serverIds.has(roomId)) {
-              exitRoomRef.current(roomId);
-              if (activeRoomIdRef.current === roomId) {
-                const nextJoined = survivingJoined.find(id => id !== roomId);
-                dispatch({ type: 'SET_ACTIVE_ROOM', roomId: nextJoined ?? null });
-              }
-              window.alert('A room you were in was closed by the admin.');
-            }
-          });
-        }
-
-        const activeId = activeRoomIdRef.current;
-        if (activeId) {
-          const userRes = await getRoomUsers(activeId, usersEtagRef.current);
-          if (userRes.status === 200) {
-            usersEtagRef.current = userRes.headers['etag'] || null;
-            startTransition(() => {
-              dispatch({ type: 'SET_USERS', roomId: activeId, users: userRes.data.users });
-            });
-          }
-        }
-      } catch {
-        // Silently ignore network errors during polling
+    listRooms().then(res => {
+      if (res.status === 200) {
+        startTransition(() => {
+          dispatch({ type: 'SET_ROOMS', rooms: res.data });
+        });
       }
-    };
-
-    const interval = setInterval(poll, 1000);
-    return () => clearInterval(interval);
+    }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]);
 
   // ── Lobby connection — always-on for PM delivery ────────────────────
   useEffect(() => {
+    let intentionallyClosed = false;
+
     function connectLobby() {
       const ws = new WebSocket(`${WS_BASE}/ws/lobby?token=${token}`);
+      let wasOpen = false;
+
+      ws.onopen = () => { wasOpen = true; };
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         handleMessageRef.current(msg, null);
       };
       ws.onclose = () => {
-        lobbyRef.current = null;
-        setTimeout(() => {
-          if (!lobbyRef.current) connectLobby();
-        }, 3000);
+        // Only clean up if this is still the active lobby socket
+        if (lobbyRef.current === ws) {
+          lobbyRef.current = null;
+        }
+        // Only reconnect if the connection was previously established
+        // (not a 403/auth rejection) and we didn't close intentionally.
+        if (!intentionallyClosed && wasOpen) {
+          setTimeout(() => {
+            if (!lobbyRef.current) connectLobby();
+          }, 3000);
+        }
       };
       lobbyRef.current = ws;
     }
     connectLobby();
     return () => {
+      intentionallyClosed = true;
       const ws = lobbyRef.current;
       if (ws) { lobbyRef.current = null; ws.close(); }
     };
