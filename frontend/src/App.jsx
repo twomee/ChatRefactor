@@ -26,8 +26,8 @@ function AdminGuard({ children }) {
 export default function App() {
   return (
     <AuthProvider>
-      <ChatProvider>
-        <BrowserRouter>
+      <BrowserRouter>
+        <ChatProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             {/* Single AuthenticatedShell parent keeps PMProvider alive across /chat and /admin */}
@@ -37,8 +37,8 @@ export default function App() {
             </Route>
             <Route path="*" element={<Navigate to="/login" />} />
           </Routes>
-        </BrowserRouter>
-      </ChatProvider>
+        </ChatProvider>
+      </BrowserRouter>
     </AuthProvider>
   );
 }
