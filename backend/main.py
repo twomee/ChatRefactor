@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-from routers import auth, rooms, files, admin, websocket
+from routers import auth, rooms, files, admin, websocket, pm
 from auth import hash_password
 from config import ADMIN_USERNAME, ADMIN_PASSWORD
 import models
@@ -23,6 +23,7 @@ app.include_router(rooms.router)
 app.include_router(files.router)
 app.include_router(admin.router)
 app.include_router(websocket.router)
+app.include_router(pm.router)
 
 
 @app.on_event("startup")

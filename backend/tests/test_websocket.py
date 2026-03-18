@@ -2,6 +2,7 @@
 import sys
 import os
 import threading
+import time
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -449,3 +450,248 @@ def test_kick_sends_kicked_event_to_victim():
 
     t.join(timeout=5)
     assert kick_received.is_set()
+
+
+def test_kick_does_not_broadcast_user_left_in_other_room():
+    """When user is kicked from room A while also in room B,
+    room B must NOT receive a user_left event for the kicked user.
+
+    Note: In the TestClient environment, the server-side ws.close() does not
+    automatically trigger WebSocketDisconnect in the handler loop.  We must
+    explicitly call client-side close() on each victim socket after the kick
+    so the disconnect handlers fire and the kicked_users counter (Dict) vs set
+    (Set) bug manifests.  We also drain ALL witness messages in a loop so that
+    user_left arriving after new_admin/system is not missed.
+    """
+    room_a_id = _room("kick_test_a")
+    room_b_id = _room("kick_test_b")
+    admin_token = _login("kick_admin_1")
+    victim_token = _login("kick_victim_1")
+    witness_token = _login("kick_witness_1")  # witness stays in room_b
+
+    with _client_ctx.websocket_connect(f"/ws/{room_a_id}?token={admin_token}") as ws_admin_a, \
+         _client_ctx.websocket_connect(f"/ws/{room_a_id}?token={victim_token}") as ws_victim_a, \
+         _client_ctx.websocket_connect(f"/ws/{room_b_id}?token={victim_token}") as ws_victim_b, \
+         _client_ctx.websocket_connect(f"/ws/{room_b_id}?token={witness_token}") as ws_witness_b:
+
+        # Drain setup for ws_admin_a
+        ws_admin_a.receive_json()               # history
+        _drain(ws_admin_a, "user_join")         # self join
+        _drain(ws_admin_a, "system")            # joined system
+        _drain(ws_admin_a, "system")            # became admin
+
+        # Drain setup for ws_victim_a (joins room_a after admin)
+        ws_victim_a.receive_json()              # history
+        _drain(ws_victim_a, "user_join")        # user_join broadcast
+
+        # ws_admin_a sees victim join
+        _drain(ws_admin_a, "user_join")
+        _drain(ws_admin_a, "system")            # "has joined"
+
+        # Drain setup for ws_victim_b (victim's socket in room_b, first user → auto admin)
+        ws_victim_b.receive_json()              # history
+        _drain(ws_victim_b, "user_join")        # self join
+        _drain(ws_victim_b, "system")           # joined system
+        _drain(ws_victim_b, "system")           # became admin in room_b
+
+        # Drain setup for ws_witness_b (witness joins room_b)
+        ws_witness_b.receive_json()             # history
+        _drain(ws_witness_b, "user_join")       # sees both users in room_b
+        _drain(ws_witness_b, "system")          # "witness has joined" system msg
+
+        # victim_b sees witness join
+        _drain(ws_victim_b, "user_join")
+        _drain(ws_victim_b, "system")           # "witness has joined"
+
+        # Admin kicks victim from room_a (server closes ALL victim sockets)
+        ws_admin_a.send_json({"type": "kick", "target": "kick_victim_1"})
+
+        # Victim receives kicked event on room_a socket
+        kicked_msg = _drain(ws_victim_a, "kicked")
+        assert kicked_msg["room_id"] == room_a_id
+
+        # Admin receives system message about kick
+        _drain(ws_admin_a, "system")
+
+        # In the TestClient the server-side ws.close() does NOT trigger
+        # WebSocketDisconnect in the handler loop.  We must close each victim
+        # socket from the client side so the disconnect handlers fire and the
+        # kicked_users counter (Dict) / set (Set) is exercised.
+        try:
+            ws_victim_a.close()
+        except Exception:
+            pass
+        try:
+            ws_victim_b.close()
+        except Exception:
+            pass
+
+        # Give the event loop a moment to process both disconnects
+        time.sleep(0.2)
+
+        # Collect ALL witness messages until the socket closes or 1 s passes.
+        # With the buggy Set implementation the witness receives new_admin,
+        # system, user_left, system — user_left arrives after new_admin so a
+        # single-receive check would miss it.
+        received_in_b = []
+        done = threading.Event()
+
+        def drain_witness():
+            while True:
+                try:
+                    msg = ws_witness_b.receive_json()
+                    received_in_b.append(msg)
+                except Exception:
+                    break
+            done.set()
+
+        t = threading.Thread(target=drain_witness, daemon=True)
+        t.start()
+        done.wait(timeout=1.0)
+
+        user_left_events = [m for m in received_in_b if m.get("type") == "user_left"]
+        assert user_left_events == [], f"room_b witness should not receive user_left, got: {user_left_events}"
+
+
+def test_private_message_has_msg_id():
+    """Both delivery and echo of a private message must include msg_id."""
+    room_id = _room("pm_msgid_room")
+    t1 = _login("pm_sender_1")
+    t2 = _login("pm_receiver_1")
+
+    with _client_ctx.websocket_connect(f"/ws/{room_id}?token={t1}") as ws1, \
+         _client_ctx.websocket_connect(f"/ws/{room_id}?token={t2}") as ws2:
+
+        # Drain setup: ws1 history + self join + joined system + became admin system
+        ws1.receive_json()
+        _drain(ws1, "user_join")
+        _drain(ws1, "system")           # "has joined the room"
+        _drain(ws1, "system")           # "has become admin automatically"
+
+        # Drain setup: ws2 history + user_join broadcast; ws1 gets ws2's join + system
+        ws2.receive_json()
+        _drain(ws2, "user_join")
+        _drain(ws2, "system")           # "has joined the room" for ws2
+        _drain(ws1, "user_join")
+        _drain(ws1, "system")           # "pm_receiver_1 has joined the room"
+
+        ws1.send_json({"type": "private_message", "to": "pm_receiver_1", "text": "hello"})
+
+        # Echo on sender
+        echo = ws1.receive_json()
+        assert echo["type"] == "private_message"
+        assert "msg_id" in echo, "sender echo must have msg_id"
+
+        # Delivery to receiver
+        delivery = ws2.receive_json()
+        assert delivery["type"] == "private_message"
+        assert "msg_id" in delivery, "delivery must have msg_id"
+
+        # Both have the same msg_id
+        assert echo["msg_id"] == delivery["msg_id"]
+
+
+def test_private_message_to_offline_user_returns_error():
+    """Sending a PM to a user not connected to any room returns an error event."""
+    room_id = _room("pm_offline_room")
+    t1 = _login("pm_sender_2")
+    _login("pm_offline_user")  # registered but never connected
+
+    with _client_ctx.websocket_connect(f"/ws/{room_id}?token={t1}") as ws1:
+        ws1.receive_json()              # history
+        _drain(ws1, "user_join")        # self join
+        _drain(ws1, "system")           # "has joined the room"
+        _drain(ws1, "system")           # "has become admin automatically"
+
+        ws1.send_json({"type": "private_message", "to": "pm_offline_user", "text": "hello?"})
+        resp = ws1.receive_json()
+        assert resp["type"] == "error"
+        assert "not online" in resp["detail"].lower()
+
+
+def test_get_room_users_returns_online_users():
+    """GET /rooms/{id}/users returns usernames of connected users."""
+    room_id = _room("users_endpoint_room")
+    t1 = _login("users_ep_user1")
+    t2 = _login("users_ep_user2")
+
+    # No one connected yet
+    resp = _client_ctx.get(f"/rooms/{room_id}/users",
+                           headers={"Authorization": f"Bearer {t1}"})
+    assert resp.status_code == 200
+    assert resp.json()["users"] == []
+
+    with _client_ctx.websocket_connect(f"/ws/{room_id}?token={t1}") as ws1, \
+         _client_ctx.websocket_connect(f"/ws/{room_id}?token={t2}") as ws2:
+        # Drain all setup messages to confirm both connections are registered
+        ws1.receive_json()        # history
+        _drain(ws1, "user_join")  # self join
+        _drain(ws1, "system")     # "ws1 has joined"
+        _drain(ws1, "system")     # "ws1 has become admin automatically"
+        _drain(ws1, "user_join")  # ws2 joined (users_now=[ws1, ws2])
+        _drain(ws1, "system")     # "ws2 has joined"
+        ws2.receive_json()        # history
+        _drain(ws2, "user_join")  # join broadcast (both users visible)
+        resp2 = _client_ctx.get(f"/rooms/{room_id}/users",
+                                headers={"Authorization": f"Bearer {t1}"})
+        assert resp2.status_code == 200
+        assert set(resp2.json()["users"]) == {"users_ep_user1", "users_ep_user2"}
+
+
+def test_get_room_users_requires_auth():
+    """GET /rooms/{id}/users must return 401 without a token."""
+    room_id = _room("users_auth_room")
+    resp = _client_ctx.get(f"/rooms/{room_id}/users")
+    assert resp.status_code == 401
+
+
+def test_get_room_users_404_on_missing_room():
+    """GET /rooms/{id}/users returns 404 for a room ID that doesn't exist."""
+    t1 = _login("users_404_user")
+    resp = _client_ctx.get("/rooms/999999/users",
+                           headers={"Authorization": f"Bearer {t1}"})
+    assert resp.status_code == 404
+
+
+def test_get_room_users_304_on_matching_etag():
+    """GET /rooms/{id}/users with a matching If-None-Match returns 304."""
+    room_id = _room("users_304_room")
+    t1 = _login("users_304_test_user")
+    resp = _client_ctx.get(f"/rooms/{room_id}/users",
+                           headers={"Authorization": f"Bearer {t1}"})
+    etag = resp.headers["etag"]
+    resp2 = _client_ctx.get(f"/rooms/{room_id}/users",
+                             headers={"Authorization": f"Bearer {t1}",
+                                      "If-None-Match": etag})
+    assert resp2.status_code == 304
+
+
+def test_get_room_users_returns_etag():
+    """GET /rooms/{id}/users must return an ETag header."""
+    room_id = _room("users_etag_room")
+    t1 = _login("users_etag_user")
+    resp = _client_ctx.get(f"/rooms/{room_id}/users",
+                           headers={"Authorization": f"Bearer {t1}"})
+    assert resp.status_code == 200
+    assert "etag" in resp.headers
+
+
+def test_get_rooms_returns_etag():
+    """GET /rooms/ must return an ETag header."""
+    t1 = _login("rooms_etag_user")
+    resp = _client_ctx.get("/rooms/", headers={"Authorization": f"Bearer {t1}"})
+    assert resp.status_code == 200
+    assert "etag" in resp.headers
+
+
+def test_get_rooms_304_on_matching_etag():
+    """GET /rooms/ with a matching If-None-Match returns 304."""
+    from routers.rooms import invalidate_rooms_cache
+    invalidate_rooms_cache()  # ensure cache is fresh for this test
+    t1 = _login("rooms_304_user")
+    resp = _client_ctx.get("/rooms/", headers={"Authorization": f"Bearer {t1}"})
+    etag = resp.headers["etag"]
+    resp2 = _client_ctx.get("/rooms/",
+                             headers={"Authorization": f"Bearer {t1}",
+                                      "If-None-Match": etag})
+    assert resp2.status_code == 304

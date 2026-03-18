@@ -7,6 +7,7 @@ from jose import jwt, JWTError
 from config import SECRET_KEY, ALGORITHM
 from services import room_service
 import models
+import uuid
 
 router = APIRouter(tags=["websocket"])
 
@@ -154,20 +155,27 @@ async def websocket_endpoint(
                 if not text.strip():
                     await websocket.send_json({"type": "error", "detail": "Cannot send empty private message"})
                     continue
+                # Error if target is not online
+                if not manager.is_user_online(target):
+                    await websocket.send_json({"type": "error", "detail": "User is not online"})
+                    continue
+                msg_id = str(uuid.uuid4())
                 # Send to target
                 await manager.send_personal(target, {
                     "type": "private_message",
                     "from": user.username,
                     "to": target,
                     "text": text,
+                    "msg_id": msg_id,
                 })
-                # Echo to sender so they see sent message
+                # Echo to sender so they see their sent message
                 await websocket.send_json({
                     "type": "private_message",
                     "from": user.username,
                     "to": target,
                     "text": text,
                     "self": True,
+                    "msg_id": msg_id,
                 })
 
             # --- Admin: kick ---
@@ -182,9 +190,14 @@ async def websocket_endpoint(
                 if room_service.is_admin_in_room(target, room_id, db):
                     await websocket.send_json({"type": "error", "detail": "Cannot kick another admin"})
                     continue
-                # Mark as kicked before closing so disconnect handler skips "has left" message
-                manager.kicked_users.add(target)
+                # Snapshot sockets before any awaits. Each socket's WebSocketDisconnect
+                # handler will decrement kicked_users[target]; when the count reaches 0 the
+                # entry is removed. The <= 0 guard in the disconnect handler covers the edge
+                # case where a socket disconnects naturally between this snapshot and its
+                # close() call — the counter may transiently go to -1, which is safe.
                 target_sockets = list(manager.user_to_socket.get(target, set()))
+                if target_sockets:
+                    manager.kicked_users[target] = len(target_sockets)
                 for target_ws in target_sockets:
                     try:
                         await target_ws.send_json({"type": "kicked", "room_id": room_id})
@@ -245,6 +258,25 @@ async def websocket_endpoint(
     except WebSocketDisconnect:
         manager.disconnect(websocket, room_id)
 
+        # If this user is being kicked, skip ALL post-disconnect processing.
+        # Decrement counter; remove entry when last socket is accounted for.
+        if user.username in manager.kicked_users:
+            manager.kicked_users[user.username] -= 1
+            # Use <= 0 (not == 0) to handle the race where a natural disconnect
+            # fires after the kick handler snapshot but before close() — counter
+            # can transiently go negative, which is safe to treat as zero.
+            if manager.kicked_users[user.username] <= 0:
+                del manager.kicked_users[user.username]
+            # Clear any mute record so that if the user rejoins they are not still
+            # shown as muted. Normal disconnect does this too; we must mirror it
+            # here because we skip the rest of the handler with `return`.
+            db.query(models.MutedUser).filter(
+                models.MutedUser.user_id == user.id,
+                models.MutedUser.room_id == room_id,
+            ).delete()
+            db.commit()
+            return  # skip user_left broadcast, admin succession
+
         # Clear mute if user was muted in this room (user left → mute reset)
         mute_record = db.query(models.MutedUser).filter(
             models.MutedUser.user_id == user.id,
@@ -269,13 +301,8 @@ async def websocket_endpoint(
             "muted": _get_room_muted(room_id, db, remaining),
             "room_id": room_id,
         })
-
-        # Only broadcast "has left" if user wasn't kicked (avoid duplicate system message)
-        if user.username not in manager.kicked_users:
-            await manager.broadcast(room_id, {
-                "type": "system",
-                "text": f"{user.username} has left the room",
-                "room_id": room_id,
-            })
-        else:
-            manager.kicked_users.discard(user.username)
+        await manager.broadcast(room_id, {
+            "type": "system",
+            "text": f"{user.username} has left the room",
+            "room_id": room_id,
+        })

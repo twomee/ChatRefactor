@@ -5,7 +5,8 @@ import http from '../api/http';
 
 export default function AdminPage() {
   const [rooms, setRooms] = useState([]);
-  const [connectedUsers, setConnectedUsers] = useState({});
+  const [onlineUsers, setOnlineUsers] = useState([]);   // flat list — all users with any WS
+  const [roomUsers, setRoomUsers] = useState({});        // per-room for the table
   const [roomFiles, setRoomFiles] = useState({});
   const [status, setStatus] = useState('');
   const [promoteUsername, setPromoteUsername] = useState('');
@@ -18,13 +19,19 @@ export default function AdminPage() {
   const loadData = useCallback(async () => {
     const [roomsRes, usersRes] = await Promise.all([
       http.get('/admin/rooms').catch(() => ({ data: [] })),
-      http.get('/admin/users').catch(() => ({ data: {} })),
+      http.get('/admin/users').catch(() => ({ data: { all_online: [], per_room: {} } })),
     ]);
     setRooms(roomsRes.data);
-    setConnectedUsers(usersRes.data);
+    setOnlineUsers(usersRes.data.all_online || []);
+    setRoomUsers(usersRes.data.per_room || {});
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  // Initial load + auto-refresh every 3 s so connected-user counts stay current
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(loadData, 3000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
   async function run(fn, msg) {
     try {
@@ -51,9 +58,6 @@ export default function AdminPage() {
   }
 
   const token = sessionStorage.getItem('token');
-
-  // Count all connected users across all rooms (deduplicated)
-  const allConnected = [...new Set(Object.values(connectedUsers).flat())];
 
   return (
     <div style={{ padding: 24, maxWidth: 960, margin: '0 auto' }}>
@@ -145,14 +149,14 @@ export default function AdminPage() {
         </div>
       </section>
 
-      {/* Connected Users */}
+      {/* Connected Users — all users with at least one active WebSocket */}
       <section style={{ marginBottom: 24 }}>
-        <h3>Connected Users ({allConnected.length})</h3>
-        {allConnected.length === 0 ? (
+        <h3>Connected Users ({onlineUsers.length})</h3>
+        {onlineUsers.length === 0 ? (
           <p style={{ color: '#999' }}>No users connected</p>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {allConnected.map(u => (
+            {onlineUsers.map(u => (
               <span key={u} style={{ padding: '2px 8px', background: '#e3f2fd', borderRadius: 12, fontSize: 13 }}>
                 {u}
               </span>
@@ -182,7 +186,7 @@ export default function AdminPage() {
                   <td style={{ padding: 8 }}>{room.name}</td>
                   <td style={{ padding: 8 }}>{room.is_active ? '🟢 Open' : '🔴 Closed'}</td>
                   <td style={{ padding: 8, color: '#555' }}>
-                    {(connectedUsers[room.id] || []).join(', ') || <span style={{ color: '#bbb' }}>—</span>}
+                    {(roomUsers[room.id] || []).join(', ') || <span style={{ color: '#bbb' }}>—</span>}
                   </td>
                   <td style={{ padding: 8 }}>
                     {room.is_active ? (

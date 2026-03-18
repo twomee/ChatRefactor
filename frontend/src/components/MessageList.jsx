@@ -1,5 +1,5 @@
 // src/components/MessageList.jsx
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -10,17 +10,38 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function MessageList({ messages }) {
+export default function MessageList({ messages, onScrollToBottom }) {
   const endRef = useRef(null);
+  const containerRef = useRef(null);
 
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Fire onScrollToBottom when user scrolls within 50px of the bottom
+  const handleScroll = useCallback(() => {
+    if (!onScrollToBottom) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom <= 50) {
+      onScrollToBottom();
+    }
+  }, [onScrollToBottom]);
+
+  // Also fire on mount / messages change if already at bottom
+  useEffect(() => {
+    handleScroll();
+  }, [messages, handleScroll]);
+
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+    <div
+      ref={containerRef}
+      onScroll={handleScroll}
+      style={{ flex: 1, overflowY: 'auto', padding: 12 }}
+    >
       {(messages || []).map((msg, i) => {
-        // System message (join/leave/admin/mute/kick events)
         if (msg.isSystem) {
           return (
             <div key={i} style={{ marginBottom: 4, color: '#888', fontStyle: 'italic', fontSize: '0.85em', textAlign: 'center' }}>
@@ -28,8 +49,6 @@ export default function MessageList({ messages }) {
             </div>
           );
         }
-
-        // File shared message
         if (msg.isFile) {
           const token = sessionStorage.getItem('token');
           return (
@@ -47,8 +66,6 @@ export default function MessageList({ messages }) {
             </div>
           );
         }
-
-        // Private message
         if (msg.isPrivate) {
           const label = msg.isSelf ? `[private → ${msg.to}]` : `[private from ${msg.from}]`;
           return (
@@ -58,8 +75,6 @@ export default function MessageList({ messages }) {
             </div>
           );
         }
-
-        // Normal chat message
         return (
           <div key={i} style={{ marginBottom: 6 }}>
             <strong>{msg.from}: </strong>{msg.text}

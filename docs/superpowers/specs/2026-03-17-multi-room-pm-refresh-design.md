@@ -25,18 +25,23 @@ Three interconnected features that make the chat experience feel live and allow 
 - `joinedRooms` is mirrored to `localStorage` so it survives page refresh.
 - Existing state slices (`messages`, `onlineUsers`, `admins`, `mutedUsers`) remain unchanged but now hold data for all joined rooms, not just the active one.
 
-**New ChatContext reducer action types:**
+**`state.rooms` is always the complete server room list** — it is populated by `SET_ROOMS` from the periodic `/rooms/` poll and is never scoped to only joined rooms. `EXIT_ROOM` does not touch `state.rooms`. This guarantees room name lookups (e.g., for kick alerts) always work regardless of join state.
+
+**Existing ChatContext reducer actions are all preserved** (`SET_ROOMS`, `SET_ACTIVE_ROOM`, `SET_HISTORY`, `ADD_MESSAGE`, `SET_USERS`, `SET_ADMINS`, `SET_ADMIN`, `SET_MUTED_USERS`, `ADD_MUTED`, `REMOVE_MUTED`). The following new actions are added:
 
 | Action | Payload | Effect |
 |---|---|---|
 | `JOIN_ROOM` | `{ roomId }` | Adds roomId to `joinedRooms` |
-| `EXIT_ROOM` | `{ roomId }` | Removes roomId from `joinedRooms`; clears `messages[roomId]`, `onlineUsers[roomId]`, `admins[roomId]`, `mutedUsers[roomId]`, `unreadCounts[roomId]` |
+| `EXIT_ROOM` | `{ roomId }` | If roomId is not in `joinedRooms`, no-op (idempotent). Otherwise removes roomId from `joinedRooms`; clears `messages[roomId]`, `onlineUsers[roomId]`, `admins[roomId]`, `mutedUsers[roomId]`, `unreadCounts[roomId]` |
+
 | `INCREMENT_UNREAD` | `{ roomId }` | Increments `unreadCounts[roomId]` by 1 |
 | `CLEAR_UNREAD` | `{ roomId }` | Sets `unreadCounts[roomId]` to 0 |
 
-**Unread increment logic:** `INCREMENT_UNREAD` is dispatched from `useMultiRoomChat` when an `ADD_MESSAGE` event arrives for a room that is not the current `activeRoomId`. The `activeRoomId` is passed as context by the hook (which reads it from ChatContext state), not computed inside the reducer.
+**`activeRoomId` is unchanged:** The existing `activeRoomId` state field and `SET_ACTIVE_ROOM` action are retained as-is. `useMultiRoomChat` reads `activeRoomId` from ChatContext state to decide whether to dispatch `INCREMENT_UNREAD` when a message arrives.
 
-**State cleanup on exit:** When `EXIT_ROOM` is dispatched, the reducer removes all per-room data for that roomId from every state slice. This prevents stale data accumulating over join/exit cycles.
+**Unread increment logic:** `INCREMENT_UNREAD` is dispatched from `useMultiRoomChat` when an `ADD_MESSAGE` event arrives for a room that is not the current `activeRoomId`. The check is done in the hook, not in the reducer.
+
+**State cleanup on exit:** When `EXIT_ROOM` is dispatched, the reducer removes all per-room data for that roomId from every state slice. This prevents stale data accumulating over join/exit cycles. `EXIT_ROOM` is idempotent — dispatching it for a roomId that is already absent from `joinedRooms` is a no-op.
 
 **PMContext** (new):
 - Holds `threads: { [username]: Message[] }` — in-session PM conversations keyed by the other person's username.
@@ -57,14 +62,22 @@ Responsibilities:
 - Exposes `sendMessage(roomId, payload)` — sends to the correct WebSocket.
 - Runs a `setInterval` every 1 second that fetches `/rooms/` and `/rooms/{activeRoomId}/users` (online users for the currently visible room only).
 - Dispatches updates to ChatContext and PMContext via their respective dispatch functions.
-- On mount, reads `joinedRooms` from localStorage and reconnects WebSockets for any previously joined rooms.
+- On mount, reads `joinedRooms` from localStorage and reconnects WebSockets for any previously joined rooms. If a reconnect is rejected with code `4003` (user already in room — server has not yet processed the prior disconnect), the hook retries once after a 1-second delay. If it fails again, the room is silently removed from `joinedRooms` and localStorage.
 
 **WS message types handled by the hook** (for all connected rooms):
 `history`, `user_join`, `user_left`, `message`, `system`, `private_message`, `file_shared`, `kicked`, `muted`, `unmuted`, `new_admin`, `chat_closed`, `error`
 
 **PM deduplication:** Under multi-room a user has one WebSocket per joined room. The backend's `send_personal()` delivers a PM to all sockets for that user, meaning an incoming PM would arrive once per joined room. To prevent duplicate dispatches, the backend adds a `msg_id` (UUID) field to every `private_message` payload. `useMultiRoomChat` keeps a `Set<msg_id>` of recently seen PM IDs (cleared on page unload) and ignores duplicates.
 
-**Kicked event handling:** The existing backend kick implementation closes all sockets for the kicked user across all rooms (not just the kicked room). This is intentional server-side behavior — being kicked from a room results in full disconnection. `useMultiRoomChat` handles this by calling `exitAllRooms()` when any `kicked` event is received, then appending a system notice to the kicked room's message list before cleanup.
+**Kicked event handling:** The existing backend kick closes all sockets for the kicked user across all rooms. On the client, when a `kicked` event arrives: call `exitAllRooms()` (clears all state, closes all WS), switch to the placeholder view, and show a `window.alert` with the message "You were kicked from [room name]". This matches the existing single-room kick behavior and avoids complex state management.
+
+**`LEAVE_ROOM` action is removed from the design** — it was introduced to preserve a kicked-room notice in state, but since the notice is shown via alert this is unnecessary.
+
+**Backend fix required for kick — disconnect handler:** When the backend closes all user sockets as part of a kick, each socket's `WebSocketDisconnect` handler fires for every room the user was in. The existing `kicked_users` set suppresses the "has left" system message but does NOT currently suppress `user_left` broadcasts or admin succession in non-kicked rooms. Two changes are required:
+
+1. Change `kicked_users` from `Set[str]` to `Dict[str, int]` on `ConnectionManager`. When the kick is issued, set `manager.kicked_users[target] = len(target_sockets)` (the count of sockets being closed). Each `WebSocketDisconnect` handler checks `user.username in manager.kicked_users` at the very top of its block. If present, it decrements the counter, removes the entry if the counter reaches zero, and then **returns immediately** — skipping the entire post-disconnect block (mute clearing, admin succession, `user_left` broadcast, and "has left" system message). The existing partial guard at line 274 (which only skips the "has left" message) is replaced by this early return at the top of the `WebSocketDisconnect` block.
+
+2. The `is_user_in_room` check at line 59 must also be updated to allow the connection if the previous socket for that user+room is in the process of being closed (i.e., `user.username in manager.kicked_users`). In practice, since the kick closes and awaits each socket before the new connection attempt, this case is unlikely — but the retry logic in `joinRoom` (see hook section) handles it if it occurs.
 
 **Logout path:** `ChatPage` calls `exitAllRooms()` before calling `logout()`. This closes all open WebSockets cleanly so the backend does not hold orphaned connections.
 
@@ -118,7 +131,7 @@ The user clicks a username in the right-side user list. This opens a PM thread i
 
 ### New endpoint: GET /rooms/{room_id}/users
 
-Returns the list of online usernames for a given room. Reads directly from `ConnectionManager.rooms` (in-memory, `Dict[int, List[WebSocket]]`) — no database query. The ETag is computed as a hash of the sorted usernames list. No server-side cache is needed since the data is already in memory.
+Requires JWT authentication (same `Depends(get_current_user)` as all other existing endpoints). Returns the list of online usernames for a given room. Uses the existing `manager.get_users_in_room(room_id)` method on the `ConnectionManager` singleton, which already resolves usernames from the internal `room_join_order` structure — no database query. The ETag is computed as a hash of the sorted usernames list. No server-side cache is needed since the data is already in memory.
 
 ```json
 { "users": ["alice", "bob"] }
@@ -156,10 +169,12 @@ The backend's private message handler is updated to send an error event to the s
 
 **Joining a room:**
 1. User clicks Join in the sidebar.
-2. `useMultiRoomChat.joinRoom(roomId)` connects a WebSocket to `/ws/{roomId}`.
-3. Server sends `history` → ChatContext `SET_HISTORY`.
-4. Server broadcasts `user_join` → ChatContext `SET_USERS`, `SET_ADMINS`, `SET_MUTED_USERS`.
-5. Dispatch `JOIN_ROOM` → `joinedRooms` updated in state and localStorage. Room moves to YOUR ROOMS.
+2. Dispatch `JOIN_ROOM` immediately → roomId added to `joinedRooms` in state and localStorage. Room moves to YOUR ROOMS in the sidebar.
+3. `useMultiRoomChat.joinRoom(roomId)` opens a WebSocket to `/ws/{roomId}`.
+4. Server sends `history` → ChatContext `SET_HISTORY`.
+5. Server broadcasts `user_join` → ChatContext `SET_USERS`, `SET_ADMINS`, `SET_MUTED_USERS`.
+
+(`JOIN_ROOM` is dispatched before the WebSocket is opened so that any WS events arriving immediately — including `history` and `user_join` — land in tracked state and can be cleaned up by `EXIT_ROOM` if the connection fails.)
 
 **Exiting a room:**
 1. User clicks Exit on a room in YOUR ROOMS.
@@ -182,10 +197,12 @@ The backend's private message handler is updated to send an error event to the s
 5. Unread badge appears on the sender's entry.
 
 **Receiving a kicked event:**
-1. `kicked` WS event arrives (may arrive on all room sockets since backend closes all).
-2. `useMultiRoomChat` calls `exitAllRooms()` — disconnects all sockets, dispatches `EXIT_ROOM` for each.
-3. Appends a system notice to the kicked room's message list.
-4. Switches active view to placeholder.
+1. `kicked` WS event arrives on one or more sockets (backend closes all user sockets for the kicked user).
+2. Resolve the room name: look up `msg.room_id` in `state.rooms` (always the complete server room list, never cleared by `EXIT_ROOM`) and store the name in a local variable before any state changes. If the room is not found (edge case: kicked from a room not in the current list), fall back to `"a room"`.
+3. Call `exitAllRooms()` — dispatches `EXIT_ROOM` for all joined rooms, clears all per-room state, closes all WS connections.
+4. Switch active view to placeholder.
+5. Show `window.alert("You were kicked from [room name]")` using the name resolved in step 2.
+6. Any duplicate `kicked` events arriving before all sockets close are no-ops (`exitAllRooms` is idempotent via the `EXIT_ROOM` no-op on already-removed rooms).
 
 **Room closed while joined (detected via poll):**
 1. Periodic poll fetches `/rooms/` and receives a list that no longer includes a joined roomId.
@@ -219,7 +236,7 @@ The backend's private message handler is updated to send an error event to the s
 |---|---|
 | `frontend/src/hooks/useMultiRoomChat.js` | New — all WS + polling logic |
 | `frontend/src/api/websocket.js` | Deleted — replaced by `useMultiRoomChat` |
-| `frontend/src/context/ChatContext.jsx` | Add `joinedRooms`, `unreadCounts` state; add `JOIN_ROOM`, `EXIT_ROOM`, `INCREMENT_UNREAD`, `CLEAR_UNREAD` actions |
+| `frontend/src/context/ChatContext.jsx` | Add `joinedRooms`, `unreadCounts` state; add `JOIN_ROOM`, `EXIT_ROOM`, `INCREMENT_UNREAD`, `CLEAR_UNREAD` actions; retain all existing actions |
 | `frontend/src/context/PMContext.jsx` | New — PM threads, unread counts |
 | `frontend/src/App.jsx` | Mount `<PMProvider>` inside `ProtectedRoute` (authenticated routes only) |
 | `frontend/src/pages/ChatPage.jsx` | Replace inline logic with hook; call `exitAllRooms()` on logout; add PM view |
@@ -229,7 +246,7 @@ The backend's private message handler is updated to send an error event to the s
 | `frontend/src/components/PMList.jsx` | New — renders PM thread list in sidebar |
 | `frontend/src/components/PMView.jsx` | New — renders a PM conversation |
 | `backend/routers/rooms.py` | Add `GET /rooms/{id}/users`; add ETag + in-memory cache to `GET /rooms/` |
-| `backend/routers/websocket.py` | Add `msg_id` (UUID) to `private_message` payload; error on offline PM target |
+| `backend/routers/websocket.py` | Add `msg_id` (UUID) to `private_message` payload; error on offline PM target; update disconnect handler to skip all post-disconnect processing (`user_left`, admin succession, mute clearing) when `user.username in manager.kicked_users` |
 
 ---
 

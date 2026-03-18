@@ -1,22 +1,38 @@
 // src/context/AuthContext.jsx
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
+import http from '../api/http';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);   // { username, is_global_admin }
-  const [token, setToken] = useState(null);
+  // Lazy initialisers so that a page refresh restores the session without
+  // requiring a new login. Both token and user object are written together
+  // so they can never be out of sync across reloads.
+  const [token, setToken] = useState(() => sessionStorage.getItem('token'));
+  const [user, setUser] = useState(() => {
+    const raw = sessionStorage.getItem('user');
+    return raw ? JSON.parse(raw) : null;
+  });
+
+  // Re-register with backend on every app load so logged_in_users survives server restarts
+  useEffect(() => {
+    if (token) {
+      http.post('/auth/ping').catch(() => {});
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function login(tokenStr, userData) {
     setToken(tokenStr);
     setUser(userData);
-    sessionStorage.setItem('token', tokenStr); // Use sessionStorage, NOT localStorage
+    sessionStorage.setItem('token', tokenStr);
+    sessionStorage.setItem('user', JSON.stringify(userData));
   }
 
   function logout() {
     setToken(null);
     setUser(null);
     sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
   }
 
   return (

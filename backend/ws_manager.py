@@ -22,8 +22,10 @@ class ConnectionManager:
         self.user_to_socket: Dict[str, Set[WebSocket]] = {}
         # room_id -> join order list (for admin succession)
         self.room_join_order: Dict[int, List[str]] = {}
-        # usernames currently being kicked (suppress duplicate "has left" system message)
-        self.kicked_users: Set[str] = set()
+        # usernames currently being kicked → count of remaining sockets to process
+        self.kicked_users: Dict[str, int] = {}
+        # users who have logged in via POST /auth/login (independent of WebSocket state)
+        self.logged_in_users: Set[str] = set()
 
     async def connect(self, websocket: WebSocket, room_id: int, username: str):
         await websocket.accept()
@@ -81,6 +83,16 @@ class ConnectionManager:
 
     def is_user_in_room(self, username: str, room_id: int) -> bool:
         return username in self.get_users_in_room(room_id)
+
+    def mark_logged_in(self, username: str):
+        self.logged_in_users.add(username)
+
+    def mark_logged_out(self, username: str):
+        self.logged_in_users.discard(username)
+
+    def is_user_online(self, username: str) -> bool:
+        """Return True if the user has at least one active WebSocket connection."""
+        return bool(self.user_to_socket.get(username))
 
 
 manager = ConnectionManager()  # singleton shared across requests
