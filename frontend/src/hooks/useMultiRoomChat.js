@@ -15,6 +15,7 @@ export function useMultiRoomChat() {
 
   // Mutable refs — changes don't need re-renders
   const socketsRef = useRef(new Map());
+  const lobbyRef = useRef(null);              // lobby WebSocket for PM delivery
   const seenMsgIdsRef = useRef(new Set());
   const roomsEtagRef = useRef(null);
   const usersEtagRef = useRef(null);
@@ -233,6 +234,31 @@ export function useMultiRoomChat() {
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]);
+
+  // ── Lobby connection — always-on for PM delivery ────────────────────
+  useEffect(() => {
+    function connectLobby() {
+      const ws = new WebSocket(`${WS_BASE}/ws/lobby?token=${token}`);
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        handleMessageRef.current(msg, null);
+      };
+      ws.onclose = () => {
+        lobbyRef.current = null;
+        // Auto-reconnect after 3 s if component is still mounted
+        setTimeout(() => {
+          if (!lobbyRef.current) connectLobby();
+        }, 3000);
+      };
+      lobbyRef.current = ws;
+    }
+    connectLobby();
+    return () => {
+      const ws = lobbyRef.current;
+      if (ws) { lobbyRef.current = null; ws.close(); }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   // ── Mount: restore joined rooms from localStorage ──────────────────
   useEffect(() => {

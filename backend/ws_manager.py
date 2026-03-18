@@ -39,6 +39,14 @@ class ConnectionManager:
         self.user_to_socket[username].add(websocket)
         self.room_join_order[room_id].append(username)
 
+    async def connect_lobby(self, websocket: WebSocket, username: str):
+        """Lightweight connection for PM delivery — not tied to any room."""
+        await websocket.accept()
+        self.socket_to_user[websocket] = username
+        if username not in self.user_to_socket:
+            self.user_to_socket[username] = set()
+        self.user_to_socket[username].add(websocket)
+
     def disconnect(self, websocket: WebSocket, room_id: int):
         username = self.socket_to_user.get(websocket)
         if room_id in self.rooms and websocket in self.rooms[room_id]:
@@ -52,6 +60,16 @@ class ConnectionManager:
         if username and room_id in self.room_join_order:
             if username in self.room_join_order[room_id]:
                 self.room_join_order[room_id].remove(username)
+
+    def disconnect_lobby(self, websocket: WebSocket):
+        """Disconnect a lobby socket (no room cleanup needed)."""
+        username = self.socket_to_user.get(websocket)
+        if websocket in self.socket_to_user:
+            del self.socket_to_user[websocket]
+        if username and username in self.user_to_socket:
+            self.user_to_socket[username].discard(websocket)
+            if not self.user_to_socket[username]:
+                del self.user_to_socket[username]
 
     async def broadcast(self, room_id: int, message: dict, exclude: WebSocket = None):
         """Send to all sockets in a room. Old equivalent: Room.sendToGroup()."""

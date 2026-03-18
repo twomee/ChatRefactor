@@ -306,3 +306,25 @@ async def websocket_endpoint(
             "text": f"{user.username} has left the room",
             "room_id": room_id,
         })
+
+
+@router.websocket("/ws/lobby")
+async def lobby_endpoint(
+    websocket: WebSocket,
+    token: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Lightweight WebSocket for PM delivery — no room required.
+    Keeps the user in user_to_socket so PMs can reach them even if
+    they haven't joined any rooms (e.g. admin on the Admin Panel)."""
+    user = get_user_from_token(token, db)
+    if not user:
+        await websocket.close(code=4001)
+        return
+
+    await manager.connect_lobby(websocket, user.username)
+    try:
+        while True:
+            await websocket.receive_text()  # keep-alive; ignore any client data
+    except WebSocketDisconnect:
+        manager.disconnect_lobby(websocket)
