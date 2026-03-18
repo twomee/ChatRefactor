@@ -7,6 +7,7 @@ from jose import jwt, JWTError
 from config import SECRET_KEY, ALGORITHM
 from services import room_service
 import models
+import uuid
 
 router = APIRouter(tags=["websocket"])
 
@@ -154,20 +155,27 @@ async def websocket_endpoint(
                 if not text.strip():
                     await websocket.send_json({"type": "error", "detail": "Cannot send empty private message"})
                     continue
+                # Error if target is not online
+                if not manager.user_to_socket.get(target):
+                    await websocket.send_json({"type": "error", "detail": "User is not online"})
+                    continue
+                msg_id = str(uuid.uuid4())
                 # Send to target
                 await manager.send_personal(target, {
                     "type": "private_message",
                     "from": user.username,
                     "to": target,
                     "text": text,
+                    "msg_id": msg_id,
                 })
-                # Echo to sender so they see sent message
+                # Echo to sender so they see their sent message
                 await websocket.send_json({
                     "type": "private_message",
                     "from": user.username,
                     "to": target,
                     "text": text,
                     "self": True,
+                    "msg_id": msg_id,
                 })
 
             # --- Admin: kick ---

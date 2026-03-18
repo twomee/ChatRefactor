@@ -551,3 +551,59 @@ def test_kick_does_not_broadcast_user_left_in_other_room():
 
         user_left_events = [m for m in received_in_b if m.get("type") == "user_left"]
         assert user_left_events == [], f"room_b witness should not receive user_left, got: {user_left_events}"
+
+
+def test_private_message_has_msg_id():
+    """Both delivery and echo of a private message must include msg_id."""
+    room_id = _room("pm_msgid_room")
+    t1 = _login("pm_sender_1")
+    t2 = _login("pm_receiver_1")
+
+    with _client_ctx.websocket_connect(f"/ws/{room_id}?token={t1}") as ws1, \
+         _client_ctx.websocket_connect(f"/ws/{room_id}?token={t2}") as ws2:
+
+        # Drain setup: ws1 history + self join + joined system + became admin system
+        ws1.receive_json()
+        _drain(ws1, "user_join")
+        _drain(ws1, "system")           # "has joined the room"
+        _drain(ws1, "system")           # "has become admin automatically"
+
+        # Drain setup: ws2 history + user_join broadcast; ws1 gets ws2's join + system
+        ws2.receive_json()
+        _drain(ws2, "user_join")
+        _drain(ws2, "system")           # "has joined the room" for ws2
+        _drain(ws1, "user_join")
+        _drain(ws1, "system")           # "pm_receiver_1 has joined the room"
+
+        ws1.send_json({"type": "private_message", "to": "pm_receiver_1", "text": "hello"})
+
+        # Echo on sender
+        echo = ws1.receive_json()
+        assert echo["type"] == "private_message"
+        assert "msg_id" in echo, "sender echo must have msg_id"
+
+        # Delivery to receiver
+        delivery = ws2.receive_json()
+        assert delivery["type"] == "private_message"
+        assert "msg_id" in delivery, "delivery must have msg_id"
+
+        # Both have the same msg_id
+        assert echo["msg_id"] == delivery["msg_id"]
+
+
+def test_private_message_to_offline_user_returns_error():
+    """Sending a PM to a user not connected to any room returns an error event."""
+    room_id = _room("pm_offline_room")
+    t1 = _login("pm_sender_2")
+    _login("pm_offline_user")  # registered but never connected
+
+    with _client_ctx.websocket_connect(f"/ws/{room_id}?token={t1}") as ws1:
+        ws1.receive_json()              # history
+        _drain(ws1, "user_join")        # self join
+        _drain(ws1, "system")           # "has joined the room"
+        _drain(ws1, "system")           # "has become admin automatically"
+
+        ws1.send_json({"type": "private_message", "to": "pm_offline_user", "text": "hello?"})
+        resp = ws1.receive_json()
+        assert resp["type"] == "error"
+        assert "not online" in resp["detail"].lower()
