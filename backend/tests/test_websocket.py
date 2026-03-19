@@ -3,6 +3,7 @@ import sys
 import os
 import threading
 import time
+from unittest.mock import AsyncMock, patch
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -45,7 +46,10 @@ _client_ctx = TestClient(app).__enter__()
 @pytest.fixture(autouse=True)
 def _use_test_db():
     app.dependency_overrides[get_db] = override_get_db
-    yield
+    # Force Kafka unavailable so sync DB fallback is always used in tests.
+    # Tests use in-memory SQLite; the Kafka consumer writes to real PostgreSQL.
+    with patch("routers.websocket.kafka_produce", new_callable=AsyncMock, return_value=False):
+        yield
 
 
 def _login(username, password="pw123"):

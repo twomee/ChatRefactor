@@ -17,3 +17,4 @@ redis[hiredis]>=5.0.0
 slowapi>=0.1.9
 gunicorn>=21.2.0
 aiokafka>=0.10.0
+cramjam>=2.8.0
