@@ -9,7 +9,7 @@ load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
 APP_ENV = os.getenv("APP_ENV", "dev")
 BASE_DIR = Path(__file__).parent
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/chatbox.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://chatbox:chatbox_pass@localhost:5432/chatbox")
 SECRET_KEY = os.getenv("SECRET_KEY", "change-this-in-production-use-openssl-rand-hex-32")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = int(os.getenv("ACCESS_TOKEN_EXPIRE_HOURS", "24"))

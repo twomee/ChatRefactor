@@ -10,10 +10,13 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from alembic.config import Config as AlembicConfig
+from alembic import command as alembic_command
+
 from auth import hash_password
 from config import ADMIN_USERNAME, ADMIN_PASSWORD, CORS_ORIGINS, APP_ENV
 from dal import user_dal, room_dal
-from database import engine, Base
+from database import engine
 from logging_config import setup_logging, get_logger
 from rate_limit import limiter
 from routers import auth, rooms, files, admin, websocket, pm
@@ -29,18 +32,10 @@ async def lifespan(app):
     # ── Startup ──────────────────────────────────────────────────────
     logger.info("app_starting", env=APP_ENV)
 
-    if APP_ENV in ("staging", "prod"):
-        try:
-            from alembic.config import Config
-            from alembic import command
-            alembic_cfg = Config("alembic.ini")
-            command.upgrade(alembic_cfg, "head")
-            logger.info("alembic_migrations_applied")
-        except Exception:
-            logger.warning("alembic_unavailable", msg="Falling back to create_all")
-            Base.metadata.create_all(bind=engine)
-    else:
-        Base.metadata.create_all(bind=engine)
+    # Run Alembic migrations to ensure schema is up to date
+    alembic_cfg = AlembicConfig("alembic.ini")
+    alembic_command.upgrade(alembic_cfg, "head")
+    logger.info("alembic_migrations_applied")
 
     # Seed default rooms and admin user
     with Session(engine) as db:
