@@ -1,16 +1,19 @@
 # ws_manager.py
+import asyncio
+import json
+
 from fastapi import WebSocket
 from typing import Dict, List, Set
+
+from logging_config import get_logger
+
+logger = get_logger("ws_manager")
 
 
 class ConnectionManager:
     """
     In-memory state of active WebSocket connections.
-
-    Old equivalent:
-      - self._roomlist (Rooms object)  →  self.rooms
-      - room._openSockets              →  self.rooms[room_id]
-      - self._loggedUserList (Users)   →  self.socket_to_user + self.user_to_socket
+    Redis pub/sub enables cross-worker message relay in multi-process mode.
     """
 
     def __init__(self):
@@ -28,6 +31,23 @@ class ConnectionManager:
         self.logged_in_users: Set[str] = set()
         # lobby WebSockets — one per user, for push updates + PM delivery
         self.lobby_sockets: Dict[WebSocket, str] = {}  # ws -> username
+        # Redis pub/sub (lazy-initialized)
+        self._redis_available = None
+
+    def _get_redis(self):
+        """Lazy-load Redis client, returning None if unavailable."""
+        if self._redis_available is False:
+            return None
+        try:
+            from redis_client import get_redis
+            r = get_redis()
+            r.ping()
+            self._redis_available = True
+            return r
+        except Exception:
+            self._redis_available = False
+            logger.warning("redis_unavailable", msg="Falling back to local-only delivery")
+            return None
 
     async def connect(self, websocket: WebSocket, room_id: int, username: str):
         await websocket.accept()
@@ -56,30 +76,50 @@ class ConnectionManager:
                 self.room_join_order[room_id].remove(username)
 
     async def broadcast(self, room_id: int, message: dict, exclude: WebSocket = None):
-        """Send to all sockets in a room. Old equivalent: Room.sendToGroup()."""
+        """Publish to Redis for cross-worker relay, then deliver locally."""
+        r = self._get_redis()
+        if r:
+            try:
+                r.publish(f"room:{room_id}", json.dumps(message))
+                return  # subscriber handles local delivery
+            except Exception:
+                logger.warning("redis_publish_failed", channel=f"room:{room_id}")
+        # Fallback: local-only delivery
+        await self._local_broadcast_room(room_id, message, exclude)
+
+    async def _local_broadcast_room(self, room_id: int, message: dict, exclude: WebSocket = None):
+        """Direct local delivery to all sockets in a room."""
         for ws in list(self.rooms.get(room_id, [])):
             if ws != exclude:
                 try:
                     await ws.send_json(message)
                 except Exception:
-                    pass
+                    logger.warning("ws_send_failed", room_id=room_id)
 
     async def send_personal(self, username: str, message: dict):
         """Send to a specific user across all their active connections."""
+        r = self._get_redis()
+        if r:
+            try:
+                r.publish(f"user:{username}", json.dumps(message))
+                return
+            except Exception:
+                logger.warning("redis_publish_failed", channel=f"user:{username}")
+        await self._local_send_personal(username, message)
+
+    async def _local_send_personal(self, username: str, message: dict):
+        """Direct local delivery to all sockets of a user."""
         for ws in list(self.user_to_socket.get(username, set())):
             try:
                 await ws.send_json(message)
             except Exception:
-                pass
+                logger.warning("ws_send_failed", username=username)
 
     def get_users_in_room(self, room_id: int) -> List[str]:
         return [self.socket_to_user[ws] for ws in self.rooms.get(room_id, []) if ws in self.socket_to_user]
 
     def get_admin_successor(self, room_id: int):
-        """
-        Old code: chatServer logic — when admin leaves, the next user in join order becomes admin.
-        Returns the username of the next user, or None if room is empty.
-        """
+        """When admin leaves, the next user in join order becomes admin."""
         order = self.room_join_order.get(room_id, [])
         return order[0] if order else None
 
@@ -114,11 +154,58 @@ class ConnectionManager:
 
     async def broadcast_all(self, message: dict):
         """Send a message to every connected lobby socket."""
+        r = self._get_redis()
+        if r:
+            try:
+                r.publish("lobby", json.dumps(message))
+                return
+            except Exception:
+                logger.warning("redis_publish_failed", channel="lobby")
+        await self._local_broadcast_lobby(message)
+
+    async def _local_broadcast_lobby(self, message: dict):
+        """Direct local delivery to all lobby sockets."""
         for ws in list(self.lobby_sockets):
             try:
                 await ws.send_json(message)
             except Exception:
-                pass
+                logger.warning("ws_send_failed", target="lobby")
+
+    # ── Redis subscriber (background task) ─────────────────────────────
+
+    async def start_subscriber(self):
+        """Subscribe to Redis channels and relay messages to local WebSockets."""
+        import redis.asyncio as aioredis
+        from config import REDIS_URL
+
+        r = aioredis.from_url(REDIS_URL, decode_responses=True)
+        pubsub = r.pubsub()
+        await pubsub.psubscribe("room:*", "lobby", "user:*")
+        logger.info("redis_subscriber_started")
+
+        try:
+            async for message in pubsub.listen():
+                if message["type"] not in ("pmessage",):
+                    continue
+                try:
+                    data = json.loads(message["data"])
+                    channel = message.get("channel", "")
+
+                    if channel.startswith("room:"):
+                        room_id = int(channel.split(":")[1])
+                        await self._local_broadcast_room(room_id, data)
+                    elif channel == "lobby":
+                        await self._local_broadcast_lobby(data)
+                    elif channel.startswith("user:"):
+                        username = channel.split(":", 1)[1]
+                        await self._local_send_personal(username, data)
+                except Exception:
+                    logger.warning("redis_relay_error", channel=message.get("channel"))
+        except asyncio.CancelledError:
+            logger.info("redis_subscriber_stopped")
+            await pubsub.punsubscribe()
+            await r.aclose()
+            raise
 
 
 manager = ConnectionManager()  # singleton shared across requests

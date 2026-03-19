@@ -41,6 +41,13 @@ def decode_token(token: str, db: Session) -> Optional[models.User]:
     Single source of truth — used by HTTP deps and WebSocket auth alike."""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        # Check Redis blacklist (token revoked on logout)
+        try:
+            from redis_client import get_redis
+            if get_redis().get(f"blacklist:{token}"):
+                return None
+        except Exception:
+            pass  # Redis unavailable — skip blacklist check
         sub = payload.get("sub")
         if sub is None:
             return None
