@@ -17,6 +17,7 @@ MAX_FILE_SIZE_BYTES = 150 * 1024 * 1024  # 150 MB
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:29092")
 CORS_ORIGINS = [
     o.strip()
     for o in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")

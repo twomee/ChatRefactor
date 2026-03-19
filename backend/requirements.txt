@@ -16,3 +16,4 @@ alembic>=1.13.0
 redis[hiredis]>=5.0.0
 slowapi>=0.1.9
 gunicorn>=21.2.0
+aiokafka>=0.10.0

@@ -39,3 +39,16 @@ class FileResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class MessageResponse(BaseModel):
+    id: int
+    message_id: Optional[str] = None
+    sender: str
+    room_id: Optional[int] = None
+    content: str
+    is_private: bool
+    sent_at: datetime
+
+    class Config:
+        from_attributes = True
