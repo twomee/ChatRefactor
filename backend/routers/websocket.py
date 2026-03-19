@@ -7,10 +7,12 @@ from sqlalchemy.orm import Session
 from auth import decode_token
 from dal import room_dal
 from database import get_db
+from logging_config import get_logger
 from services import room_service, message_service
 from ws_manager import manager
 
 router = APIRouter(tags=["websocket"])
+logger = get_logger("routers.websocket")
 
 
 def _extract_error_detail(exc: Exception) -> str:
@@ -44,6 +46,7 @@ async def websocket_endpoint(
 
     # ── Connect ───────────────────────────────────────────────────────
     await manager.connect(websocket, room_id, user.username)
+    logger.info("ws_connected", username=user.username, room_id=room_id)
 
     # Auto-promote first user in room to admin
     became_admin = False
@@ -108,6 +111,7 @@ async def websocket_endpoint(
                 await _handle_promote(user, room_id, data, db, websocket)
 
     except WebSocketDisconnect:
+        logger.info("ws_disconnected", username=user.username, room_id=room_id)
         await _handle_disconnect(websocket, user, room_id, db)
 
 
@@ -156,10 +160,10 @@ async def _handle_kick(websocket, user, room_id, data, db):
     if room_service.is_admin_in_room(target, room_id, db):
         await websocket.send_json({"type": "error", "detail": "Cannot kick another admin"})
         return
-    # Counter-based kick tracking: only count ROOM sockets (not lobby).
-    # Each room socket's disconnect handler decrements; at 0 the entry is removed.
-    lobby_set = set(manager.lobby_sockets.keys())
-    target_sockets = [ws for ws in manager.user_to_socket.get(target, set()) if ws not in lobby_set]
+    logger.info("user_kicked", admin=user.username, target=target, room_id=room_id)
+    # Only close sockets belonging to the kicked room (not other rooms or lobby).
+    room_sockets = set(manager.rooms.get(room_id, []))
+    target_sockets = [ws for ws in manager.user_to_socket.get(target, set()) if ws in room_sockets]
     if target_sockets:
         manager.kicked_users[target] = len(target_sockets)
     for target_ws in target_sockets:
@@ -167,7 +171,7 @@ async def _handle_kick(websocket, user, room_id, data, db):
             await target_ws.send_json({"type": "kicked", "room_id": room_id})
             await target_ws.close()
         except Exception:
-            pass
+            logger.warning("kick_close_failed", target=target)
     await manager.broadcast(room_id, {
         "type": "system",
         "text": f"{target} was kicked by {user.username}",
@@ -179,6 +183,7 @@ async def _handle_mute(user, room_id, data, db, websocket):
     target = data.get("target")
     try:
         room_service.mute_user(user.username, target, room_id, db)
+        logger.info("user_muted", admin=user.username, target=target, room_id=room_id)
         await manager.broadcast(room_id, {"type": "muted", "username": target, "room_id": room_id})
         await manager.broadcast(room_id, {
             "type": "system",
@@ -207,6 +212,7 @@ async def _handle_promote(user, room_id, data, db, websocket):
     target = data.get("target")
     try:
         room_service.promote_to_admin(user.username, target, room_id, db)
+        logger.info("user_promoted", admin=user.username, target=target, room_id=room_id)
         await manager.broadcast(room_id, {"type": "new_admin", "username": target, "room_id": room_id})
         await manager.broadcast(room_id, {
             "type": "system",
@@ -271,17 +277,17 @@ async def lobby_endpoint(
     token: str = Query(...),
     db: Session = Depends(get_db),
 ):
-    """Lightweight WebSocket for PM delivery — no room required.
-    Keeps the user in user_to_socket so PMs can reach them even if
-    they haven't joined any rooms (e.g. admin on the Admin Panel)."""
+    """Lightweight WebSocket for PM delivery — no room required."""
     user = decode_token(token, db)
     if not user:
         await websocket.close(code=4001)
         return
 
     await manager.connect_lobby(websocket, user.username)
+    logger.debug("lobby_connected", username=user.username)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect_lobby(websocket)
+        logger.debug("lobby_disconnected", username=user.username)

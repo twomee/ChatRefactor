@@ -8,6 +8,14 @@
       "port": 5173,
       "cwd": "frontend",
       "autoPort": false
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "uvicorn",
+      "runtimeArgs": ["main:app", "--reload", "--port", "8000"],
+      "port": 8000,
+      "cwd": "backend",
+      "autoPort": false
     }
   ]
 }

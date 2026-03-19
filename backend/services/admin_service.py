@@ -5,7 +5,10 @@ from sqlalchemy.orm import Session
 from auth import hash_password
 from config import ADMIN_USERNAME, ADMIN_PASSWORD
 from dal import user_dal, room_dal, message_dal
+from logging_config import get_logger
 from ws_manager import ConnectionManager
+
+logger = get_logger("services.admin")
 
 
 def get_connected_users(mgr: ConnectionManager) -> dict:
@@ -20,6 +23,7 @@ def get_all_rooms(db: Session):
 
 async def close_all_rooms(db: Session, mgr: ConnectionManager):
     rooms = room_dal.set_all_active(db, False)
+    logger.info("all_rooms_closed", count=len(rooms))
     for room in rooms:
         await mgr.broadcast(room.id, {"type": "chat_closed", "detail": "Admin has closed the chat"})
     for room_id, sockets in list(mgr.rooms.items()):
@@ -33,6 +37,7 @@ async def close_all_rooms(db: Session, mgr: ConnectionManager):
 
 def open_all_rooms(db: Session):
     room_dal.set_all_active(db, True)
+    logger.info("all_rooms_opened")
     return {"message": "All rooms opened"}
 
 
@@ -41,6 +46,7 @@ async def close_room(db: Session, room_id: int, mgr: ConnectionManager):
     if not room:
         raise HTTPException(404, "Room not found")
     room_dal.set_active(db, room, False)
+    logger.info("room_closed", room_id=room_id, room_name=room.name)
     await mgr.broadcast(room_id, {
         "type": "chat_closed",
         "detail": f"Room '{room.name}' has been closed by admin",
@@ -58,10 +64,12 @@ def open_room(db: Session, room_id: int):
     if not room:
         raise HTTPException(404, "Room not found")
     room_dal.set_active(db, room, True)
+    logger.info("room_opened", room_id=room_id, room_name=room.name)
     return {"message": f"Room '{room.name}' opened"}
 
 
 def reset_database(db: Session):
+    logger.warning("database_reset_triggered")
     room_dal.remove_all_admins(db)
     room_dal.remove_all_mutes(db)
     message_dal.delete_all(db)
@@ -90,6 +98,9 @@ async def promote_user_in_connected_rooms(db: Session, username: str, mgr: Conne
             "text": f"{username} has been promoted to admin by the global admin",
             "room_id": room_id,
         })
+
+    if rooms_promoted:
+        logger.info("user_promoted_globally", username=username, rooms=rooms_promoted)
 
     if not rooms_promoted:
         return {"message": f"{username} is not currently connected to any rooms"}
