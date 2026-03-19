@@ -89,12 +89,16 @@ class ConnectionManager:
 
     async def _local_broadcast_room(self, room_id: int, message: dict, exclude: WebSocket = None):
         """Direct local delivery to all sockets in a room."""
+        dead_sockets = []
         for ws in list(self.rooms.get(room_id, [])):
             if ws != exclude:
                 try:
                     await ws.send_json(message)
                 except Exception:
-                    logger.warning("ws_send_failed", room_id=room_id)
+                    dead_sockets.append(ws)
+        for ws in dead_sockets:
+            logger.debug("ws_send_failed_cleaning_up", room_id=room_id)
+            self.disconnect(ws, room_id)
 
     async def send_personal(self, username: str, message: dict):
         """Send to a specific user across all their active connections."""
@@ -109,11 +113,22 @@ class ConnectionManager:
 
     async def _local_send_personal(self, username: str, message: dict):
         """Direct local delivery to all sockets of a user."""
+        dead_sockets = []
         for ws in list(self.user_to_socket.get(username, set())):
             try:
                 await ws.send_json(message)
             except Exception:
-                logger.warning("ws_send_failed", username=username)
+                dead_sockets.append(ws)
+        for ws in dead_sockets:
+            logger.debug("ws_send_failed_cleaning_up", username=username)
+            if ws in self.lobby_sockets:
+                self.disconnect_lobby(ws)
+            else:
+                # Find the room this socket belongs to
+                for rid, sockets in list(self.rooms.items()):
+                    if ws in sockets:
+                        self.disconnect(ws, rid)
+                        break
 
     def get_users_in_room(self, room_id: int) -> List[str]:
         return [self.socket_to_user[ws] for ws in self.rooms.get(room_id, []) if ws in self.socket_to_user]
@@ -165,11 +180,15 @@ class ConnectionManager:
 
     async def _local_broadcast_lobby(self, message: dict):
         """Direct local delivery to all lobby sockets."""
+        dead_sockets = []
         for ws in list(self.lobby_sockets):
             try:
                 await ws.send_json(message)
             except Exception:
-                logger.warning("ws_send_failed", target="lobby")
+                dead_sockets.append(ws)
+        for ws in dead_sockets:
+            logger.debug("ws_send_failed_cleaning_up", target="lobby")
+            self.disconnect_lobby(ws)
 
     # ── Redis subscriber (background task) ─────────────────────────────
 
