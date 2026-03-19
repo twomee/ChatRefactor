@@ -83,9 +83,13 @@ export function useMultiRoomChat() {
         break;
 
       case 'kicked': {
-        const roomName = stateRef.current.rooms.find(r => r.id === msg.room_id)?.name || 'a room';
-        exitAllRoomsRef.current();
-        dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
+        const kickedRoomId = msg.room_id;
+        const roomName = stateRef.current.rooms.find(r => r.id === kickedRoomId)?.name || 'a room';
+        exitRoomRef.current(kickedRoomId);
+        if (activeRoomIdRef.current === kickedRoomId) {
+          const next = [...stateRef.current.joinedRooms].find(id => id !== kickedRoomId);
+          dispatch({ type: 'SET_ACTIVE_ROOM', roomId: next ?? null });
+        }
         window.alert(`You were kicked from ${roomName}`);
         break;
       }
@@ -159,6 +163,9 @@ export function useMultiRoomChat() {
     }
 
     const ws = new WebSocket(`${WS_BASE}/ws/${roomId}?token=${token}`);
+    let wasOpen = false;
+
+    ws.onopen = () => { wasOpen = true; };
 
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
@@ -171,6 +178,8 @@ export function useMultiRoomChat() {
       if (socketsRef.current.get(roomId) === ws) {
         socketsRef.current.delete(roomId);
       }
+
+      // 4003 = "already in room" — retry once then give up
       if (event.code === 4003 && !isRetry) {
         setTimeout(() => {
           if (getJoinedRooms(username).includes(roomId)) {
@@ -180,6 +189,19 @@ export function useMultiRoomChat() {
       } else if (event.code === 4003 && isRetry) {
         dispatch({ type: 'EXIT_ROOM', roomId });
         removeJoinedRoom(username, roomId);
+      }
+      // 4001 = auth failure, 4002 = room closed, 4004 = room not found — don't reconnect
+      else if (event.code >= 4001 && event.code <= 4004) {
+        dispatch({ type: 'EXIT_ROOM', roomId });
+        removeJoinedRoom(username, roomId);
+      }
+      // Unexpected closure (server restart, network drop) — auto-reconnect
+      else if (wasOpen && getJoinedRooms(username).includes(roomId)) {
+        setTimeout(() => {
+          if (!socketsRef.current.has(roomId) && getJoinedRooms(username).includes(roomId)) {
+            joinRoom(roomId, true);
+          }
+        }, 2000);
       }
     };
 

@@ -454,14 +454,13 @@ def test_kick_sends_kicked_event_to_victim():
 
 def test_kick_does_not_broadcast_has_left_system_msg_in_other_room():
     """When user is kicked from room A while also in room B,
-    room B should receive a user_left event (to update the user list)
-    but must NOT receive a 'has left the room' system message — the user
-    was kicked, not voluntarily leaving.
+    room B should NOT be affected at all — the user remains connected
+    in room B and no user_left or 'has left' messages should appear there.
 
     Note: In the TestClient environment, the server-side ws.close() does not
     automatically trigger WebSocketDisconnect in the handler loop.  We must
-    explicitly call client-side close() on each victim socket after the kick
-    so the disconnect handlers fire and the kicked_users counter is exercised.
+    explicitly call client-side close() on the kicked socket after the kick
+    so the disconnect handler fires and the kicked_users counter is exercised.
     """
     room_a_id = _room("kick_test_a")
     room_b_id = _room("kick_test_b")
@@ -503,7 +502,7 @@ def test_kick_does_not_broadcast_has_left_system_msg_in_other_room():
         _drain(ws_victim_b, "user_join")
         _drain(ws_victim_b, "system")           # "witness has joined"
 
-        # Admin kicks victim from room_a (server closes ALL victim sockets)
+        # Admin kicks victim from room_a (server closes ONLY room_a sockets)
         ws_admin_a.send_json({"type": "kick", "target": "kick_victim_1"})
 
         # Victim receives kicked event on room_a socket
@@ -514,21 +513,17 @@ def test_kick_does_not_broadcast_has_left_system_msg_in_other_room():
         _drain(ws_admin_a, "system")
 
         # In the TestClient the server-side ws.close() does NOT trigger
-        # WebSocketDisconnect in the handler loop.  We must close each victim
-        # socket from the client side so the disconnect handlers fire.
+        # WebSocketDisconnect in the handler loop.  Close only the kicked
+        # socket (room_a) — room_b should remain connected.
         try:
             ws_victim_a.close()
         except Exception:
             pass
-        try:
-            ws_victim_b.close()
-        except Exception:
-            pass
 
-        # Give the event loop a moment to process both disconnects
+        # Give the event loop a moment to process the disconnect
         time.sleep(0.2)
 
-        # Collect ALL witness messages until the socket closes or 1 s passes.
+        # Collect any witness messages with a short timeout.
         received_in_b = []
         done = threading.Event()
 
@@ -545,10 +540,13 @@ def test_kick_does_not_broadcast_has_left_system_msg_in_other_room():
         t.start()
         done.wait(timeout=1.0)
 
-        # Room B should get user_left (to update user list) but NOT "has left" system msg
+        # Room B witness should NOT see any user_left or "has left" —
+        # the victim was only kicked from room A, they're still in room B.
         has_left_msgs = [m for m in received_in_b
                          if m.get("type") == "system" and "has left" in m.get("text", "")]
         assert has_left_msgs == [], f"room_b witness should not see 'has left' system msg, got: {has_left_msgs}"
+        user_left_msgs = [m for m in received_in_b if m.get("type") == "user_left"]
+        assert user_left_msgs == [], f"room_b witness should not see user_left, got: {user_left_msgs}"
 
 
 def test_private_message_has_msg_id():

@@ -161,9 +161,9 @@ async def _handle_kick(websocket, user, room_id, data, db):
         await websocket.send_json({"type": "error", "detail": "Cannot kick another admin"})
         return
     logger.info("user_kicked", admin=user.username, target=target, room_id=room_id)
-    # Counter-based kick tracking: only count ROOM sockets (not lobby).
-    lobby_set = set(manager.lobby_sockets.keys())
-    target_sockets = [ws for ws in manager.user_to_socket.get(target, set()) if ws not in lobby_set]
+    # Only close sockets belonging to the kicked room (not other rooms or lobby).
+    room_sockets = set(manager.rooms.get(room_id, []))
+    target_sockets = [ws for ws in manager.user_to_socket.get(target, set()) if ws in room_sockets]
     if target_sockets:
         manager.kicked_users[target] = len(target_sockets)
     for target_ws in target_sockets:
