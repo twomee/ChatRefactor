@@ -19,7 +19,7 @@ from dal import user_dal, room_dal
 from database import engine
 from logging_config import setup_logging, get_logger
 from rate_limit import limiter
-from routers import auth, rooms, files, admin, websocket, pm
+from routers import auth, rooms, files, admin, websocket, pm, messages
 from ws_manager import manager
 
 setup_logging()
@@ -57,11 +57,28 @@ async def lifespan(app):
     except Exception:
         logger.warning("redis_subscriber_failed_to_start")
 
+    # Start Kafka producer + topics + consumer (gracefully degrades if Kafka unavailable)
+    from kafka_client import start_producer, stop_producer
+    from kafka_topics import ensure_topics
+    from kafka_consumers import MessagePersistenceConsumer
+
+    await start_producer()
+    await ensure_topics()
+    persistence_consumer = MessagePersistenceConsumer()
+    try:
+        await persistence_consumer.start()
+    except Exception:
+        logger.warning("kafka_consumer_failed_to_start")
+
     logger.info("app_started")
     yield
 
     # ── Shutdown ─────────────────────────────────────────────────────
     logger.info("app_shutting_down")
+
+    # Stop Kafka consumer + producer
+    await persistence_consumer.stop()
+    await stop_producer()
 
     if subscriber_task:
         subscriber_task.cancel()
@@ -110,6 +127,7 @@ app.include_router(files.router)
 app.include_router(admin.router)
 app.include_router(websocket.router)
 app.include_router(pm.router)
+app.include_router(messages.router)
 
 
 # ── Health checks ────────────────────────────────────────────────────
@@ -139,7 +157,16 @@ def ready():
     except Exception as e:
         checks["redis"] = str(e)
 
-    all_ok = all(v == "ok" for v in checks.values())
+    # Kafka is optional — report status but don't gate readiness on it
+    try:
+        from kafka_client import is_kafka_available
+        checks["kafka"] = "ok" if is_kafka_available() else "degraded (sync fallback)"
+    except Exception as e:
+        checks["kafka"] = f"degraded: {e}"
+
+    # Only DB and Redis are required for readiness
+    required_ok = checks.get("database") == "ok" and checks.get("redis") == "ok"
+    all_ok = required_ok
     status_code = 200 if all_ok else 503
     return JSONResponse(
         status_code=status_code,

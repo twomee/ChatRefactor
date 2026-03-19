@@ -67,6 +67,7 @@ class Message(Base):
     """New — the original app had no message persistence. Optional for v1."""
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
+    message_id = Column(String(36), unique=True, nullable=True, index=True)  # UUID for Kafka idempotent writes
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True)   # null = private message
     recipient_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # set for private messages
