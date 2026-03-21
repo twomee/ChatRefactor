@@ -4,17 +4,17 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
-import { useChatConnection } from '../App';
+import { useChatConnection } from '../layouts/ChatConnectionLayer';
 import * as pmApi from '../services/pmApi';
 import * as authApi from '../services/authApi';
-import Logo from '../components/Logo';
-import RoomList from '../components/RoomList';
-import MessageList from '../components/MessageList';
-import MessageInput from '../components/MessageInput';
-import UserList from '../components/UserList';
-import FileUpload from '../components/FileProgress';
-import PMList from '../components/PMList';
-import PMView from '../components/PMView';
+import Logo from '../components/common/Logo';
+import RoomList from '../components/room/RoomList';
+import MessageList from '../components/chat/MessageList';
+import MessageInput from '../components/chat/MessageInput';
+import UserList from '../components/room/UserList';
+import FileUpload from '../components/chat/FileProgress';
+import PMList from '../components/pm/PMList';
+import PMView from '../components/pm/PMView';
 
 function getInitials(name) {
   if (!name) return '?';

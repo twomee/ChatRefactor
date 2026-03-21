@@ -240,11 +240,11 @@ The backend's private message handler is updated to send an error event to the s
 | `frontend/src/context/PMContext.jsx` | New — PM threads, unread counts |
 | `frontend/src/App.jsx` | Mount `<PMProvider>` inside `ProtectedRoute` (authenticated routes only) |
 | `frontend/src/pages/ChatPage.jsx` | Replace inline logic with hook; call `exitAllRooms()` on logout; add PM view |
-| `frontend/src/components/RoomList.jsx` | Split into YOUR ROOMS / AVAILABLE sections with Join/Exit buttons |
-| `frontend/src/components/MessageList.jsx` | Add `onScrollToBottom` callback prop (fires when within 50px of bottom) |
-| `frontend/src/components/UserList.jsx` | Click username → open PM thread |
-| `frontend/src/components/PMList.jsx` | New — renders PM thread list in sidebar |
-| `frontend/src/components/PMView.jsx` | New — renders a PM conversation |
+| `frontend/src/components/room/RoomList.jsx` | Split into YOUR ROOMS / AVAILABLE sections with Join/Exit buttons |
+| `frontend/src/components/chat/MessageList.jsx` | Add `onScrollToBottom` callback prop (fires when within 50px of bottom) |
+| `frontend/src/components/room/UserList.jsx` | Click username → open PM thread |
+| `frontend/src/components/pm/PMList.jsx` | New — renders PM thread list in sidebar |
+| `frontend/src/components/pm/PMView.jsx` | New — renders a PM conversation |
 | `backend/routers/rooms.py` | Add `GET /rooms/{id}/users`; add ETag + in-memory cache to `GET /rooms/` |
 | `backend/routers/websocket.py` | Add `msg_id` (UUID) to `private_message` payload; error on offline PM target; update disconnect handler to skip all post-disconnect processing (`user_left`, admin succession, mute clearing) when `user.username in manager.kicked_users` |
 

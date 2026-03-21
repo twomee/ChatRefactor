@@ -1,5 +1,5 @@
 // src/services/roomApi.js — Room API calls
-import http from '../api/http';
+import http from './http';
 
 export function listRooms() {
   return http.get('/rooms/', { validateStatus: s => s < 500 });

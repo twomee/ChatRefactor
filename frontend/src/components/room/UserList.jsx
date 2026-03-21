@@ -1,6 +1,6 @@
 // src/components/UserList.jsx
 import { useState } from 'react';
-import ContextMenu from './ContextMenu';
+import ContextMenu from '../common/ContextMenu';
 
 function getInitials(name) {
   if (!name) return '?';

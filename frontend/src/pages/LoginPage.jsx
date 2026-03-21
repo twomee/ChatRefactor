@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import * as authApi from '../services/authApi';
-import Logo from '../components/Logo';
+import Logo from '../components/common/Logo';
 
 export default function LoginPage() {
   const [mode, setMode] = useState('login');

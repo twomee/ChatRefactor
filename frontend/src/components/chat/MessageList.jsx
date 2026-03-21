@@ -1,7 +1,7 @@
 // src/components/MessageList.jsx
 import { useEffect, useRef, useCallback } from 'react';
-import { formatSize } from '../utils/formatting';
-import { getDownloadUrl } from '../services/fileApi';
+import { formatSize } from '../../utils/formatting';
+import { getDownloadUrl } from '../../services/fileApi';
 
 function getInitials(name) {
   if (!name) return '?';

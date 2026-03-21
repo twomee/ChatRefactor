@@ -1,5 +1,5 @@
 // src/services/authApi.js — Auth API calls
-import http from '../api/http';
+import http from './http';
 
 export function register(username, password) {
   return http.post('/auth/register', { username, password });

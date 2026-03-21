@@ -1,6 +1,6 @@
 // src/components/FileProgress.jsx
 import { useState, useRef } from 'react';
-import { uploadFile } from '../services/fileApi';
+import { uploadFile } from '../../services/fileApi';
 
 export default function FileUpload({ roomId }) {
   const [progress, setProgress] = useState(0);

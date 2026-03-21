@@ -1,4 +1,4 @@
-// src/api/http.js
+// src/services/http.js
 import axios from 'axios';
 import { API_BASE } from '../config/constants';
 

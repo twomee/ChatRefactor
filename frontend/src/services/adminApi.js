@@ -1,5 +1,5 @@
 // src/services/adminApi.js — Admin API calls
-import http from '../api/http';
+import http from './http';
 
 export function getRooms() {
   return http.get('/admin/rooms');
