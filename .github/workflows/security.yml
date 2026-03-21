@@ -18,7 +18,7 @@ jobs:
     name: Trivy Code Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run Trivy vulnerability scanner (filesystem)
         uses: aquasecurity/trivy-action@master
@@ -34,7 +34,7 @@ jobs:
     name: Trivy Backend Image Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build backend image
         run: docker build -t chatbox-backend:scan ./backend
@@ -52,7 +52,7 @@ jobs:
     name: Trivy Frontend Image Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build frontend image
         run: docker build -t chatbox-frontend:scan ./frontend
