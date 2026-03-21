@@ -57,7 +57,7 @@ jobs:
           SECRET_KEY: test-secret-key-for-ci-only
           ADMIN_USERNAME: testadmin
           ADMIN_PASSWORD: testpassword
-          DATABASE_URL: sqlite+aiosqlite:///./test.db
+          DATABASE_URL: sqlite:///./test.db
           REDIS_URL: redis://localhost:6379/0
           KAFKA_BOOTSTRAP_SERVERS: localhost:29092
         run: pytest tests/ -v --tb=short

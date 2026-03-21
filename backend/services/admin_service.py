@@ -95,8 +95,8 @@ async def promote_user_in_connected_rooms(db: Session, username: str, mgr: Conne
     rooms_promoted = []
     for room_id in list(mgr.rooms.keys()):
         if mgr.is_user_in_room(username, room_id) and not room_dal.is_admin(db, user.id, room_id):
-                room_dal.add_admin(db, user.id, room_id)
-                rooms_promoted.append(room_id)
+            room_dal.add_admin(db, user.id, room_id)
+            rooms_promoted.append(room_id)
 
     for room_id in rooms_promoted:
         await mgr.broadcast(room_id, {"type": "new_admin", "username": username, "room_id": room_id})

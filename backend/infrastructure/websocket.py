@@ -72,7 +72,7 @@ class ConnectionManager:
             if not self.user_to_socket[username]:
                 del self.user_to_socket[username]
         if username and room_id in self.room_join_order and username in self.room_join_order[room_id]:
-                self.room_join_order[room_id].remove(username)
+            self.room_join_order[room_id].remove(username)
 
     async def broadcast(self, room_id: int, message: dict, exclude: WebSocket = None):
         """Publish to Redis for cross-worker relay, then deliver locally."""
