@@ -1,0 +1,16 @@
+FROM python:3.11-slim
+
+WORKDIR /loadtests
+
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy load test code
+COPY . .
+
+# Locust web UI port
+EXPOSE 8089
+
+# Default: run as Locust master
+CMD ["locust", "-f", "scenarios/http_endpoints.py", "--master"]

@@ -7,3 +7,9 @@ backend/uploads/
 node_modules/
 dist/
 .idea/
+
+# Load test reports (generated)
+loadtests/reports/*.csv
+loadtests/reports/*.html
+loadtests/reports/*.json
+!loadtests/reports/.gitkeep
