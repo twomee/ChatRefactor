@@ -2,11 +2,11 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from auth import hash_password, verify_password, create_access_token
-from config import ACCESS_TOKEN_EXPIRE_HOURS, APP_ENV
+from core.security import hash_password, verify_password, create_access_token
+from core.config import ACCESS_TOKEN_EXPIRE_HOURS, APP_ENV
 from dal import user_dal
-from logging_config import get_logger
-from ws_manager import ConnectionManager
+from core.logging import get_logger
+from infrastructure.websocket import ConnectionManager
 import schemas
 
 logger = get_logger("services.auth")
@@ -41,7 +41,7 @@ def logout(username: str, mgr: ConnectionManager, token: str) -> dict:
     mgr.mark_logged_out(username)
     # Blacklist the token in Redis so it can't be reused
     try:
-        from redis_client import get_redis
+        from infrastructure.redis import get_redis
         r = get_redis()
         r.setex(f"blacklist:{token}", ACCESS_TOKEN_EXPIRE_HOURS * 3600, "1")
     except Exception:

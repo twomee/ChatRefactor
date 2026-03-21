@@ -15,9 +15,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import models
-from database import Base
-from auth import hash_password
-from kafka_topics import TOPIC_MESSAGES, TOPIC_PRIVATE
+from core.database import Base
+from core.security import hash_password
+from infrastructure.kafka.topics import TOPIC_MESSAGES, TOPIC_PRIVATE
 
 test_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
@@ -64,7 +64,7 @@ def recipient(db):
 
 @pytest.fixture()
 def consumer():
-    from kafka_consumers import MessagePersistenceConsumer
+    from infrastructure.kafka.consumers import MessagePersistenceConsumer
     return MessagePersistenceConsumer()
 
 
@@ -162,7 +162,7 @@ def test_persist_message_without_timestamp(db, room, sender, consumer):
 
 def test_process_dispatches_room_message(db, room, sender, consumer, monkeypatch):
     """_process() should route TOPIC_MESSAGES to _persist_room_message via SessionLocal."""
-    monkeypatch.setattr("database.SessionLocal", lambda: db)
+    monkeypatch.setattr("core.database.SessionLocal", lambda: db)
 
     consumer._process(TOPIC_MESSAGES, {
         "msg_id": "dispatch-test",
@@ -180,7 +180,7 @@ def test_process_dispatches_room_message(db, room, sender, consumer, monkeypatch
 
 def test_process_dispatches_private_message(db, sender, recipient, consumer, monkeypatch):
     """_process() should route TOPIC_PRIVATE to _persist_private_message via SessionLocal."""
-    monkeypatch.setattr("database.SessionLocal", lambda: db)
+    monkeypatch.setattr("core.database.SessionLocal", lambda: db)
 
     consumer._process(TOPIC_PRIVATE, {
         "msg_id": "dispatch-pm-test",

@@ -1,7 +1,7 @@
-# logging_config.py — Structured logging setup using structlog
+# core/logging.py — Structured logging setup using structlog
 import logging
 import structlog
-from config import APP_ENV
+from core.config import APP_ENV
 
 
 def setup_logging():

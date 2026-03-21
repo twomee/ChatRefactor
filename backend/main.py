@@ -2,26 +2,26 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from alembic.config import Config as AlembicConfig
 from alembic import command as alembic_command
 
-from auth import hash_password
-from config import ADMIN_USERNAME, ADMIN_PASSWORD, CORS_ORIGINS, APP_ENV, SECRET_KEY
+from core.security import hash_password
+from core.config import ADMIN_USERNAME, ADMIN_PASSWORD, CORS_ORIGINS, APP_ENV, SECRET_KEY
 from dal import user_dal, room_dal
-from database import engine
-from logging_config import setup_logging, get_logger
-from rate_limit import limiter
+from core.database import engine
+from core.logging import setup_logging, get_logger
+from middleware.rate_limit import limiter
+from middleware.security_headers import SecurityHeadersMiddleware
 from routers import auth, rooms, files, admin, websocket, pm, messages
-from ws_manager import manager
+from infrastructure.websocket import manager
 
 setup_logging()
 logger = get_logger("main")
@@ -73,9 +73,9 @@ async def lifespan(app):
         logger.warning("redis_subscriber_failed_to_start")
 
     # Start Kafka producer + topics + consumer (gracefully degrades if Kafka unavailable)
-    from kafka_client import start_producer, stop_producer
-    from kafka_topics import ensure_topics
-    from kafka_consumers import MessagePersistenceConsumer
+    from infrastructure.kafka.producer import start_producer, stop_producer
+    from infrastructure.kafka.topics import ensure_topics
+    from infrastructure.kafka.consumers import MessagePersistenceConsumer
 
     await start_producer()
     await ensure_topics()
@@ -124,26 +124,6 @@ app = FastAPI(title="cHATBOX API", version="2.0.0", lifespan=lifespan)
 
 
 # ── Security headers middleware ──────────────────────────────────────
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Add security headers to all HTTP responses.
-    These headers defend against clickjacking, MIME sniffing, and XSS."""
-
-    async def dispatch(self, request: Request, call_next):
-        response: Response = await call_next(request)
-        # Prevent browser from MIME-sniffing content type
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        # Prevent page from being embedded in iframes (clickjacking defense)
-        response.headers["X-Frame-Options"] = "DENY"
-        # Disable the XSS auditor (modern browsers) — CSP is the real defense
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        # Prevent referrer leaks
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        # Only allow HTTPS connections in production
-        if APP_ENV == "prod":
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        return response
-
-
 app.add_middleware(SecurityHeadersMiddleware)
 
 
@@ -191,7 +171,7 @@ def ready():
         checks["database"] = str(e)
 
     try:
-        from redis_client import get_redis
+        from infrastructure.redis import get_redis
         get_redis().ping()
         checks["redis"] = "ok"
     except Exception as e:
@@ -199,7 +179,7 @@ def ready():
 
     # Kafka is optional — report status but don't gate readiness on it
     try:
-        from kafka_client import is_kafka_available
+        from infrastructure.kafka.producer import is_kafka_available
         checks["kafka"] = "ok" if is_kafka_available() else "degraded (sync fallback)"
     except Exception as e:
         checks["kafka"] = f"degraded: {e}"

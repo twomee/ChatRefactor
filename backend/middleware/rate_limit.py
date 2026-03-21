@@ -1,8 +1,8 @@
-# rate_limit.py — Rate limiting middleware using slowapi
+# middleware/rate_limit.py — Rate limiting middleware using slowapi
 # Enabled only in staging/prod; disabled in dev to avoid interfering with tests
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from config import REDIS_URL, APP_ENV
+from core.config import REDIS_URL, APP_ENV
 
 
 def _get_storage_uri():

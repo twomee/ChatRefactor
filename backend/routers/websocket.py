@@ -7,15 +7,15 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlalchemy.orm import Session
 
-from auth import decode_token
+from core.security import decode_token
 from dal import room_dal
-from database import get_db
-from kafka_client import kafka_produce
-from kafka_topics import TOPIC_MESSAGES, TOPIC_PRIVATE, TOPIC_EVENTS
-from logging_config import get_logger
+from core.database import get_db
+from infrastructure.kafka.producer import kafka_produce
+from infrastructure.kafka.topics import TOPIC_MESSAGES, TOPIC_PRIVATE, TOPIC_EVENTS
+from core.logging import get_logger
 from schemas import MESSAGE_MAX_LENGTH
 from services import room_service, message_service
-from ws_manager import manager
+from infrastructure.websocket import manager
 
 router = APIRouter(tags=["websocket"])
 logger = get_logger("routers.websocket")

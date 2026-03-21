@@ -1,7 +1,7 @@
-# kafka_client.py — Kafka producer singleton with graceful degradation
+# infrastructure/kafka/producer.py — Kafka producer singleton with graceful degradation
 import json
 
-from logging_config import get_logger
+from core.logging import get_logger
 
 logger = get_logger("kafka_client")
 
@@ -15,7 +15,7 @@ async def start_producer():
     global _producer, _kafka_available
     try:
         from aiokafka import AIOKafkaProducer
-        from config import KAFKA_BOOTSTRAP_SERVERS
+        from core.config import KAFKA_BOOTSTRAP_SERVERS
 
         _producer = AIOKafkaProducer(
             bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
@@ -66,7 +66,7 @@ async def kafka_produce(topic: str, key: str, value: dict) -> bool:
 def create_consumer(group_id: str, topics: list[str]):
     """Factory: create a configured AIOKafkaConsumer for a consumer group."""
     from aiokafka import AIOKafkaConsumer
-    from config import KAFKA_BOOTSTRAP_SERVERS
+    from core.config import KAFKA_BOOTSTRAP_SERVERS
 
     return AIOKafkaConsumer(
         *topics,

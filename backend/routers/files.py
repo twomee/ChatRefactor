@@ -4,10 +4,10 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
 
-from auth import get_current_user, get_current_user_flexible
-from database import get_db
+from core.security import get_current_user, get_current_user_flexible
+from core.database import get_db
 from services import file_service
-from ws_manager import manager
+from infrastructure.websocket import manager
 import models, schemas
 
 router = APIRouter(prefix="/files", tags=["files"])

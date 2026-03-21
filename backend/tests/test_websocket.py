@@ -14,10 +14,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import models
-from database import Base, get_db
+from core.database import Base, get_db
 from main import app
-from auth import hash_password
-from config import ADMIN_USERNAME, ADMIN_PASSWORD
+from core.security import hash_password
+from core.config import ADMIN_USERNAME, ADMIN_PASSWORD
 
 test_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)

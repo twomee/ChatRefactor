@@ -2,11 +2,11 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from auth import hash_password
-from config import ADMIN_USERNAME, ADMIN_PASSWORD, APP_ENV
+from core.security import hash_password
+from core.config import ADMIN_USERNAME, ADMIN_PASSWORD, APP_ENV
 from dal import user_dal, room_dal, message_dal
-from logging_config import get_logger
-from ws_manager import ConnectionManager
+from core.logging import get_logger
+from infrastructure.websocket import ConnectionManager
 
 logger = get_logger("services.admin")
 

@@ -292,7 +292,7 @@ The backend rate-limits registration (5/min) and login (10/min) per IP. Load tes
 
 1. **Pre-provisioning**: All fake users are created once **before** tests start via `UserPool`
 2. **Token caching**: JWT tokens are cached in memory and reused throughout the entire test run
-3. **Dev mode**: Rate limiting is disabled when `APP_ENV=dev` (see `backend/rate_limit.py`)
+3. **Dev mode**: Rate limiting is disabled when `APP_ENV=dev` (see `backend/middleware/rate_limit.py`)
 
 For staging/production testing, provision users before enabling rate limits, or add a load-test-specific exemption.
 
@@ -324,5 +324,5 @@ After a run, check `reports/` for:
 | **WS round-trip > 100ms** | Message relay is bottlenecked | Redis pub/sub health, Kafka consumer lag |
 | **Error rate > 1%** | Server is overwhelmed | Connection pool exhaustion, worker timeouts, Gunicorn worker count |
 | **WS connect fails > 5%** | Too many concurrent connections | Gunicorn worker capacity, OS file descriptor limits |
-| **Memory grows over time** | Memory leak | WebSocket connection cleanup in `ws_manager.py`, unclosed DB sessions |
+| **Memory grows over time** | Memory leak | WebSocket connection cleanup in `infrastructure/websocket.py`, unclosed DB sessions |
 | **p95 spikes then recovers** | Garbage collection pauses | Normal in Python — verify it recovers within seconds |

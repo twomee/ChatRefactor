@@ -1,6 +1,6 @@
-# redis_client.py — Redis connection pool (singleton)
+# infrastructure/redis.py — Redis connection pool (singleton)
 import redis
-from config import REDIS_URL
+from core.config import REDIS_URL
 
 redis_pool = redis.ConnectionPool.from_url(REDIS_URL, decode_responses=True)
 

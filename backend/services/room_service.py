@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from dal import user_dal, room_dal
-from ws_manager import ConnectionManager
+from infrastructure.websocket import ConnectionManager, manager as _ws_manager
 
 
 def _require_user(db: Session, username: str):
@@ -38,6 +38,15 @@ def get_admins_in_room(room_id: int, db: Session, users_in_room: list[str]) -> l
 def get_muted_in_room(room_id: int, db: Session, users_in_room: list[str]) -> list[str]:
     """Filter connected users to those who are muted in this room."""
     return [u for u in users_in_room if is_muted_in_room(u, room_id, db)]
+
+
+# ── Broadcast helpers ─────────────────────────────────────────────────
+
+async def broadcast_room_list(db: Session) -> None:
+    """Push the current room list to all connected lobby sockets."""
+    rooms = list_active_rooms(db)
+    data = [{"id": r.id, "name": r.name, "is_active": r.is_active} for r in rooms]
+    await _ws_manager.broadcast_all({"type": "room_list_updated", "rooms": data})
 
 
 # ── Room CRUD (used by rooms router) ─────────────────────────────────

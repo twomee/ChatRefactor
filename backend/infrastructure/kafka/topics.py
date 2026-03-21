@@ -1,5 +1,5 @@
-# kafka_topics.py — Idempotent topic creation on startup
-from logging_config import get_logger
+# infrastructure/kafka/topics.py — Idempotent topic creation on startup
+from core.logging import get_logger
 
 logger = get_logger("kafka_topics")
 
@@ -22,7 +22,7 @@ async def ensure_topics():
     """Create Kafka topics if they don't exist. Idempotent — safe to call on every startup."""
     try:
         from aiokafka.admin import AIOKafkaAdminClient, NewTopic
-        from config import KAFKA_BOOTSTRAP_SERVERS
+        from core.config import KAFKA_BOOTSTRAP_SERVERS
 
         admin = AIOKafkaAdminClient(bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS)
         await admin.start()
