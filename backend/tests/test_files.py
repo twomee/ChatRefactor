@@ -47,7 +47,7 @@ def _use_test_db():
     yield
 
 
-def _token(username="file_user", password="pw"):
+def _token(username="file_user", password="password123"):
     client.post("/auth/register", json={"username": username, "password": password})
     return client.post("/auth/login", json={"username": username, "password": password}).json()["access_token"]
 

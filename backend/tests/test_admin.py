@@ -51,7 +51,7 @@ def _admin_token():
     return resp.json()["access_token"]
 
 
-def _user_token(username="regular_user", password="pw"):
+def _user_token(username="regular_user", password="password123"):
     client.post("/auth/register", json={"username": username, "password": password})
     return client.post("/auth/login", json={"username": username, "password": password}).json()["access_token"]
 
@@ -175,7 +175,7 @@ def test_reset_db_removes_regular_users():
     _user_token("todelete2")
     client.delete("/admin/db", headers={"Authorization": f"Bearer {token}"})
     # Regular users should not be able to login anymore
-    resp = client.post("/auth/login", json={"username": "todelete1", "password": "pw"})
+    resp = client.post("/auth/login", json={"username": "todelete1", "password": "password123"})
     assert resp.status_code == 401
 
 
@@ -198,7 +198,7 @@ def test_promote_user_returns_200_with_message():
     message explaining the result.
     """
     token = _admin_token()
-    client.post("/auth/register", json={"username": "promoteme", "password": "pw"})
+    client.post("/auth/register", json={"username": "promoteme", "password": "password123"})
     resp = client.post("/admin/promote?username=promoteme", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     assert "message" in resp.json()
