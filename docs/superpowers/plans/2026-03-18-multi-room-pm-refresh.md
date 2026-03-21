@@ -19,7 +19,7 @@
 ### Task 1.1: Fix kicked_users — change Set to Dict and add early-return guard in disconnect handler
 
 **Files:**
-- Modify: `backend/ws_manager.py`
+- Modify: `backend/infrastructure/websocket.py`
 - Modify: `backend/routers/websocket.py`
 - Test: `backend/tests/test_websocket.py`
 
@@ -101,9 +101,9 @@ cd /home/ido/Desktop/Chat-Project-Final/backend && python -m pytest tests/test_w
 
 Expected: FAIL (room_b receives a spurious `user_left` event)
 
-- [ ] **Step 3: Change kicked_users to Dict[str, int] in ws_manager.py**
+- [ ] **Step 3: Change kicked_users to Dict[str, int] in infrastructure/websocket.py**
 
-In `backend/ws_manager.py`, change line 26:
+In `backend/infrastructure/websocket.py`, change line 26:
 
 ```python
 # Old:
@@ -113,7 +113,7 @@ self.kicked_users: Set[str] = set()
 self.kicked_users: Dict[str, int] = {}
 ```
 
-Also update the import at the top to include `Dict` (already there). No other changes to ws_manager.py.
+Also update the import at the top to include `Dict` (already there). No other changes to infrastructure/websocket.py.
 
 - [ ] **Step 4: Update kick handler in websocket.py to set the count**
 
@@ -208,7 +208,7 @@ Expected: 88 tests PASS (87 existing + 1 new)
 - [ ] **Step 8: Commit**
 
 ```bash
-cd /home/ido/Desktop/Chat-Project-Final && git add backend/ws_manager.py backend/routers/websocket.py backend/tests/test_websocket.py
+cd /home/ido/Desktop/Chat-Project-Final && git add backend/infrastructure/websocket.py backend/routers/websocket.py backend/tests/test_websocket.py
 git commit -m "fix: kicked_users Dict + disconnect early-return prevents spurious user_left in other rooms"
 ```
 

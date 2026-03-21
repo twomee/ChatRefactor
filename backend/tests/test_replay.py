@@ -13,8 +13,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import models
-from database import Base, get_db
-from auth import hash_password, create_access_token
+from core.database import Base, get_db
+from core.security import hash_password, create_access_token
 from main import app
 
 test_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)

@@ -1,11 +1,11 @@
-# ws_manager.py
+# infrastructure/websocket.py
 import asyncio
 import json
 
 from fastapi import WebSocket
 from typing import Dict, List, Set
 
-from logging_config import get_logger
+from core.logging import get_logger
 
 logger = get_logger("ws_manager")
 
@@ -39,7 +39,7 @@ class ConnectionManager:
         if self._redis_available is False:
             return None
         try:
-            from redis_client import get_redis
+            from infrastructure.redis import get_redis
             r = get_redis()
             r.ping()
             self._redis_available = True
@@ -195,7 +195,7 @@ class ConnectionManager:
     async def start_subscriber(self):
         """Subscribe to Redis channels and relay messages to local WebSockets."""
         import redis.asyncio as aioredis
-        from config import REDIS_URL
+        from core.config import REDIS_URL
 
         r = aioredis.from_url(REDIS_URL, decode_responses=True)
         pubsub = r.pubsub()

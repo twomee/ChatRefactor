@@ -11,10 +11,10 @@ from sqlalchemy.pool import StaticPool
 from fastapi import HTTPException
 
 import models
-from database import Base
-from auth import hash_password
+from core.database import Base
+from core.security import hash_password
 from services import room_service
-from ws_manager import ConnectionManager
+from infrastructure.websocket import ConnectionManager
 
 test_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)

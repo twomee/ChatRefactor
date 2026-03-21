@@ -4,8 +4,8 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from auth import get_current_user
-from ws_manager import manager
+from core.security import get_current_user
+from infrastructure.websocket import manager
 import models
 
 router = APIRouter(prefix="/pm", tags=["pm"])

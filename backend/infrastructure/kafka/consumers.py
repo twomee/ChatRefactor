@@ -1,4 +1,4 @@
-# kafka_consumers.py — Kafka consumer for async message persistence
+# infrastructure/kafka/consumers.py — Kafka consumer for async message persistence
 #
 # Architecture: The WebSocket handler produces messages to Kafka for durability.
 # This consumer reads them and persists to PostgreSQL asynchronously, decoupling
@@ -12,9 +12,9 @@
 import asyncio
 from datetime import datetime, timezone
 
-from logging_config import get_logger
-from kafka_client import create_consumer, kafka_produce
-from kafka_topics import TOPIC_MESSAGES, TOPIC_PRIVATE, TOPIC_DLQ
+from core.logging import get_logger
+from infrastructure.kafka.producer import create_consumer, kafka_produce
+from infrastructure.kafka.topics import TOPIC_MESSAGES, TOPIC_PRIVATE, TOPIC_DLQ
 
 logger = get_logger("kafka_consumers")
 
@@ -110,7 +110,7 @@ class MessagePersistenceConsumer:
         Uses a fresh session per message to avoid long-lived transactions.
         Idempotent: skips if message_id already exists.
         """
-        from database import SessionLocal
+        from core.database import SessionLocal
         from dal import message_dal, user_dal
 
         db = SessionLocal()
