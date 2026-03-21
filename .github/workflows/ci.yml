@@ -51,7 +51,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run tests
+      - name: Run tests with coverage
         env:
           APP_ENV: test
           SECRET_KEY: test-secret-key-for-ci-only
@@ -60,7 +60,7 @@ jobs:
           DATABASE_URL: sqlite:///./test.db
           REDIS_URL: redis://localhost:6379/0
           KAFKA_BOOTSTRAP_SERVERS: localhost:29092
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/ -v --tb=short --cov=. --cov-report=term-missing --cov-fail-under=50
 
   frontend-lint:
     name: Frontend Lint
