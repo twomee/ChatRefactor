@@ -4,9 +4,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+import models
 from core.security import get_current_user
 from infrastructure.websocket import manager
-import models
 
 router = APIRouter(prefix="/pm", tags=["pm"])
 
@@ -29,11 +29,14 @@ async def send_pm(
         raise HTTPException(404, "User is not online")
 
     msg_id = str(uuid.uuid4())
-    await manager.send_personal(body.to, {
-        "type": "private_message",
-        "from": current_user.username,
-        "to": body.to,
-        "text": body.text,
-        "msg_id": msg_id,
-    })
+    await manager.send_personal(
+        body.to,
+        {
+            "type": "private_message",
+            "from": current_user.username,
+            "to": body.to,
+            "text": body.text,
+            "msg_id": msg_id,
+        },
+    )
     return {"msg_id": msg_id, "from": current_user.username, "to": body.to, "text": body.text}

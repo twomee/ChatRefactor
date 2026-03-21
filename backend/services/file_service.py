@@ -2,14 +2,14 @@
 import uuid
 from pathlib import Path
 
-from fastapi import UploadFile, HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from core.config import UPLOAD_DIR, MAX_FILE_SIZE_BYTES, ALLOWED_EXTENSIONS
-from dal import file_dal
-from core.logging import get_logger
 import models
 import schemas
+from core.config import ALLOWED_EXTENSIONS, MAX_FILE_SIZE_BYTES, UPLOAD_DIR
+from core.logging import get_logger
+from dal import file_dal
 
 logger = get_logger("services.file")
 
@@ -75,5 +75,6 @@ def list_room_files(db: Session, room_id: int) -> list[schemas.FileResponse]:
             sender=f.sender.username,
             room_id=f.room_id,
             uploaded_at=f.uploaded_at,
-        ) for f in files
+        )
+        for f in files
     ]

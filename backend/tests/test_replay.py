@@ -1,6 +1,6 @@
 # tests/test_replay.py — Tests for the message replay API endpoint
-import sys
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 import models
 from core.database import Base, get_db
-from core.security import hash_password, create_access_token
+from core.security import create_access_token, hash_password
 from main import app
 
 test_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
@@ -151,15 +151,27 @@ def test_replay_excludes_private_messages(db, room, user_and_token):
     base = datetime(2026, 3, 19, 14, 0, 0, tzinfo=timezone.utc)
 
     # Public message
-    db.add(models.Message(
-        message_id="pub-1", sender_id=user.id, room_id=room.id,
-        content="Public", is_private=False, sent_at=base,
-    ))
+    db.add(
+        models.Message(
+            message_id="pub-1",
+            sender_id=user.id,
+            room_id=room.id,
+            content="Public",
+            is_private=False,
+            sent_at=base,
+        )
+    )
     # Private message (same room_id but is_private=True)
-    db.add(models.Message(
-        message_id="priv-1", sender_id=user.id, room_id=room.id,
-        content="Private", is_private=True, sent_at=base + timedelta(seconds=1),
-    ))
+    db.add(
+        models.Message(
+            message_id="priv-1",
+            sender_id=user.id,
+            room_id=room.id,
+            content="Private",
+            is_private=True,
+            sent_at=base + timedelta(seconds=1),
+        )
+    )
     db.commit()
 
     since = "2026-03-19T14:00:00Z"

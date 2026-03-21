@@ -143,7 +143,7 @@ export function useMultiRoomChat() {
       default:
         break;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [dispatch, pmDispatch]);
 
   // ── Stable refs for functions that call each other ──────────────────
@@ -244,7 +244,7 @@ export function useMultiRoomChat() {
         });
       }
     }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [dispatch]);
 
   // ── Lobby connection — always-on for PM delivery ────────────────────
@@ -281,7 +281,7 @@ export function useMultiRoomChat() {
       const ws = lobbyRef.current;
       if (ws) { lobbyRef.current = null; ws.close(); }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [token]);
 
   // ── Mount: restore joined rooms from localStorage ──────────────────

@@ -4,14 +4,14 @@
 # network blip, or page refresh) without re-joining the room.
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from core.security import get_current_user
-from dal import message_dal, room_dal
-from core.database import get_db
 import models
 import schemas
+from core.database import get_db
+from core.security import get_current_user
+from dal import message_dal, room_dal
 
 router = APIRouter(prefix="/rooms", tags=["messages"])
 

@@ -1,9 +1,10 @@
 # dal/room_dal.py — Data Access Layer for Room, RoomAdmin, and MutedUser models
 from sqlalchemy.orm import Session
+
 import models
 
-
 # ── Room ──────────────────────────────────────────────────────────────
+
 
 def get_by_id(db: Session, room_id: int) -> models.Room | None:
     return db.query(models.Room).filter(models.Room.id == room_id).first()
@@ -44,11 +45,17 @@ def set_all_active(db: Session, is_active: bool) -> list[models.Room]:
 
 # ── RoomAdmin ─────────────────────────────────────────────────────────
 
+
 def is_admin(db: Session, user_id: int, room_id: int) -> bool:
-    return db.query(models.RoomAdmin).filter(
-        models.RoomAdmin.user_id == user_id,
-        models.RoomAdmin.room_id == room_id,
-    ).first() is not None
+    return (
+        db.query(models.RoomAdmin)
+        .filter(
+            models.RoomAdmin.user_id == user_id,
+            models.RoomAdmin.room_id == room_id,
+        )
+        .first()
+        is not None
+    )
 
 
 def add_admin(db: Session, user_id: int, room_id: int):
@@ -71,11 +78,17 @@ def remove_all_admins(db: Session):
 
 # ── MutedUser ─────────────────────────────────────────────────────────
 
+
 def is_muted(db: Session, user_id: int, room_id: int) -> bool:
-    return db.query(models.MutedUser).filter(
-        models.MutedUser.user_id == user_id,
-        models.MutedUser.room_id == room_id,
-    ).first() is not None
+    return (
+        db.query(models.MutedUser)
+        .filter(
+            models.MutedUser.user_id == user_id,
+            models.MutedUser.room_id == room_id,
+        )
+        .first()
+        is not None
+    )
 
 
 def add_mute(db: Session, user_id: int, room_id: int):

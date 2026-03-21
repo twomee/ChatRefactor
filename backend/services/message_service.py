@@ -1,8 +1,8 @@
 # services/message_service.py — Business logic for chat messages
 from sqlalchemy.orm import Session
 
-from dal import message_dal
 import models
+from dal import message_dal
 
 
 def save_message(db: Session, sender_id: int, room_id: int, content: str) -> models.Message:

@@ -3,7 +3,6 @@ import asyncio
 import json
 
 from fastapi import WebSocket
-from typing import Dict, List, Set
 
 from core.logging import get_logger
 
@@ -18,19 +17,19 @@ class ConnectionManager:
 
     def __init__(self):
         # room_id -> list of active WebSocket connections
-        self.rooms: Dict[int, List[WebSocket]] = {}
+        self.rooms: dict[int, list[WebSocket]] = {}
         # WebSocket -> username
-        self.socket_to_user: Dict[WebSocket, str] = {}
+        self.socket_to_user: dict[WebSocket, str] = {}
         # username -> set of WebSockets (user may be in multiple rooms simultaneously)
-        self.user_to_socket: Dict[str, Set[WebSocket]] = {}
+        self.user_to_socket: dict[str, set[WebSocket]] = {}
         # room_id -> join order list (for admin succession)
-        self.room_join_order: Dict[int, List[str]] = {}
+        self.room_join_order: dict[int, list[str]] = {}
         # usernames currently being kicked → count of remaining sockets to process
-        self.kicked_users: Dict[str, int] = {}
+        self.kicked_users: dict[str, int] = {}
         # users who have logged in via POST /auth/login (independent of WebSocket state)
-        self.logged_in_users: Set[str] = set()
+        self.logged_in_users: set[str] = set()
         # lobby WebSockets — one per user, for push updates + PM delivery
-        self.lobby_sockets: Dict[WebSocket, str] = {}  # ws -> username
+        self.lobby_sockets: dict[WebSocket, str] = {}  # ws -> username
         # Redis pub/sub (lazy-initialized)
         self._redis_available = None
 
@@ -40,6 +39,7 @@ class ConnectionManager:
             return None
         try:
             from infrastructure.redis import get_redis
+
             r = get_redis()
             r.ping()
             self._redis_available = True
@@ -71,8 +71,7 @@ class ConnectionManager:
             self.user_to_socket[username].discard(websocket)
             if not self.user_to_socket[username]:
                 del self.user_to_socket[username]
-        if username and room_id in self.room_join_order:
-            if username in self.room_join_order[room_id]:
+        if username and room_id in self.room_join_order and username in self.room_join_order[room_id]:
                 self.room_join_order[room_id].remove(username)
 
     async def broadcast(self, room_id: int, message: dict, exclude: WebSocket = None):
@@ -130,7 +129,7 @@ class ConnectionManager:
                         self.disconnect(ws, rid)
                         break
 
-    def get_users_in_room(self, room_id: int) -> List[str]:
+    def get_users_in_room(self, room_id: int) -> list[str]:
         return [self.socket_to_user[ws] for ws in self.rooms.get(room_id, []) if ws in self.socket_to_user]
 
     def get_admin_successor(self, room_id: int):
@@ -195,6 +194,7 @@ class ConnectionManager:
     async def start_subscriber(self):
         """Subscribe to Redis channels and relay messages to local WebSockets."""
         import redis.asyncio as aioredis
+
         from core.config import REDIS_URL
 
         r = aioredis.from_url(REDIS_URL, decode_responses=True)

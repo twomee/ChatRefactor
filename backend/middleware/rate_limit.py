@@ -2,7 +2,8 @@
 # Enabled only in staging/prod; disabled in dev to avoid interfering with tests
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from core.config import REDIS_URL, APP_ENV
+
+from core.config import APP_ENV, REDIS_URL
 
 
 def _get_storage_uri():

@@ -1,8 +1,8 @@
 # schemas/__init__.py
 import re
-from pydantic import BaseModel, field_validator
 from datetime import datetime
-from typing import Optional
+
+from pydantic import BaseModel, field_validator
 
 # ── Constants ─────────────────────────────────────────────────────────
 USERNAME_MIN_LENGTH = 3
@@ -67,11 +67,13 @@ class UserLogin(BaseModel):
             raise ValueError("Invalid password")
         return v
 
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     username: str
     is_global_admin: bool
+
 
 class RoomCreate(BaseModel):
     name: str
@@ -88,6 +90,7 @@ class RoomCreate(BaseModel):
             raise ValueError("Room name may only contain letters, numbers, spaces, underscores, and hyphens")
         return v
 
+
 class RoomResponse(BaseModel):
     id: int
     name: str
@@ -95,6 +98,7 @@ class RoomResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class FileResponse(BaseModel):
     id: int
@@ -110,9 +114,9 @@ class FileResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     id: int
-    message_id: Optional[str] = None
+    message_id: str | None = None
     sender: str
-    room_id: Optional[int] = None
+    room_id: int | None = None
     content: str
     is_private: bool
     sent_at: datetime

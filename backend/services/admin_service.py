@@ -2,10 +2,10 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from core.security import hash_password
-from core.config import ADMIN_USERNAME, ADMIN_PASSWORD, APP_ENV
-from dal import user_dal, room_dal, message_dal
+from core.config import ADMIN_PASSWORD, ADMIN_USERNAME, APP_ENV
 from core.logging import get_logger
+from core.security import hash_password
+from dal import message_dal, room_dal, user_dal
 from infrastructure.websocket import ConnectionManager
 
 logger = get_logger("services.admin")
@@ -26,7 +26,7 @@ async def close_all_rooms(db: Session, mgr: ConnectionManager):
     logger.info("all_rooms_closed", count=len(rooms))
     for room in rooms:
         await mgr.broadcast(room.id, {"type": "chat_closed", "detail": "Admin has closed the chat"})
-    for room_id, sockets in list(mgr.rooms.items()):
+    for _room_id, sockets in list(mgr.rooms.items()):
         for ws in list(sockets):
             try:
                 await ws.close()
@@ -47,10 +47,13 @@ async def close_room(db: Session, room_id: int, mgr: ConnectionManager):
         raise HTTPException(404, "Room not found")
     room_dal.set_active(db, room, False)
     logger.info("room_closed", room_id=room_id, room_name=room.name)
-    await mgr.broadcast(room_id, {
-        "type": "chat_closed",
-        "detail": f"Room '{room.name}' has been closed by admin",
-    })
+    await mgr.broadcast(
+        room_id,
+        {
+            "type": "chat_closed",
+            "detail": f"Room '{room.name}' has been closed by admin",
+        },
+    )
     for ws in list(mgr.rooms.get(room_id, [])):
         try:
             await ws.close()
@@ -91,18 +94,20 @@ async def promote_user_in_connected_rooms(db: Session, username: str, mgr: Conne
 
     rooms_promoted = []
     for room_id in list(mgr.rooms.keys()):
-        if mgr.is_user_in_room(username, room_id):
-            if not room_dal.is_admin(db, user.id, room_id):
+        if mgr.is_user_in_room(username, room_id) and not room_dal.is_admin(db, user.id, room_id):
                 room_dal.add_admin(db, user.id, room_id)
                 rooms_promoted.append(room_id)
 
     for room_id in rooms_promoted:
         await mgr.broadcast(room_id, {"type": "new_admin", "username": username, "room_id": room_id})
-        await mgr.broadcast(room_id, {
-            "type": "system",
-            "text": f"{username} has been promoted to admin by the global admin",
-            "room_id": room_id,
-        })
+        await mgr.broadcast(
+            room_id,
+            {
+                "type": "system",
+                "text": f"{username} has been promoted to admin by the global admin",
+                "room_id": room_id,
+            },
+        )
 
     if rooms_promoted:
         logger.info("user_promoted_globally", username=username, rooms=rooms_promoted)

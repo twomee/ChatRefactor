@@ -1,0 +1,40 @@
+# Ruff linter + formatter configuration
+# Docs: https://docs.astral.sh/ruff/
+
+target-version = "py311"
+line-length = 120
+
+# Exclude auto-generated files
+exclude = ["alembic/versions/*"]
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort (import sorting)
+    "B",    # flake8-bugbear (common bugs)
+    "S",    # flake8-bandit (security)
+    "UP",   # pyupgrade (modern Python)
+    "SIM",  # flake8-simplify
+    "RUF",  # Ruff-specific rules
+]
+
+ignore = [
+    "S101",   # allow assert in tests
+    "S105",   # allow hardcoded password variable names (we use env vars)
+    "S106",   # allow hardcoded password in function args
+    "B008",   # allow Depends() in function defaults (FastAPI pattern)
+    "E712",   # allow == True/False comparisons (required for SQLAlchemy column filters)
+    "SIM105", # allow try/except/pass (sometimes clearer than contextlib.suppress)
+    "S110",   # allow try/except/pass (overlaps with SIM105)
+    "UP017",  # keep datetime.timezone.utc (UTC requires Python 3.11+, local dev uses 3.10)
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["S"]       # disable security warnings in test files
+"dal/*" = ["E712"]      # SQLAlchemy filter patterns use == True/False
+
+[format]
+quote-style = "double"
+indent-style = "space"

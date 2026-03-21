@@ -1,7 +1,9 @@
 # models/__init__.py
 from datetime import datetime
+
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
+
 from core.database import Base
 
 
@@ -31,6 +33,7 @@ class Room(Base):
 class RoomAdmin(Base):
     """A row = user is admin in that room. Delete row to demote.
     Replaces the in-memory admins list + text file from chatServer.py."""
+
     __tablename__ = "room_admins"
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -41,6 +44,7 @@ class RoomAdmin(Base):
 class MutedUser(Base):
     """A row = user is muted in that room. Delete row to unmute.
     Replaces the in-memory _usersToMute list in chatServer.py."""
+
     __tablename__ = "muted_users"
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -50,6 +54,7 @@ class MutedUser(Base):
 
 class File(Base):
     """Replaces File.py + Files.py. Files are stored on disk; metadata here."""
+
     __tablename__ = "files"
     id = Column(Integer, primary_key=True)
     original_name = Column(String(256), nullable=False)
@@ -65,11 +70,12 @@ class File(Base):
 
 class Message(Base):
     """New — the original app had no message persistence. Optional for v1."""
+
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
     message_id = Column(String(36), unique=True, nullable=True, index=True)  # UUID for Kafka idempotent writes
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True)   # null = private message
+    room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True)  # null = private message
     recipient_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # set for private messages
     content = Column(Text, nullable=False)
     is_private = Column(Boolean, default=False, nullable=False)

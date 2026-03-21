@@ -1,6 +1,7 @@
 # tests/test_admin.py — comprehensive admin route tests
-import sys
 import os
+import sys
+
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -11,10 +12,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import models
+from core.config import ADMIN_PASSWORD, ADMIN_USERNAME
 from core.database import Base, get_db
-from main import app
 from core.security import hash_password
-from core.config import ADMIN_USERNAME, ADMIN_PASSWORD
+from main import app
 
 test_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
@@ -58,6 +59,7 @@ def _user_token(username="regular_user", password="password123"):
 
 # ── Access control ─────────────────────────────────────────────────────────────
 
+
 def test_admin_endpoints_require_admin_token():
     token = _user_token("nonadmin1")
     for method, url in [
@@ -79,6 +81,7 @@ def test_admin_endpoints_reject_no_token():
 
 # ── GET /admin/users ──────────────────────────────────────────────────────────
 
+
 def test_get_connected_users_returns_dict():
     token = _admin_token()
     resp = client.get("/admin/users", headers={"Authorization": f"Bearer {token}"})
@@ -87,6 +90,7 @@ def test_get_connected_users_returns_dict():
 
 
 # ── GET /admin/rooms ──────────────────────────────────────────────────────────
+
 
 def test_get_rooms_returns_list_with_seeded_rooms():
     token = _admin_token()
@@ -106,6 +110,7 @@ def test_get_rooms_includes_is_active_field():
 
 # ── POST /admin/chat/close and /admin/chat/open ───────────────────────────────
 
+
 def test_close_all_rooms_sets_is_active_false():
     token = _admin_token()
     client.post("/admin/chat/close", headers={"Authorization": f"Bearer {token}"})
@@ -122,6 +127,7 @@ def test_open_all_rooms_sets_is_active_true():
 
 
 # ── POST /admin/rooms/{id}/close and /admin/rooms/{id}/open ──────────────────
+
 
 def test_close_specific_room_only_affects_that_room():
     token = _admin_token()
@@ -169,6 +175,7 @@ def test_open_nonexistent_room_returns_404():
 
 # ── DELETE /admin/db ──────────────────────────────────────────────────────────
 
+
 def test_reset_db_removes_regular_users():
     token = _admin_token()
     _user_token("todelete1")
@@ -189,6 +196,7 @@ def test_reset_db_restores_admin_user():
 
 
 # ── POST /admin/promote ───────────────────────────────────────────────────────
+
 
 def test_promote_user_returns_200_with_message():
     """Promote endpoint always returns 200 with a message key.
@@ -211,6 +219,7 @@ def test_promote_nonexistent_user_returns_404():
 
 
 # ── POST /rooms/ ──────────────────────────────────────────────────────────────
+
 
 def test_admin_can_create_room():
     token = _admin_token()

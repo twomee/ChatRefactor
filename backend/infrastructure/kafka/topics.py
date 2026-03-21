@@ -5,10 +5,10 @@ logger = get_logger("kafka_topics")
 
 # Topic configuration: {name: {partitions, retention_ms}}
 TOPIC_CONFIG = {
-    "chat.messages": {"partitions": 6, "retention_ms": 7 * 24 * 60 * 60 * 1000},    # 7 days
-    "chat.private":  {"partitions": 3, "retention_ms": 7 * 24 * 60 * 60 * 1000},    # 7 days
-    "chat.events":   {"partitions": 3, "retention_ms": 3 * 24 * 60 * 60 * 1000},    # 3 days
-    "chat.dlq":      {"partitions": 1, "retention_ms": 30 * 24 * 60 * 60 * 1000},   # 30 days
+    "chat.messages": {"partitions": 6, "retention_ms": 7 * 24 * 60 * 60 * 1000},  # 7 days
+    "chat.private": {"partitions": 3, "retention_ms": 7 * 24 * 60 * 60 * 1000},  # 7 days
+    "chat.events": {"partitions": 3, "retention_ms": 3 * 24 * 60 * 60 * 1000},  # 3 days
+    "chat.dlq": {"partitions": 1, "retention_ms": 30 * 24 * 60 * 60 * 1000},  # 30 days
 }
 
 # Convenience constants for use in producers/consumers
@@ -22,6 +22,7 @@ async def ensure_topics():
     """Create Kafka topics if they don't exist. Idempotent — safe to call on every startup."""
     try:
         from aiokafka.admin import AIOKafkaAdminClient, NewTopic
+
         from core.config import KAFKA_BOOTSTRAP_SERVERS
 
         admin = AIOKafkaAdminClient(bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS)
@@ -33,12 +34,14 @@ async def ensure_topics():
 
             for name, cfg in TOPIC_CONFIG.items():
                 if name not in existing:
-                    to_create.append(NewTopic(
-                        name=name,
-                        num_partitions=cfg["partitions"],
-                        replication_factor=1,
-                        topic_configs={"retention.ms": str(cfg["retention_ms"])},
-                    ))
+                    to_create.append(
+                        NewTopic(
+                            name=name,
+                            num_partitions=cfg["partitions"],
+                            replication_factor=1,
+                            topic_configs={"retention.ms": str(cfg["retention_ms"])},
+                        )
+                    )
 
             if to_create:
                 await admin.create_topics(to_create)

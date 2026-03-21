@@ -24,6 +24,8 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Context files export Provider + hook — this is standard React pattern
+      'react-refresh/only-export-components': ['warn', { allowExportNames: ['useAuth', 'useChat', 'usePM', 'ChatConnectionLayer'] }],
     },
   },
 ])

@@ -1,6 +1,7 @@
 # tests/test_auth.py — comprehensive auth route tests
-import sys
 import os
+import sys
+
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -37,6 +38,7 @@ def _use_test_db():
 
 # ── Register ──────────────────────────────────────────────────────────────────
 
+
 def test_register_returns_201():
     resp = client.post("/auth/register", json={"username": "alice", "password": "password123"})
     assert resp.status_code == 201
@@ -65,6 +67,7 @@ def test_register_missing_fields_returns_422():
 
 
 # ── Login ─────────────────────────────────────────────────────────────────────
+
 
 def test_login_returns_token_and_username():
     client.post("/auth/register", json={"username": "eve", "password": "secretpass1"})
@@ -99,6 +102,7 @@ def test_login_missing_fields_returns_422():
 
 
 # ── Token / protected endpoints ───────────────────────────────────────────────
+
 
 def test_access_protected_endpoint_without_token_returns_401():
     resp = client.get("/rooms/")
