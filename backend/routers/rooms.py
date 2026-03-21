@@ -46,7 +46,7 @@ def get_room_users(
 ):
     room_service.get_room_or_404(db, room_id)
     users = ws_manager.get_users_in_room(room_id)
-    etag = f'"{hashlib.md5(",".join(sorted(users)).encode()).hexdigest()}"'
+    etag = f'"{hashlib.sha256(",".join(sorted(users)).encode()).hexdigest()[:16]}"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304)
     return JSONResponse({"users": users}, headers={"ETag": etag})

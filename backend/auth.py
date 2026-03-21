@@ -9,10 +9,13 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
-from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_HOURS
+from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_HOURS, APP_ENV
 from dal import user_dal
 from database import get_db
+from logging_config import get_logger
 import models
+
+_auth_logger = get_logger("auth")
 
 ph = PasswordHasher()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -47,7 +50,15 @@ def decode_token(token: str, db: Session) -> Optional[models.User]:
             if get_redis().get(f"blacklist:{token}"):
                 return None
         except Exception:
-            pass  # Redis unavailable — skip blacklist check
+            # SECURITY: Redis is unavailable — token blacklist cannot be checked.
+            # In production, fail closed (reject token) to prevent revoked tokens from being reused.
+            # In dev/staging, fail open (allow token) so developers aren't blocked by Redis issues.
+            if APP_ENV == "prod":
+                _auth_logger.error("redis_blacklist_unavailable",
+                                   msg="Rejecting token — cannot verify blacklist in production")
+                return None
+            _auth_logger.warning("redis_blacklist_unavailable",
+                                 msg="Redis down — skipping blacklist check (non-production)")
         sub = payload.get("sub")
         if sub is None:
             return None

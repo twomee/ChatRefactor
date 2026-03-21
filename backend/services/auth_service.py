@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from auth import hash_password, verify_password, create_access_token
-from config import ACCESS_TOKEN_EXPIRE_HOURS
+from config import ACCESS_TOKEN_EXPIRE_HOURS, APP_ENV
 from dal import user_dal
 from logging_config import get_logger
 from ws_manager import ConnectionManager
@@ -45,7 +45,16 @@ def logout(username: str, mgr: ConnectionManager, token: str) -> dict:
         r = get_redis()
         r.setex(f"blacklist:{token}", ACCESS_TOKEN_EXPIRE_HOURS * 3600, "1")
     except Exception:
-        pass  # Redis unavailable — token remains valid until expiry
+        # SECURITY: If Redis is down, we can't revoke the token.
+        # Log at error level so ops teams are alerted.
+        logger.error("token_blacklist_failed",
+                     username=username,
+                     msg="Redis unavailable — token cannot be revoked until expiry")
+        if APP_ENV == "prod":
+            raise HTTPException(
+                status_code=503,
+                detail="Logout partially failed — please try again or change your password",
+            )
     logger.info("user_logged_out", username=username)
     return {"message": "Logged out"}
 

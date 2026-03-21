@@ -52,7 +52,7 @@ def _use_test_db():
         yield
 
 
-def _login(username, password="pw123"):
+def _login(username, password="password123"):
     _client_ctx.post("/auth/register", json={"username": username, "password": password})
     return _client_ctx.post("/auth/login", json={"username": username, "password": password}).json()["access_token"]
 

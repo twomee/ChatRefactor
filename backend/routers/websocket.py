@@ -1,5 +1,7 @@
 # routers/websocket.py — WebSocket controller for real-time chat
+import time
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
@@ -11,11 +13,34 @@ from database import get_db
 from kafka_client import kafka_produce
 from kafka_topics import TOPIC_MESSAGES, TOPIC_PRIVATE, TOPIC_EVENTS
 from logging_config import get_logger
+from schemas import MESSAGE_MAX_LENGTH
 from services import room_service, message_service
 from ws_manager import manager
 
 router = APIRouter(tags=["websocket"])
 logger = get_logger("routers.websocket")
+
+# ── WebSocket rate limiting ───────────────────────────────────────────
+# Sliding window: max messages per user within a time window
+WS_RATE_LIMIT_MAX_MESSAGES = 30   # max messages per window
+WS_RATE_LIMIT_WINDOW_SECONDS = 10  # window duration in seconds
+_ws_rate_buckets: dict[str, list[float]] = defaultdict(list)
+
+
+def _is_ws_rate_limited(username: str) -> bool:
+    """Check if a user has exceeded the WebSocket message rate limit.
+    Uses a sliding window algorithm — efficient and memory-safe."""
+    now = time.monotonic()
+    cutoff = now - WS_RATE_LIMIT_WINDOW_SECONDS
+    bucket = _ws_rate_buckets[username]
+    # Prune expired timestamps
+    _ws_rate_buckets[username] = [ts for ts in bucket if ts > cutoff]
+    bucket = _ws_rate_buckets[username]
+
+    if len(bucket) >= WS_RATE_LIMIT_MAX_MESSAGES:
+        return True
+    bucket.append(now)
+    return False
 
 
 def _extract_error_detail(exc: Exception) -> str:
@@ -92,6 +117,15 @@ async def websocket_endpoint(
             data = await websocket.receive_json()
             msg_type = data.get("type")
 
+            # Rate limit all message types (not just chat)
+            if msg_type in ("message", "private_message"):
+                if _is_ws_rate_limited(user.username):
+                    await websocket.send_json({
+                        "type": "error",
+                        "detail": "Rate limit exceeded. Please slow down.",
+                    })
+                    continue
+
             db.refresh(room)
             if not room.is_active:
                 await websocket.send_json({"type": "error", "detail": "Room is closed"})
@@ -139,6 +173,16 @@ async def _handle_chat_message(websocket, user, room_id, data, db):
         await websocket.send_json({"type": "error", "detail": "You are muted in this room"})
         return
     text = data.get("text", "")
+    # Validate message content
+    if not text or not text.strip():
+        await websocket.send_json({"type": "error", "detail": "Cannot send empty message"})
+        return
+    if len(text) > MESSAGE_MAX_LENGTH:
+        await websocket.send_json({
+            "type": "error",
+            "detail": f"Message too long (max {MESSAGE_MAX_LENGTH} characters)",
+        })
+        return
     msg_id = str(uuid.uuid4())
     ts = datetime.now(timezone.utc).isoformat()
 
@@ -171,8 +215,14 @@ async def _handle_private_message(websocket, user, data):
         await websocket.send_json({"type": "error", "detail": "Invalid private message target"})
         return
     text = data.get("text", "")
-    if not text.strip():
+    if not text or not text.strip():
         await websocket.send_json({"type": "error", "detail": "Cannot send empty private message"})
+        return
+    if len(text) > MESSAGE_MAX_LENGTH:
+        await websocket.send_json({
+            "type": "error",
+            "detail": f"Message too long (max {MESSAGE_MAX_LENGTH} characters)",
+        })
         return
     if not manager.is_user_online(target):
         await websocket.send_json({"type": "error", "detail": "User is not online"})

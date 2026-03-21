@@ -2,11 +2,12 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -14,7 +15,7 @@ from alembic.config import Config as AlembicConfig
 from alembic import command as alembic_command
 
 from auth import hash_password
-from config import ADMIN_USERNAME, ADMIN_PASSWORD, CORS_ORIGINS, APP_ENV
+from config import ADMIN_USERNAME, ADMIN_PASSWORD, CORS_ORIGINS, APP_ENV, SECRET_KEY
 from dal import user_dal, room_dal
 from database import engine
 from logging_config import setup_logging, get_logger
@@ -31,6 +32,20 @@ async def lifespan(app):
     """Startup and shutdown logic for the application."""
     # ── Startup ──────────────────────────────────────────────────────
     logger.info("app_starting", env=APP_ENV)
+
+    # ── Security warnings ────────────────────────────────────────────
+    if "change-this-in-production" in SECRET_KEY:
+        if APP_ENV in ("staging", "prod"):
+            logger.error("INSECURE_SECRET_KEY",
+                         msg="⚠️  SECRET_KEY is set to the default value! "
+                             "Set a strong SECRET_KEY via environment variable before deploying.")
+        else:
+            logger.warning("default_secret_key", msg="Using default SECRET_KEY (acceptable for dev only)")
+
+    if ADMIN_PASSWORD == "changeme" and APP_ENV in ("staging", "prod"):
+        logger.error("INSECURE_ADMIN_PASSWORD",
+                     msg="⚠️  ADMIN_PASSWORD is 'changeme'! "
+                         "Set a strong password via environment variable before deploying.")
 
     # Run Alembic migrations to ensure schema is up to date
     alembic_cfg = AlembicConfig("alembic.ini")
@@ -107,13 +122,38 @@ async def lifespan(app):
 
 app = FastAPI(title="cHATBOX API", version="2.0.0", lifespan=lifespan)
 
-# ── Middleware ────────────────────────────────────────────────────────
+
+# ── Security headers middleware ──────────────────────────────────────
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all HTTP responses.
+    These headers defend against clickjacking, MIME sniffing, and XSS."""
+
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        # Prevent browser from MIME-sniffing content type
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # Prevent page from being embedded in iframes (clickjacking defense)
+        response.headers["X-Frame-Options"] = "DENY"
+        # Disable the XSS auditor (modern browsers) — CSP is the real defense
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        # Prevent referrer leaks
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Only allow HTTPS connections in production
+        if APP_ENV == "prod":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+
+# ── CORS middleware ──────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "If-None-Match"],
 )
 
 # ── Rate limiting ────────────────────────────────────────────────────

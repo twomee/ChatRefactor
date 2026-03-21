@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from auth import hash_password
-from config import ADMIN_USERNAME, ADMIN_PASSWORD
+from config import ADMIN_USERNAME, ADMIN_PASSWORD, APP_ENV
 from dal import user_dal, room_dal, message_dal
 from logging_config import get_logger
 from ws_manager import ConnectionManager
@@ -69,7 +69,12 @@ def open_room(db: Session, room_id: int):
 
 
 def reset_database(db: Session):
-    logger.warning("database_reset_triggered")
+    # SECURITY: Only allow database reset in dev/staging — never in production
+    if APP_ENV == "prod":
+        logger.error("database_reset_blocked", reason="Attempted in production environment")
+        raise HTTPException(403, "Database reset is disabled in production")
+
+    logger.warning("database_reset_triggered", env=APP_ENV)
     room_dal.remove_all_admins(db)
     room_dal.remove_all_mutes(db)
     message_dal.delete_all(db)
