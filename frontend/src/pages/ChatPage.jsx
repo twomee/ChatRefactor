@@ -96,7 +96,7 @@ export default function ChatPage() {
 
   async function handleLogout() {
     exitAllRooms();
-    try { await authApi.logout(); } catch (_) {}
+    try { await authApi.logout(); } catch { /* best-effort logout */ }
     logout();
     navigate('/login');
   }

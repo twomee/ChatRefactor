@@ -2,6 +2,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 
+from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -10,18 +11,16 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from alembic.config import Config as AlembicConfig
 from alembic import command as alembic_command
-
-from core.security import hash_password
-from core.config import ADMIN_USERNAME, ADMIN_PASSWORD, CORS_ORIGINS, APP_ENV, SECRET_KEY
-from dal import user_dal, room_dal
+from core.config import ADMIN_PASSWORD, ADMIN_USERNAME, APP_ENV, CORS_ORIGINS, SECRET_KEY
 from core.database import engine
-from core.logging import setup_logging, get_logger
+from core.logging import get_logger, setup_logging
+from core.security import hash_password
+from dal import room_dal, user_dal
+from infrastructure.websocket import manager
 from middleware.rate_limit import limiter
 from middleware.security_headers import SecurityHeadersMiddleware
-from routers import auth, rooms, files, admin, websocket, pm, messages
-from infrastructure.websocket import manager
+from routers import admin, auth, files, messages, pm, rooms, websocket
 
 setup_logging()
 logger = get_logger("main")
@@ -36,16 +35,19 @@ async def lifespan(app):
     # ── Security warnings ────────────────────────────────────────────
     if "change-this-in-production" in SECRET_KEY:
         if APP_ENV in ("staging", "prod"):
-            logger.error("INSECURE_SECRET_KEY",
-                         msg="⚠️  SECRET_KEY is set to the default value! "
-                             "Set a strong SECRET_KEY via environment variable before deploying.")
+            logger.error(
+                "INSECURE_SECRET_KEY",
+                msg="⚠️  SECRET_KEY is set to the default value! "
+                "Set a strong SECRET_KEY via environment variable before deploying.",
+            )
         else:
             logger.warning("default_secret_key", msg="Using default SECRET_KEY (acceptable for dev only)")
 
     if ADMIN_PASSWORD == "changeme" and APP_ENV in ("staging", "prod"):
-        logger.error("INSECURE_ADMIN_PASSWORD",
-                     msg="⚠️  ADMIN_PASSWORD is 'changeme'! "
-                         "Set a strong password via environment variable before deploying.")
+        logger.error(
+            "INSECURE_ADMIN_PASSWORD",
+            msg="⚠️  ADMIN_PASSWORD is 'changeme'! Set a strong password via environment variable before deploying.",
+        )
 
     # Run Alembic migrations to ensure schema is up to date
     alembic_cfg = AlembicConfig("alembic.ini")
@@ -73,9 +75,9 @@ async def lifespan(app):
         logger.warning("redis_subscriber_failed_to_start")
 
     # Start Kafka producer + topics + consumer (gracefully degrades if Kafka unavailable)
+    from infrastructure.kafka.consumers import MessagePersistenceConsumer
     from infrastructure.kafka.producer import start_producer, stop_producer
     from infrastructure.kafka.topics import ensure_topics
-    from infrastructure.kafka.consumers import MessagePersistenceConsumer
 
     await start_producer()
     await ensure_topics()
@@ -103,7 +105,7 @@ async def lifespan(app):
             pass
 
     # Close all room WebSocket connections gracefully
-    for room_id, sockets in list(manager.rooms.items()):
+    for _room_id, sockets in list(manager.rooms.items()):
         for ws in list(sockets):
             try:
                 await ws.close(code=1001, reason="Server shutting down")
@@ -152,6 +154,7 @@ app.include_router(messages.router)
 
 # ── Health checks ────────────────────────────────────────────────────
 
+
 @app.get("/health", tags=["health"])
 def health():
     """Liveness probe: returns 200 if the process is running."""
@@ -172,6 +175,7 @@ def ready():
 
     try:
         from infrastructure.redis import get_redis
+
         get_redis().ping()
         checks["redis"] = "ok"
     except Exception as e:
@@ -180,6 +184,7 @@ def ready():
     # Kafka is optional — report status but don't gate readiness on it
     try:
         from infrastructure.kafka.producer import is_kafka_available
+
         checks["kafka"] = "ok" if is_kafka_available() else "degraded (sync fallback)"
     except Exception as e:
         checks["kafka"] = f"degraded: {e}"
@@ -195,6 +200,7 @@ def ready():
 
 
 # ── Global error handler ────────────────────────────────────────────
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

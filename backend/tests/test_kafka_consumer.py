@@ -2,8 +2,8 @@
 #
 # Tests the persistence methods directly with an in-memory SQLite DB.
 # No actual Kafka connection required.
-import sys
 import os
+import sys
 from datetime import datetime, timezone
 
 import pytest
@@ -65,6 +65,7 @@ def recipient(db):
 @pytest.fixture()
 def consumer():
     from infrastructure.kafka.consumers import MessagePersistenceConsumer
+
     return MessagePersistenceConsumer()
 
 
@@ -74,14 +75,17 @@ def consumer():
 def test_persist_room_message(db, room, sender, consumer):
     """Consumer should persist a room message to the DB."""
     ts = datetime.now(timezone.utc).isoformat()
-    consumer._persist_room_message(db, {
-        "msg_id": "test-uuid-001",
-        "sender_id": sender.id,
-        "sender": sender.username,
-        "room_id": room.id,
-        "text": "Hello from Kafka!",
-        "timestamp": ts,
-    })
+    consumer._persist_room_message(
+        db,
+        {
+            "msg_id": "test-uuid-001",
+            "sender_id": sender.id,
+            "sender": sender.username,
+            "room_id": room.id,
+            "text": "Hello from Kafka!",
+            "timestamp": ts,
+        },
+    )
 
     msg = db.query(models.Message).filter(models.Message.message_id == "test-uuid-001").first()
     assert msg is not None
@@ -113,13 +117,16 @@ def test_idempotent_room_message(db, room, sender, consumer):
 
 def test_persist_private_message(db, sender, recipient, consumer):
     """Consumer should persist a PM to the DB."""
-    consumer._persist_private_message(db, {
-        "msg_id": "pm-uuid-001",
-        "sender": sender.username,
-        "recipient": recipient.username,
-        "text": "Secret PM",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    consumer._persist_private_message(
+        db,
+        {
+            "msg_id": "pm-uuid-001",
+            "sender": sender.username,
+            "recipient": recipient.username,
+            "text": "Secret PM",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
     msg = db.query(models.Message).filter(models.Message.message_id == "pm-uuid-001").first()
     assert msg is not None
@@ -133,13 +140,16 @@ def test_persist_private_message(db, sender, recipient, consumer):
 def test_private_message_unknown_sender_raises(db, recipient, consumer):
     """Consumer should raise if the sender username doesn't exist."""
     with pytest.raises(ValueError, match="Unknown user"):
-        consumer._persist_private_message(db, {
-            "msg_id": "pm-uuid-bad",
-            "sender": "nonexistent_user",
-            "recipient": recipient.username,
-            "text": "Should fail",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        consumer._persist_private_message(
+            db,
+            {
+                "msg_id": "pm-uuid-bad",
+                "sender": "nonexistent_user",
+                "recipient": recipient.username,
+                "text": "Should fail",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
 
 # ── Edge cases ────────────────────────────────────────────────────────
@@ -147,13 +157,16 @@ def test_private_message_unknown_sender_raises(db, recipient, consumer):
 
 def test_persist_message_without_timestamp(db, room, sender, consumer):
     """Consumer should handle messages without a timestamp (uses DB default)."""
-    consumer._persist_room_message(db, {
-        "msg_id": "test-uuid-no-ts",
-        "sender_id": sender.id,
-        "sender": sender.username,
-        "room_id": room.id,
-        "text": "No timestamp",
-    })
+    consumer._persist_room_message(
+        db,
+        {
+            "msg_id": "test-uuid-no-ts",
+            "sender_id": sender.id,
+            "sender": sender.username,
+            "room_id": room.id,
+            "text": "No timestamp",
+        },
+    )
 
     msg = db.query(models.Message).filter(models.Message.message_id == "test-uuid-no-ts").first()
     assert msg is not None
@@ -164,14 +177,17 @@ def test_process_dispatches_room_message(db, room, sender, consumer, monkeypatch
     """_process() should route TOPIC_MESSAGES to _persist_room_message via SessionLocal."""
     monkeypatch.setattr("core.database.SessionLocal", lambda: db)
 
-    consumer._process(TOPIC_MESSAGES, {
-        "msg_id": "dispatch-test",
-        "sender_id": sender.id,
-        "sender": sender.username,
-        "room_id": room.id,
-        "text": "Dispatched!",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    consumer._process(
+        TOPIC_MESSAGES,
+        {
+            "msg_id": "dispatch-test",
+            "sender_id": sender.id,
+            "sender": sender.username,
+            "room_id": room.id,
+            "text": "Dispatched!",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
     msg = db.query(models.Message).filter(models.Message.message_id == "dispatch-test").first()
     assert msg is not None
@@ -182,13 +198,16 @@ def test_process_dispatches_private_message(db, sender, recipient, consumer, mon
     """_process() should route TOPIC_PRIVATE to _persist_private_message via SessionLocal."""
     monkeypatch.setattr("core.database.SessionLocal", lambda: db)
 
-    consumer._process(TOPIC_PRIVATE, {
-        "msg_id": "dispatch-pm-test",
-        "sender": sender.username,
-        "recipient": recipient.username,
-        "text": "PM dispatched!",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
+    consumer._process(
+        TOPIC_PRIVATE,
+        {
+            "msg_id": "dispatch-pm-test",
+            "sender": sender.username,
+            "recipient": recipient.username,
+            "text": "PM dispatched!",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
     msg = db.query(models.Message).filter(models.Message.message_id == "dispatch-pm-test").first()
     assert msg is not None

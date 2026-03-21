@@ -28,7 +28,7 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    loadData();
+    loadData(); // eslint-disable-line react-hooks/set-state-in-effect -- initial data fetch is intentional
     const interval = setInterval(loadData, 3000);
     return () => clearInterval(interval);
   }, [loadData]);

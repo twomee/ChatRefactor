@@ -1,6 +1,5 @@
 # core/security.py — Authentication utilities (password hashing, JWT, FastAPI dependencies)
 from datetime import datetime, timedelta
-from typing import Optional
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
@@ -9,11 +8,11 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
-from core.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_HOURS, APP_ENV
-from dal import user_dal
+import models
+from core.config import ACCESS_TOKEN_EXPIRE_HOURS, ALGORITHM, APP_ENV, SECRET_KEY
 from core.database import get_db
 from core.logging import get_logger
-import models
+from dal import user_dal
 
 _auth_logger = get_logger("auth")
 
@@ -39,7 +38,7 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def decode_token(token: str, db: Session) -> Optional[models.User]:
+def decode_token(token: str, db: Session) -> models.User | None:
     """Decode a JWT token and return the user, or None if invalid/expired.
     Single source of truth — used by HTTP deps and WebSocket auth alike."""
     try:
@@ -47,6 +46,7 @@ def decode_token(token: str, db: Session) -> Optional[models.User]:
         # Check Redis blacklist (token revoked on logout)
         try:
             from infrastructure.redis import get_redis
+
             if get_redis().get(f"blacklist:{token}"):
                 return None
         except Exception:
@@ -54,11 +54,13 @@ def decode_token(token: str, db: Session) -> Optional[models.User]:
             # In production, fail closed (reject token) to prevent revoked tokens from being reused.
             # In dev/staging, fail open (allow token) so developers aren't blocked by Redis issues.
             if APP_ENV == "prod":
-                _auth_logger.error("redis_blacklist_unavailable",
-                                   msg="Rejecting token — cannot verify blacklist in production")
+                _auth_logger.error(
+                    "redis_blacklist_unavailable", msg="Rejecting token — cannot verify blacklist in production"
+                )
                 return None
-            _auth_logger.warning("redis_blacklist_unavailable",
-                                 msg="Redis down — skipping blacklist check (non-production)")
+            _auth_logger.warning(
+                "redis_blacklist_unavailable", msg="Redis down — skipping blacklist check (non-production)"
+            )
         sub = payload.get("sub")
         if sub is None:
             return None

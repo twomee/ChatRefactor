@@ -1,6 +1,8 @@
 # core/logging.py — Structured logging setup using structlog
 import logging
+
 import structlog
+
 from core.config import APP_ENV
 
 
@@ -22,7 +24,8 @@ def setup_logging():
         log_level = logging.INFO
 
     structlog.configure(
-        processors=shared_processors + [
+        processors=[
+            *shared_processors,
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),

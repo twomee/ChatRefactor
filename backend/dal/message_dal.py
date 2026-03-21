@@ -2,12 +2,20 @@
 from datetime import datetime
 
 from sqlalchemy.orm import Session
+
 import models
 
 
-def create(db: Session, sender_id: int, room_id: int, content: str,
-           is_private: bool = False, recipient_id: int | None = None,
-           message_id: str | None = None, sent_at: datetime | None = None) -> models.Message:
+def create(
+    db: Session,
+    sender_id: int,
+    room_id: int,
+    content: str,
+    is_private: bool = False,
+    recipient_id: int | None = None,
+    message_id: str | None = None,
+    sent_at: datetime | None = None,
+) -> models.Message:
     msg = models.Message(
         message_id=message_id,
         sender_id=sender_id,
@@ -23,9 +31,16 @@ def create(db: Session, sender_id: int, room_id: int, content: str,
     return msg
 
 
-def create_idempotent(db: Session, message_id: str, sender_id: int, room_id: int | None,
-                      content: str, is_private: bool = False,
-                      recipient_id: int | None = None, sent_at: datetime | None = None) -> bool:
+def create_idempotent(
+    db: Session,
+    message_id: str,
+    sender_id: int,
+    room_id: int | None,
+    content: str,
+    is_private: bool = False,
+    recipient_id: int | None = None,
+    sent_at: datetime | None = None,
+) -> bool:
     """Insert a message only if message_id doesn't already exist. Returns True if inserted."""
     existing = db.query(models.Message).filter(models.Message.message_id == message_id).first()
     if existing:

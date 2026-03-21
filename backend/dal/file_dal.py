@@ -1,10 +1,12 @@
 # dal/file_dal.py — Data Access Layer for File model
 from sqlalchemy.orm import Session
+
 import models
 
 
-def create(db: Session, original_name: str, stored_path: str,
-           file_size: int, sender_id: int, room_id: int) -> models.File:
+def create(
+    db: Session, original_name: str, stored_path: str, file_size: int, sender_id: int, room_id: int
+) -> models.File:
     record = models.File(
         original_name=original_name,
         stored_path=stored_path,

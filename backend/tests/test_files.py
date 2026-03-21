@@ -1,7 +1,8 @@
 # tests/test_files.py — comprehensive file upload/download/list tests
-import sys
-import os
 import io
+import os
+import sys
+
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,10 +13,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import models
+from core.config import ADMIN_PASSWORD, ADMIN_USERNAME
 from core.database import Base, get_db
-from main import app
 from core.security import hash_password
-from core.config import ADMIN_USERNAME, ADMIN_PASSWORD
+from main import app
 
 test_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
@@ -59,6 +60,7 @@ def _room_id():
 
 
 # ── Upload ────────────────────────────────────────────────────────────────────
+
 
 def test_upload_file_returns_200_and_metadata():
     token = _token("uploader1")
@@ -110,6 +112,7 @@ def test_upload_file_exceeding_150mb_returns_413():
 
 # ── Download ──────────────────────────────────────────────────────────────────
 
+
 def test_download_returns_exact_bytes():
     token = _token("downloader1")
     content = b"download me exactly"
@@ -136,6 +139,7 @@ def test_download_without_token_returns_401():
 
 
 # ── List room files ───────────────────────────────────────────────────────────
+
 
 def test_list_room_files_returns_list():
     token = _token("lister1")
@@ -164,6 +168,7 @@ def test_list_room_files_includes_uploaded_files():
 
 
 # ── Download with query-param token ──────────────────────────────────────────
+
 
 def test_download_with_token_query_param_returns_200():
     """File download should work when token is passed as ?token= query param (for browser <a> links)."""

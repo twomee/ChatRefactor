@@ -2,13 +2,14 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from core.security import get_current_user, oauth2_scheme
+import models
+import schemas
 from core.database import get_db
 from core.logging import get_logger
+from core.security import get_current_user, oauth2_scheme
+from infrastructure.websocket import manager
 from middleware.rate_limit import limiter
 from services import auth_service
-from infrastructure.websocket import manager
-import models, schemas
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = get_logger("routers.auth")

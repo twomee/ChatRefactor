@@ -15,6 +15,7 @@ async def start_producer():
     global _producer, _kafka_available
     try:
         from aiokafka import AIOKafkaProducer
+
         from core.config import KAFKA_BOOTSTRAP_SERVERS
 
         _producer = AIOKafkaProducer(
@@ -66,6 +67,7 @@ async def kafka_produce(topic: str, key: str, value: dict) -> bool:
 def create_consumer(group_id: str, topics: list[str]):
     """Factory: create a configured AIOKafkaConsumer for a consumer group."""
     from aiokafka import AIOKafkaConsumer
+
     from core.config import KAFKA_BOOTSTRAP_SERVERS
 
     return AIOKafkaConsumer(

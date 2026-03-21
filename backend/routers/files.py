@@ -1,14 +1,16 @@
 # routers/files.py — Thin controller for file upload, download, and listing
-from fastapi import APIRouter, Depends, Request, UploadFile, File as FastAPIFile
+
+from fastapi import APIRouter, Depends, Request, UploadFile
+from fastapi import File as FastAPIFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from typing import List
 
-from core.security import get_current_user, get_current_user_flexible
+import models
+import schemas
 from core.database import get_db
-from services import file_service
+from core.security import get_current_user, get_current_user_flexible
 from infrastructure.websocket import manager
-import models, schemas
+from services import file_service
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -21,14 +23,17 @@ async def upload_file(
     current_user: models.User = Depends(get_current_user),
 ):
     file_record = await file_service.save_file(file, current_user.id, room_id, db)
-    await manager.broadcast(room_id, {
-        "type": "file_shared",
-        "file_id": file_record.id,
-        "filename": file_record.original_name,
-        "size": file_record.file_size,
-        "from": current_user.username,
-        "room_id": room_id,
-    })
+    await manager.broadcast(
+        room_id,
+        {
+            "type": "file_shared",
+            "file_id": file_record.id,
+            "filename": file_record.original_name,
+            "size": file_record.file_size,
+            "from": current_user.username,
+            "room_id": room_id,
+        },
+    )
     return schemas.FileResponse(
         id=file_record.id,
         original_name=file_record.original_name,
@@ -54,6 +59,6 @@ def download_file(
     )
 
 
-@router.get("/room/{room_id}", response_model=List[schemas.FileResponse])
+@router.get("/room/{room_id}", response_model=list[schemas.FileResponse])
 def list_room_files(room_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     return file_service.list_room_files(db, room_id)

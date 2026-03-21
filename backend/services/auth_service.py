@@ -2,12 +2,12 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from core.security import hash_password, verify_password, create_access_token
-from core.config import ACCESS_TOKEN_EXPIRE_HOURS, APP_ENV
-from dal import user_dal
-from core.logging import get_logger
-from infrastructure.websocket import ConnectionManager
 import schemas
+from core.config import ACCESS_TOKEN_EXPIRE_HOURS, APP_ENV
+from core.logging import get_logger
+from core.security import create_access_token, hash_password, verify_password
+from dal import user_dal
+from infrastructure.websocket import ConnectionManager
 
 logger = get_logger("services.auth")
 
@@ -42,19 +42,20 @@ def logout(username: str, mgr: ConnectionManager, token: str) -> dict:
     # Blacklist the token in Redis so it can't be reused
     try:
         from infrastructure.redis import get_redis
+
         r = get_redis()
         r.setex(f"blacklist:{token}", ACCESS_TOKEN_EXPIRE_HOURS * 3600, "1")
-    except Exception:
+    except Exception as exc:
         # SECURITY: If Redis is down, we can't revoke the token.
         # Log at error level so ops teams are alerted.
-        logger.error("token_blacklist_failed",
-                     username=username,
-                     msg="Redis unavailable — token cannot be revoked until expiry")
+        logger.error(
+            "token_blacklist_failed", username=username, msg="Redis unavailable — token cannot be revoked until expiry"
+        )
         if APP_ENV == "prod":
             raise HTTPException(
                 status_code=503,
                 detail="Logout partially failed — please try again or change your password",
-            )
+            ) from exc
     logger.info("user_logged_out", username=username)
     return {"message": "Logged out"}
 

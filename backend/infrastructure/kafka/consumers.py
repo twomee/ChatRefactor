@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 from core.logging import get_logger
 from infrastructure.kafka.producer import create_consumer, kafka_produce
-from infrastructure.kafka.topics import TOPIC_MESSAGES, TOPIC_PRIVATE, TOPIC_DLQ
+from infrastructure.kafka.topics import TOPIC_DLQ, TOPIC_MESSAGES, TOPIC_PRIVATE
 
 logger = get_logger("kafka_consumers")
 
@@ -43,7 +43,7 @@ class MessagePersistenceConsumer:
         if self._task:
             try:
                 await asyncio.wait_for(self._task, timeout=10)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._task.cancel()
                 try:
                     await self._task
@@ -75,7 +75,7 @@ class MessagePersistenceConsumer:
                 # Wait before reconnecting
                 try:
                     await asyncio.wait_for(self._stop_event.wait(), timeout=5)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass  # retry
             finally:
                 if consumer:
@@ -111,7 +111,6 @@ class MessagePersistenceConsumer:
         Idempotent: skips if message_id already exists.
         """
         from core.database import SessionLocal
-        from dal import message_dal, user_dal
 
         db = SessionLocal()
         try:

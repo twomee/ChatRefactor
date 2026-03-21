@@ -1,5 +1,6 @@
 # dal/user_dal.py — Data Access Layer for User model
 from sqlalchemy.orm import Session
+
 import models
 
 

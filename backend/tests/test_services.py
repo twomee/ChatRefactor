@@ -1,20 +1,21 @@
 # tests/test_services.py — unit tests for every service layer function
-import sys
 import os
+import sys
+
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from fastapi import HTTPException
 
 import models
 from core.database import Base
 from core.security import hash_password
-from services import room_service
 from infrastructure.websocket import ConnectionManager
+from services import room_service
 
 test_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
@@ -64,6 +65,7 @@ def regular_user(db):
 
 # ── is_admin_in_room ──────────────────────────────────────────────────────────
 
+
 def test_is_admin_true(db, admin_user, room):
     assert room_service.is_admin_in_room(admin_user.username, room.id, db) is True
 
@@ -77,6 +79,7 @@ def test_is_admin_false_for_nonexistent_user(db, room):
 
 
 # ── is_muted_in_room ──────────────────────────────────────────────────────────
+
 
 def test_is_muted_false_initially(db, regular_user, room):
     assert room_service.is_muted_in_room(regular_user.username, room.id, db) is False
@@ -92,6 +95,7 @@ def test_is_muted_false_for_nonexistent_user(db, room):
 
 
 # ── promote_to_admin ──────────────────────────────────────────────────────────
+
 
 def test_promote_success(db, admin_user, regular_user, room):
     room_service.promote_to_admin(admin_user.username, regular_user.username, room.id, db)
@@ -143,6 +147,7 @@ def test_promote_nonexistent_user_raises_404(db, admin_user, room):
 
 # ── mute_user ─────────────────────────────────────────────────────────────────
 
+
 def test_mute_success(db, admin_user, regular_user, room):
     room_service.mute_user(admin_user.username, regular_user.username, room.id, db)
     assert room_service.is_muted_in_room(regular_user.username, room.id, db) is True
@@ -191,6 +196,7 @@ def test_mute_nonexistent_user_raises_404(db, admin_user, room):
 
 # ── unmute_user ───────────────────────────────────────────────────────────────
 
+
 def test_unmute_success(db, admin_user, regular_user, room):
     room_service.mute_user(admin_user.username, regular_user.username, room.id, db)
     room_service.unmute_user(admin_user.username, regular_user.username, room.id, db)
@@ -220,6 +226,7 @@ def test_unmute_nonexistent_user_raises_404(db, admin_user, room):
 
 
 # ── handle_admin_succession ───────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_admin_succession_promotes_next_user(db, room):
@@ -261,6 +268,7 @@ async def test_admin_succession_no_successor_does_nothing(db, room):
 
 
 # ── handle_admin_succession clears all mutes ──────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_admin_succession_clears_all_mutes(db, room):
