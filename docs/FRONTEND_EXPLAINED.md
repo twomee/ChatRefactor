@@ -168,7 +168,7 @@ For WebSockets: if the page is loaded over `https://`, use `wss://` (secure WebS
 
 ---
 
-### `src/api/http.js`
+### `src/services/http.js`
 
 ```javascript
 const http = axios.create({ baseURL: API_BASE });
@@ -766,7 +766,7 @@ const [roomsRes, usersRes] = await Promise.all([
 
 ## 9. Components
 
-### `MessageList.jsx`
+### `chat/MessageList.jsx`
 
 ```javascript
 const endRef = useRef(null);
@@ -809,7 +809,7 @@ default            → standard chat bubble with avatar + username
 
 ---
 
-### `UserList.jsx` + `ContextMenu.jsx`
+### `room/UserList.jsx` + `common/ContextMenu.jsx`
 
 ```javascript
 function handleRightClick(e, username) {
@@ -823,7 +823,7 @@ function handleRightClick(e, username) {
 `e.clientX/Y` is the mouse position in pixels from the viewport's top-left. The ContextMenu is absolutely positioned at those coordinates:
 
 ```javascript
-// ContextMenu.jsx
+// common/ContextMenu.jsx
 <div className="context-menu" style={{ top: y, left: x }} onMouseLeave={onClose}>
 ```
 
@@ -840,7 +840,7 @@ Left-click a user → open a private message conversation with them.
 
 ---
 
-### `FileProgress.jsx` (FileUpload)
+### `chat/FileProgress.jsx` (FileUpload)
 
 ```javascript
 <label className={`file-upload-label ${uploading ? 'disabled' : ''}`}>
@@ -867,7 +867,7 @@ CSS animates the width change. `finally { setUploading(false); setProgress(0); }
 
 ---
 
-### `MessageInput.jsx`
+### `chat/MessageInput.jsx`
 
 ```javascript
 function handleSubmit(e) {
@@ -882,7 +882,7 @@ Clean, simple. `text.trim()` removes leading/trailing spaces — you can't send 
 
 ---
 
-### `PMView.jsx`
+### `pm/PMView.jsx`
 
 ```javascript
 function handleKeyDown(e) {
@@ -897,7 +897,7 @@ Press Enter → send. Press Shift+Enter → don't send (allows newlines in the m
 
 ---
 
-### `PMList.jsx`
+### `pm/PMList.jsx`
 
 ```javascript
 const usernames = Object.keys(threads);

@@ -1,5 +1,5 @@
 // src/services/fileApi.js — File API calls
-import http from '../api/http';
+import http from './http';
 import { API_BASE } from '../config/constants';
 
 export function uploadFile(roomId, file, onProgress) {

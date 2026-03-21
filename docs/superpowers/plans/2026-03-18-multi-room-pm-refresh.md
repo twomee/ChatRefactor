@@ -911,7 +911,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
 import { useAuth } from '../context/AuthContext';
-import http from '../api/http';
+import http from '../services/http';
 
 const STORAGE_KEY = 'chatbox_joined_rooms';
 
@@ -1206,7 +1206,7 @@ git commit -m "feat: add useMultiRoomChat hook with multi-socket management, pol
 ### Task 4.1: Rewrite RoomList with YOUR ROOMS / AVAILABLE sections and unread badges
 
 **Files:**
-- Modify: `frontend/src/components/RoomList.jsx`
+- Modify: `frontend/src/components/room/RoomList.jsx`
 
 **Context:**
 Currently `RoomList` is a simple flat list. It needs to become two sections. `YOUR ROOMS` shows joined rooms with an unread badge and Exit button. `AVAILABLE` shows unjoin rooms with a Join button. Props: `rooms`, `joinedRooms` (Set), `activeRoomId`, `unreadCounts`, `onJoin`, `onExit`, `onSelect`.
@@ -1214,7 +1214,7 @@ Currently `RoomList` is a simple flat list. It needs to become two sections. `YO
 - [ ] **Step 1: Replace RoomList.jsx**
 
 ```jsx
-// src/components/RoomList.jsx
+// src/components/room/RoomList.jsx
 export default function RoomList({
   rooms = [],
   joinedRooms = new Set(),
@@ -1312,7 +1312,7 @@ export default function RoomList({
 - [ ] **Step 2: Commit**
 
 ```bash
-cd /home/ido/Desktop/Chat-Project-Final && git add frontend/src/components/RoomList.jsx
+cd /home/ido/Desktop/Chat-Project-Final && git add frontend/src/components/room/RoomList.jsx
 git commit -m "feat: rewrite RoomList with YOUR ROOMS / AVAILABLE sections, unread badges, join/exit buttons"
 ```
 
@@ -1321,17 +1321,17 @@ git commit -m "feat: rewrite RoomList with YOUR ROOMS / AVAILABLE sections, unre
 ### Task 4.2: Add onScrollToBottom callback to MessageList
 
 **Files:**
-- Modify: `frontend/src/components/MessageList.jsx`
+- Modify: `frontend/src/components/chat/MessageList.jsx`
 
 **Context:**
 `MessageList` needs to fire `onScrollToBottom` when the scroll position is within 50px of the bottom. This is used by `ChatPage` to call `dispatch({ type: 'CLEAR_UNREAD' })`.
 
 - [ ] **Step 1: Update MessageList.jsx**
 
-Replace `frontend/src/components/MessageList.jsx` with:
+Replace `frontend/src/components/chat/MessageList.jsx` with:
 
 ```jsx
-// src/components/MessageList.jsx
+// src/components/chat/MessageList.jsx
 import { useEffect, useRef, useCallback } from 'react';
 
 const API_BASE = 'http://localhost:8000';
@@ -1423,7 +1423,7 @@ export default function MessageList({ messages, onScrollToBottom }) {
 - [ ] **Step 2: Commit**
 
 ```bash
-cd /home/ido/Desktop/Chat-Project-Final && git add frontend/src/components/MessageList.jsx
+cd /home/ido/Desktop/Chat-Project-Final && git add frontend/src/components/chat/MessageList.jsx
 git commit -m "feat: add onScrollToBottom callback to MessageList for unread count clearing"
 ```
 
@@ -1432,7 +1432,7 @@ git commit -m "feat: add onScrollToBottom callback to MessageList for unread cou
 ### Task 4.3: Create PMList component (PM thread list in sidebar)
 
 **Files:**
-- Create: `frontend/src/components/PMList.jsx`
+- Create: `frontend/src/components/pm/PMList.jsx`
 
 **Context:**
 `PMList` renders the PRIVATE MESSAGES section of the sidebar. Each entry shows the other user's name and an unread badge. Clicking an entry opens that PM conversation.
@@ -1440,7 +1440,7 @@ git commit -m "feat: add onScrollToBottom callback to MessageList for unread cou
 - [ ] **Step 1: Create PMList.jsx**
 
 ```jsx
-// src/components/PMList.jsx
+// src/components/pm/PMList.jsx
 export default function PMList({ threads = {}, pmUnread = {}, activePM, onSelectPM }) {
   const usernames = Object.keys(threads);
 
@@ -1490,12 +1490,12 @@ export default function PMList({ threads = {}, pmUnread = {}, activePM, onSelect
 
 - [ ] **Step 2: Create PMView.jsx**
 
-Create `frontend/src/components/PMView.jsx`:
+Create `frontend/src/components/pm/PMView.jsx`:
 
 ```jsx
-// src/components/PMView.jsx
+// src/components/pm/PMView.jsx
 import { useState, useEffect, useCallback } from 'react';
-import MessageList from './MessageList';
+import MessageList from '../chat/MessageList';
 
 export default function PMView({ username, messages = [], onSend, onScrollToBottom }) {
   const [text, setText] = useState('');
@@ -1549,7 +1549,7 @@ export default function PMView({ username, messages = [], onSend, onScrollToBott
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /home/ido/Desktop/Chat-Project-Final && git add frontend/src/components/PMList.jsx frontend/src/components/PMView.jsx
+cd /home/ido/Desktop/Chat-Project-Final && git add frontend/src/components/pm/PMList.jsx frontend/src/components/pm/PMView.jsx
 git commit -m "feat: add PMList sidebar component and PMView conversation component"
 ```
 
@@ -1558,19 +1558,19 @@ git commit -m "feat: add PMList sidebar component and PMView conversation compon
 ### Task 4.4: Update UserList — click username to open PM thread
 
 **Files:**
-- Modify: `frontend/src/components/UserList.jsx`
+- Modify: `frontend/src/components/room/UserList.jsx`
 
 **Context:**
 Currently users can only right-click for admin actions. Left-clicking a username (other than yourself) should open a PM thread. Add an `onStartPM` prop. Keep right-click admin context menu unchanged.
 
 - [ ] **Step 1: Update UserList.jsx**
 
-Replace `frontend/src/components/UserList.jsx` with:
+Replace `frontend/src/components/room/UserList.jsx` with:
 
 ```jsx
-// src/components/UserList.jsx
+// src/components/room/UserList.jsx
 import { useState } from 'react';
-import ContextMenu from './ContextMenu';
+import ContextMenu from '../common/ContextMenu';
 
 export default function UserList({
   users,
@@ -1638,7 +1638,7 @@ export default function UserList({
 - [ ] **Step 2: Commit**
 
 ```bash
-cd /home/ido/Desktop/Chat-Project-Final && git add frontend/src/components/UserList.jsx
+cd /home/ido/Desktop/Chat-Project-Final && git add frontend/src/components/room/UserList.jsx
 git commit -m "feat: UserList left-click opens PM thread via onStartPM prop"
 ```
 
@@ -1677,13 +1677,13 @@ import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
 import { useMultiRoomChat } from '../hooks/useMultiRoomChat';
-import RoomList from '../components/RoomList';
-import MessageList from '../components/MessageList';
-import MessageInput from '../components/MessageInput';
-import UserList from '../components/UserList';
-import FileUpload from '../components/FileProgress';
-import PMList from '../components/PMList';
-import PMView from '../components/PMView';
+import RoomList from '../components/room/RoomList';
+import MessageList from '../components/chat/MessageList';
+import MessageInput from '../components/chat/MessageInput';
+import UserList from '../components/room/UserList';
+import FileUpload from '../components/chat/FileProgress';
+import PMList from '../components/pm/PMList';
+import PMView from '../components/pm/PMView';
 
 export default function ChatPage() {
   const { user, logout } = useAuth();

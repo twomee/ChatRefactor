@@ -1,6 +1,6 @@
 // src/components/PMView.jsx
 import { useState } from 'react';
-import MessageList from './MessageList';
+import MessageList from '../chat/MessageList';
 
 function getInitials(name) {
   if (!name) return '?';
