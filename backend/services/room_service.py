@@ -2,8 +2,9 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from dal import user_dal, room_dal
-from infrastructure.websocket import ConnectionManager, manager as _ws_manager
+from dal import room_dal, user_dal
+from infrastructure.websocket import ConnectionManager
+from infrastructure.websocket import manager as _ws_manager
 
 
 def _require_user(db: Session, username: str):
@@ -15,6 +16,7 @@ def _require_user(db: Session, username: str):
 
 
 # ── Query helpers ─────────────────────────────────────────────────────
+
 
 def is_admin_in_room(username: str, room_id: int, db: Session) -> bool:
     user = user_dal.get_by_username(db, username)
@@ -42,6 +44,7 @@ def get_muted_in_room(room_id: int, db: Session, users_in_room: list[str]) -> li
 
 # ── Broadcast helpers ─────────────────────────────────────────────────
 
+
 async def broadcast_room_list(db: Session) -> None:
     """Push the current room list to all connected lobby sockets."""
     rooms = list_active_rooms(db)
@@ -51,8 +54,13 @@ async def broadcast_room_list(db: Session) -> None:
 
 # ── Room CRUD (used by rooms router) ─────────────────────────────────
 
+
 def list_active_rooms(db: Session):
     return room_dal.list_active(db)
+
+
+def list_all_rooms(db: Session):
+    return room_dal.list_all(db)
 
 
 def create_room(db: Session, name: str):
@@ -69,6 +77,7 @@ def get_room_or_404(db: Session, room_id: int):
 
 
 # ── Admin actions ─────────────────────────────────────────────────────
+
 
 def promote_to_admin(actor: str, target: str, room_id: int, db: Session):
     if actor == target:
@@ -106,6 +115,7 @@ def unmute_user(actor: str, target: str, room_id: int, db: Session):
 
 
 # ── Connection lifecycle helpers ──────────────────────────────────────
+
 
 def auto_promote_first_user(user, room_id: int, db: Session) -> bool:
     """Make the first user in a room the admin automatically. Returns True if promoted."""
@@ -145,8 +155,11 @@ async def handle_admin_succession(room_id: int, leaving_username: str, db: Sessi
         if successor_user and not room_dal.is_admin(db, successor_user.id, room_id):
             room_dal.add_admin(db, successor_user.id, room_id)
             await mgr.broadcast(room_id, {"type": "new_admin", "username": successor, "room_id": room_id})
-            await mgr.broadcast(room_id, {
-                "type": "system",
-                "text": f"{successor} has become admin",
-                "room_id": room_id,
-            })
+            await mgr.broadcast(
+                room_id,
+                {
+                    "type": "system",
+                    "text": f"{successor} has become admin",
+                    "room_id": room_id,
+                },
+            )

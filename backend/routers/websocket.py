@@ -4,25 +4,25 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
+from core.database import get_db
+from core.logging import get_logger
 from core.security import decode_token
 from dal import room_dal
-from core.database import get_db
 from infrastructure.kafka.producer import kafka_produce
-from infrastructure.kafka.topics import TOPIC_MESSAGES, TOPIC_PRIVATE, TOPIC_EVENTS
-from core.logging import get_logger
-from schemas import MESSAGE_MAX_LENGTH
-from services import room_service, message_service
+from infrastructure.kafka.topics import TOPIC_EVENTS, TOPIC_MESSAGES, TOPIC_PRIVATE
 from infrastructure.websocket import manager
+from schemas import MESSAGE_MAX_LENGTH
+from services import message_service, room_service
 
 router = APIRouter(tags=["websocket"])
 logger = get_logger("routers.websocket")
 
 # ── WebSocket rate limiting ───────────────────────────────────────────
 # Sliding window: max messages per user within a time window
-WS_RATE_LIMIT_MAX_MESSAGES = 30   # max messages per window
+WS_RATE_LIMIT_MAX_MESSAGES = 30  # max messages per window
 WS_RATE_LIMIT_WINDOW_SECONDS = 10  # window duration in seconds
 _ws_rate_buckets: dict[str, list[float]] = defaultdict(list)
 
@@ -89,26 +89,35 @@ async def websocket_endpoint(
     # Announce join with authoritative admin/muted state
     admins_now = room_service.get_admins_in_room(room_id, db, users_now)
     muted_now = room_service.get_muted_in_room(room_id, db, users_now)
-    await manager.broadcast(room_id, {
-        "type": "user_join",
-        "username": user.username,
-        "users": users_now,
-        "admins": admins_now,
-        "muted": muted_now,
-        "room_id": room_id,
-    })
-    await manager.broadcast(room_id, {
-        "type": "system",
-        "text": f"{user.username} has joined the room",
-        "room_id": room_id,
-    })
+    await manager.broadcast(
+        room_id,
+        {
+            "type": "user_join",
+            "username": user.username,
+            "users": users_now,
+            "admins": admins_now,
+            "muted": muted_now,
+            "room_id": room_id,
+        },
+    )
+    await manager.broadcast(
+        room_id,
+        {
+            "type": "system",
+            "text": f"{user.username} has joined the room",
+            "room_id": room_id,
+        },
+    )
     await _produce_event(room_id, "user_join", username=user.username)
     if became_admin:
-        await manager.broadcast(room_id, {
-            "type": "system",
-            "text": f"{user.username} has become admin automatically",
-            "room_id": room_id,
-        })
+        await manager.broadcast(
+            room_id,
+            {
+                "type": "system",
+                "text": f"{user.username} has become admin automatically",
+                "room_id": room_id,
+            },
+        )
         await _produce_event(room_id, "auto_promote", username=user.username)
 
     # ── Message loop ──────────────────────────────────────────────────
@@ -118,13 +127,19 @@ async def websocket_endpoint(
             msg_type = data.get("type")
 
             # Rate limit all message types (not just chat)
-            if msg_type in ("message", "private_message"):
-                if _is_ws_rate_limited(user.username):
-                    await websocket.send_json({
+            if msg_type in ("message", "private_message") and _is_ws_rate_limited(user.username):
+                await websocket.send_json(
+                    {
                         "type": "error",
                         "detail": "Rate limit exceeded. Please slow down.",
-                    })
-                    continue
+                    }
+                )
+                continue
+
+            # Private messages are independent of room state — always allow
+            if msg_type == "private_message":
+                await _handle_private_message(websocket, user, data)
+                continue
 
             db.refresh(room)
             if not room.is_active:
@@ -133,9 +148,6 @@ async def websocket_endpoint(
 
             if msg_type == "message":
                 await _handle_chat_message(websocket, user, room_id, data, db)
-
-            elif msg_type == "private_message":
-                await _handle_private_message(websocket, user, data)
 
             elif msg_type == "kick":
                 await _handle_kick(websocket, user, room_id, data, db)
@@ -156,17 +168,23 @@ async def websocket_endpoint(
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
+
 async def _produce_event(room_id: int, event_type: str, **kwargs):
     """Fire-and-forget event to Kafka for analytics/auditing."""
-    await kafka_produce(TOPIC_EVENTS, key=str(room_id), value={
-        "event": event_type,
-        "room_id": room_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        **kwargs,
-    })
+    await kafka_produce(
+        TOPIC_EVENTS,
+        key=str(room_id),
+        value={
+            "event": event_type,
+            "room_id": room_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            **kwargs,
+        },
+    )
 
 
 # ── Message handlers ──────────────────────────────────────────────────
+
 
 async def _handle_chat_message(websocket, user, room_id, data, db):
     if room_service.is_muted_in_room(user.username, room_id, db):
@@ -178,35 +196,44 @@ async def _handle_chat_message(websocket, user, room_id, data, db):
         await websocket.send_json({"type": "error", "detail": "Cannot send empty message"})
         return
     if len(text) > MESSAGE_MAX_LENGTH:
-        await websocket.send_json({
-            "type": "error",
-            "detail": f"Message too long (max {MESSAGE_MAX_LENGTH} characters)",
-        })
+        await websocket.send_json(
+            {
+                "type": "error",
+                "detail": f"Message too long (max {MESSAGE_MAX_LENGTH} characters)",
+            }
+        )
         return
     msg_id = str(uuid.uuid4())
     ts = datetime.now(timezone.utc).isoformat()
 
     # Produce to Kafka for async persistence; fall back to sync DB save
-    produced = await kafka_produce(TOPIC_MESSAGES, key=str(room_id), value={
-        "msg_id": msg_id,
-        "sender_id": user.id,
-        "sender": user.username,
-        "room_id": room_id,
-        "text": text,
-        "timestamp": ts,
-    })
+    produced = await kafka_produce(
+        TOPIC_MESSAGES,
+        key=str(room_id),
+        value={
+            "msg_id": msg_id,
+            "sender_id": user.id,
+            "sender": user.username,
+            "room_id": room_id,
+            "text": text,
+            "timestamp": ts,
+        },
+    )
     if not produced:
         message_service.save_message(db, user.id, room_id, text)
 
     # Broadcast via Redis pub/sub — real-time delivery unchanged
-    await manager.broadcast(room_id, {
-        "type": "message",
-        "from": user.username,
-        "text": text,
-        "room_id": room_id,
-        "msg_id": msg_id,
-        "timestamp": ts,
-    })
+    await manager.broadcast(
+        room_id,
+        {
+            "type": "message",
+            "from": user.username,
+            "text": text,
+            "room_id": room_id,
+            "msg_id": msg_id,
+            "timestamp": ts,
+        },
+    )
 
 
 async def _handle_private_message(websocket, user, data):
@@ -219,10 +246,12 @@ async def _handle_private_message(websocket, user, data):
         await websocket.send_json({"type": "error", "detail": "Cannot send empty private message"})
         return
     if len(text) > MESSAGE_MAX_LENGTH:
-        await websocket.send_json({
-            "type": "error",
-            "detail": f"Message too long (max {MESSAGE_MAX_LENGTH} characters)",
-        })
+        await websocket.send_json(
+            {
+                "type": "error",
+                "detail": f"Message too long (max {MESSAGE_MAX_LENGTH} characters)",
+            }
+        )
         return
     if not manager.is_user_online(target):
         await websocket.send_json({"type": "error", "detail": "User is not online"})
@@ -232,13 +261,17 @@ async def _handle_private_message(websocket, user, data):
 
     # Produce to Kafka — sorted key keeps all DMs between two users on same partition
     partition_key = ":".join(sorted([user.username, target]))
-    await kafka_produce(TOPIC_PRIVATE, key=partition_key, value={
-        "msg_id": msg_id,
-        "sender": user.username,
-        "recipient": target,
-        "text": text,
-        "timestamp": ts,
-    })
+    await kafka_produce(
+        TOPIC_PRIVATE,
+        key=partition_key,
+        value={
+            "msg_id": msg_id,
+            "sender": user.username,
+            "recipient": target,
+            "text": text,
+            "timestamp": ts,
+        },
+    )
 
     pm_payload = {"type": "private_message", "from": user.username, "to": target, "text": text, "msg_id": msg_id}
     await manager.send_personal(target, pm_payload)
@@ -268,11 +301,14 @@ async def _handle_kick(websocket, user, room_id, data, db):
             await target_ws.close()
         except Exception:
             logger.warning("kick_close_failed", target=target)
-    await manager.broadcast(room_id, {
-        "type": "system",
-        "text": f"{target} was kicked by {user.username}",
-        "room_id": room_id,
-    })
+    await manager.broadcast(
+        room_id,
+        {
+            "type": "system",
+            "text": f"{target} was kicked by {user.username}",
+            "room_id": room_id,
+        },
+    )
     await _produce_event(room_id, "user_kicked", admin=user.username, target=target)
 
 
@@ -282,11 +318,14 @@ async def _handle_mute(user, room_id, data, db, websocket):
         room_service.mute_user(user.username, target, room_id, db)
         logger.info("user_muted", admin=user.username, target=target, room_id=room_id)
         await manager.broadcast(room_id, {"type": "muted", "username": target, "room_id": room_id})
-        await manager.broadcast(room_id, {
-            "type": "system",
-            "text": f"{target} has been muted by {user.username}",
-            "room_id": room_id,
-        })
+        await manager.broadcast(
+            room_id,
+            {
+                "type": "system",
+                "text": f"{target} has been muted by {user.username}",
+                "room_id": room_id,
+            },
+        )
         await _produce_event(room_id, "user_muted", admin=user.username, target=target)
     except Exception as e:
         await websocket.send_json({"type": "error", "detail": _extract_error_detail(e)})
@@ -297,11 +336,14 @@ async def _handle_unmute(user, room_id, data, db, websocket):
     try:
         room_service.unmute_user(user.username, target, room_id, db)
         await manager.broadcast(room_id, {"type": "unmuted", "username": target, "room_id": room_id})
-        await manager.broadcast(room_id, {
-            "type": "system",
-            "text": f"{target} has been unmuted by {user.username}",
-            "room_id": room_id,
-        })
+        await manager.broadcast(
+            room_id,
+            {
+                "type": "system",
+                "text": f"{target} has been unmuted by {user.username}",
+                "room_id": room_id,
+            },
+        )
         await _produce_event(room_id, "user_unmuted", admin=user.username, target=target)
     except Exception as e:
         await websocket.send_json({"type": "error", "detail": _extract_error_detail(e)})
@@ -313,11 +355,14 @@ async def _handle_promote(user, room_id, data, db, websocket):
         room_service.promote_to_admin(user.username, target, room_id, db)
         logger.info("user_promoted", admin=user.username, target=target, room_id=room_id)
         await manager.broadcast(room_id, {"type": "new_admin", "username": target, "room_id": room_id})
-        await manager.broadcast(room_id, {
-            "type": "system",
-            "text": f"{target} has become admin by {user.username}",
-            "room_id": room_id,
-        })
+        await manager.broadcast(
+            room_id,
+            {
+                "type": "system",
+                "text": f"{target} has become admin by {user.username}",
+                "room_id": room_id,
+            },
+        )
         await _produce_event(room_id, "user_promoted", admin=user.username, target=target)
     except Exception as e:
         await websocket.send_json({"type": "error", "detail": _extract_error_detail(e)})
@@ -335,14 +380,17 @@ async def _handle_disconnect(websocket, user, room_id, db):
         room_service.force_clear_mute(user.id, room_id, db)
         # Broadcast updated user list so kicked user disappears from the sidebar
         remaining = manager.get_users_in_room(room_id)
-        await manager.broadcast(room_id, {
-            "type": "user_left",
-            "username": user.username,
-            "users": remaining,
-            "admins": room_service.get_admins_in_room(room_id, db, remaining),
-            "muted": room_service.get_muted_in_room(room_id, db, remaining),
-            "room_id": room_id,
-        })
+        await manager.broadcast(
+            room_id,
+            {
+                "type": "user_left",
+                "username": user.username,
+                "users": remaining,
+                "admins": room_service.get_admins_in_room(room_id, db, remaining),
+                "muted": room_service.get_muted_in_room(room_id, db, remaining),
+                "room_id": room_id,
+            },
+        )
         return  # skip "has left" system message & admin succession
 
     # Normal disconnect: clear mute on leave
@@ -356,19 +404,25 @@ async def _handle_disconnect(websocket, user, room_id, db):
 
     # Broadcast updated user list
     remaining = manager.get_users_in_room(room_id)
-    await manager.broadcast(room_id, {
-        "type": "user_left",
-        "username": user.username,
-        "users": remaining,
-        "admins": room_service.get_admins_in_room(room_id, db, remaining),
-        "muted": room_service.get_muted_in_room(room_id, db, remaining),
-        "room_id": room_id,
-    })
-    await manager.broadcast(room_id, {
-        "type": "system",
-        "text": f"{user.username} has left the room",
-        "room_id": room_id,
-    })
+    await manager.broadcast(
+        room_id,
+        {
+            "type": "user_left",
+            "username": user.username,
+            "users": remaining,
+            "admins": room_service.get_admins_in_room(room_id, db, remaining),
+            "muted": room_service.get_muted_in_room(room_id, db, remaining),
+            "room_id": room_id,
+        },
+    )
+    await manager.broadcast(
+        room_id,
+        {
+            "type": "system",
+            "text": f"{user.username} has left the room",
+            "room_id": room_id,
+        },
+    )
     await _produce_event(room_id, "user_left", username=user.username)
 
 

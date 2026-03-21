@@ -9,7 +9,7 @@ export default function RoomList({
   onSelect,
 }) {
   const joined = rooms.filter(r => joinedRooms.has(r.id));
-  const available = rooms.filter(r => !joinedRooms.has(r.id));
+  const available = rooms.filter(r => !joinedRooms.has(r.id) && r.is_active);
 
   return (
     <div>

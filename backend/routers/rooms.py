@@ -4,22 +4,22 @@ import hashlib
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
-from typing import List
 
-from core.security import get_current_user, require_admin
-from core.database import get_db
-from services import room_service
-from infrastructure.websocket import manager as ws_manager
 import schemas
+from core.database import get_db
+from core.security import get_current_user, require_admin
+from infrastructure.websocket import manager as ws_manager
+from services import room_service
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────
 
-@router.get("/", response_model=List[schemas.RoomResponse])
+
+@router.get("/", response_model=list[schemas.RoomResponse])
 def list_rooms(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    rooms = room_service.list_active_rooms(db)
+    rooms = room_service.list_all_rooms(db)
     return [{"id": r.id, "name": r.name, "is_active": r.is_active} for r in rooms]
 
 
