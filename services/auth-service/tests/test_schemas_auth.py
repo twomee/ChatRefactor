@@ -1,4 +1,4 @@
-# tests/test_schemas.py — Pydantic schema validation tests
+# tests/test_schemas_auth.py — Pydantic schema validation tests for app/schemas/auth.py
 """
 Tests for:
 - UserRegister: username too long, password too long

@@ -1,4 +1,4 @@
-# tests/test_service.py — Unit tests for auth_service.py business logic
+# tests/test_services_auth_service.py — Unit tests for app/services/auth_service.py
 """
 Tests for:
 - Register with empty username/password (whitespace only)

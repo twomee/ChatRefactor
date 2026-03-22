@@ -1,4 +1,4 @@
-# tests/test_security.py — Unit tests for security module (JWT, passwords, dependencies)
+# tests/test_core_security.py — Unit tests for app/core/security.py
 """
 Tests for:
 - decode_token with Redis failure (prod vs dev)
@@ -22,7 +22,7 @@ from app.core.security import (
 )
 
 
-# ── Password hashing ─────────────────────────────────────────────────
+# -- Password hashing ---------------------------------------------------------
 
 
 class TestPasswordHashing:
@@ -43,7 +43,7 @@ class TestPasswordHashing:
         assert hash1 != hash2
 
 
-# ── Token creation and decoding ───────────────────────────────────────
+# -- Token creation and decoding -----------------------------------------------
 
 
 class TestTokens:
@@ -107,7 +107,7 @@ class TestTokens:
         assert result is None
 
 
-# ── Redis failure in decode_token ─────────────────────────────────────
+# -- Redis failure in decode_token ---------------------------------------------
 
 
 class TestDecodeTokenRedisFailure:
@@ -146,7 +146,7 @@ class TestDecodeTokenRedisFailure:
         assert result is not None
 
 
-# ── get_current_user ──────────────────────────────────────────────────
+# -- get_current_user ----------------------------------------------------------
 
 
 class TestGetCurrentUser:
@@ -170,7 +170,7 @@ class TestGetCurrentUser:
         assert exc_info.value.status_code == 401
 
 
-# ── require_admin ─────────────────────────────────────────────────────
+# -- require_admin -------------------------------------------------------------
 
 
 class TestRequireAdmin:

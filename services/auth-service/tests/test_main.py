@@ -336,3 +336,25 @@ class TestGlobalExceptionHandler:
         resp = client.get("/test-error")
         assert resp.status_code == 500
         assert resp.json()["detail"] == "Internal server error"
+
+
+# -- Health check integration tests --------------------------------------------
+
+
+class TestHealth:
+    """Integration tests for /health and /ready endpoints."""
+
+    def test_health_returns_ok(self, client):
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+
+    def test_ready_returns_status(self, client):
+        """Readiness check -- in test environment with SQLite (no real Redis/Kafka),
+        it should still return a response (may be 503 if Redis mock isn't wired for ping)."""
+        resp = client.get("/ready")
+        # In test environment, DB is available (SQLite), but Redis and Kafka may report degraded
+        assert resp.status_code in (200, 503)
+        data = resp.json()
+        assert "status" in data
+        assert "database" in data

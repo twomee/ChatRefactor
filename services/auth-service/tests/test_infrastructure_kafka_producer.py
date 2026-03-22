@@ -1,4 +1,4 @@
-# tests/test_kafka_producer.py — Unit tests for Kafka producer module
+# tests/test_infrastructure_kafka_producer.py — Unit tests for app/infrastructure/kafka_producer.py
 """
 Tests for init_producer, close_producer, produce_event, and is_kafka_available.
 Uses mocking to avoid requiring a real Kafka cluster.
@@ -26,7 +26,7 @@ def reset_producer_state():
     kafka_producer._kafka_available = orig_available
 
 
-# ── is_kafka_available ────────────────────────────────────────────────
+# -- is_kafka_available --------------------------------------------------------
 
 
 class TestIsKafkaAvailable:
@@ -44,7 +44,7 @@ class TestIsKafkaAvailable:
         assert kafka_producer.is_kafka_available() is False
 
 
-# ── init_producer ─────────────────────────────────────────────────────
+# -- init_producer -------------------------------------------------------------
 
 
 class TestInitProducer:
@@ -78,7 +78,7 @@ class TestInitProducer:
         assert kafka_producer._producer is None
 
 
-# ── close_producer ────────────────────────────────────────────────────
+# -- close_producer ------------------------------------------------------------
 
 
 class TestCloseProducer:
@@ -122,7 +122,7 @@ class TestCloseProducer:
         assert kafka_producer._kafka_available is None
 
 
-# ── produce_event ─────────────────────────────────────────────────────
+# -- produce_event -------------------------------------------------------------
 
 
 class TestProduceEvent:

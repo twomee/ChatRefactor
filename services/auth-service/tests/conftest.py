@@ -127,3 +127,21 @@ def client():
 def mock_redis_instance():
     """Direct access to the mock Redis instance for test assertions."""
     return _mock_redis
+
+
+@pytest.fixture
+def db_session():
+    """Provide a clean database session for DAL-level tests.
+
+    Yields a SQLAlchemy session connected to the in-memory test database.
+    Rolls back any changes after each test to keep tests isolated.
+    """
+    db = TestSessionLocal()
+    try:
+        yield db
+    finally:
+        db.rollback()
+        from app.models import User
+        db.query(User).delete()
+        db.commit()
+        db.close()

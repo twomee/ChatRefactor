@@ -1,18 +1,16 @@
-# tests/test_auth.py — Comprehensive auth route tests
+# tests/test_routers_auth.py — Integration tests for app/routers/auth.py
 """
-Tests for all auth service endpoints:
+Tests for all auth router endpoints:
 - POST /auth/register (success, duplicate username, invalid username, short password)
 - POST /auth/login (success, wrong password, nonexistent user)
 - POST /auth/logout (success, invalid token)
 - POST /auth/ping (success)
 - GET /auth/users/{id} (success, not found)
 - GET /auth/users/by-username/{username} (success, not found)
-- GET /health
-- GET /ready
 """
 
 
-# ── Registration ──────────────────────────────────────────────────────────
+# -- Registration --------------------------------------------------------------
 
 
 class TestRegister:
@@ -50,7 +48,7 @@ class TestRegister:
         assert resp.status_code == 422
 
 
-# ── Login ─────────────────────────────────────────────────────────────────
+# -- Login ---------------------------------------------------------------------
 
 
 class TestLogin:
@@ -85,7 +83,7 @@ class TestLogin:
         assert resp.status_code == 422
 
 
-# ── Logout ────────────────────────────────────────────────────────────────
+# -- Logout --------------------------------------------------------------------
 
 
 class TestLogout:
@@ -121,7 +119,7 @@ class TestLogout:
         assert mock_redis_instance.get(f"blacklist:{token}") is not None
 
 
-# ── Ping ──────────────────────────────────────────────────────────────────
+# -- Ping ---------------------------------------------------------------------
 
 
 class TestPing:
@@ -141,7 +139,7 @@ class TestPing:
         assert resp.status_code == 401
 
 
-# ── Internal: User lookup by ID ──────────────────────────────────────────
+# -- Internal: User lookup by ID ----------------------------------------------
 
 
 class TestGetUserById:
@@ -170,7 +168,7 @@ class TestGetUserById:
         assert "not found" in resp.json()["detail"].lower()
 
 
-# ── Internal: User lookup by username ────────────────────────────────────
+# -- Internal: User lookup by username -----------------------------------------
 
 
 class TestGetUserByUsername:
@@ -190,25 +188,3 @@ class TestGetUserByUsername:
         resp = client.get("/auth/users/by-username/nonexistent")
         assert resp.status_code == 404
         assert "not found" in resp.json()["detail"].lower()
-
-
-# ── Health checks ─────────────────────────────────────────────────────────
-
-
-class TestHealth:
-    """Tests for health check endpoints."""
-
-    def test_health_returns_ok(self, client):
-        resp = client.get("/health")
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "ok"
-
-    def test_ready_returns_status(self, client):
-        """Readiness check — in test environment with SQLite (no real Redis/Kafka),
-        it should still return a response (may be 503 if Redis mock isn't wired for ping)."""
-        resp = client.get("/ready")
-        # In test environment, DB is available (SQLite), but Redis and Kafka may report degraded
-        assert resp.status_code in (200, 503)
-        data = resp.json()
-        assert "status" in data
-        assert "database" in data

@@ -1,4 +1,4 @@
-# tests/test_redis.py — Unit tests for Redis infrastructure module
+# tests/test_infrastructure_redis.py — Unit tests for app/infrastructure/redis.py
 """
 Tests for:
 - get_redis returns a Redis client from the pool

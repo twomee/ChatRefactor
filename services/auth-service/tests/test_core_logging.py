@@ -1,4 +1,4 @@
-# tests/test_logging.py — Unit tests for logging module
+# tests/test_core_logging.py — Unit tests for app/core/logging.py
 """
 Tests for:
 - setup_logging in non-dev mode (JSON renderer)

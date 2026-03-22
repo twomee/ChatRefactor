@@ -1,4 +1,4 @@
-# tests/test_config.py — Unit tests for config module
+# tests/test_core_config.py — Unit tests for app/core/config.py
 """
 Tests for:
 - _require_env fail-fast in production mode

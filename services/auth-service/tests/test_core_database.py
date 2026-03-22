@@ -1,4 +1,4 @@
-# tests/test_database.py — Unit tests for database module
+# tests/test_core_database.py — Unit tests for app/core/database.py
 """
 Tests for:
 - get_db generator yields a session and closes it
