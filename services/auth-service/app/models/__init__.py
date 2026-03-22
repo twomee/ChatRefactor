@@ -1,0 +1,21 @@
+# app/models/__init__.py — User model only (auth service owns user identity)
+"""
+This service only contains the User model. Room, Message, File, and other
+domain models belong to their respective services.
+No relationships are defined — those models don't exist in this bounded context.
+"""
+from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, Integer, String
+
+from app.core.database import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(64), unique=True, nullable=False, index=True)
+    password_hash = Column(String(256), nullable=False)
+    is_global_admin = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
