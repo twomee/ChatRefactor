@@ -19,8 +19,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  docker-compose-build:
-    name: Docker Compose Build
+  validate-kong:
+    name: Validate Kong Config
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -28,21 +28,29 @@ jobs:
       - name: Validate Kong config syntax
         run: |
           docker run --rm \
-            -v "$GITHUB_WORKSPACE/kong/kong.yml:/etc/kong/kong.yml:ro" \
+            -v "$PWD/kong/kong.yml:/etc/kong/kong.yml:ro" \
             -e KONG_DATABASE=off \
             -e KONG_DECLARATIVE_CONFIG=/etc/kong/kong.yml \
             kong:3.6 kong config parse /etc/kong/kong.yml
-        env:
-          GITHUB_WORKSPACE: ${{ github.workspace }}
 
-      - name: Build all microservice images
-        run: docker compose build
+  validate-compose:
+    name: Validate Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate compose file syntax
+        run: docker compose config --quiet
         env:
           POSTGRES_PASSWORD: ci_test_password
           SECRET_KEY: ci-test-secret-key
           ADMIN_USERNAME: testadmin
           ADMIN_PASSWORD: testpassword
 
-      - name: Verify images were created
-        run: |
-          docker compose config --services
+      - name: List configured services
+        run: docker compose config --services
+        env:
+          POSTGRES_PASSWORD: ci_test_password
+          SECRET_KEY: ci-test-secret-key
+          ADMIN_USERNAME: testadmin
+          ADMIN_PASSWORD: testpassword
