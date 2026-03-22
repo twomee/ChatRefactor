@@ -3,6 +3,7 @@
 Ported from monolith schemas. Only auth-relevant schemas are included.
 Room, File, and Message schemas belong to their respective services.
 """
+
 import re
 from datetime import datetime
 
@@ -29,20 +30,30 @@ class UserRegister(BaseModel):
     def validate_username(cls, v: str) -> str:
         v = v.strip()
         if len(v) < USERNAME_MIN_LENGTH:
-            raise ValueError(f"Username must be at least {USERNAME_MIN_LENGTH} characters")
+            raise ValueError(
+                f"Username must be at least {USERNAME_MIN_LENGTH} characters"
+            )
         if len(v) > USERNAME_MAX_LENGTH:
-            raise ValueError(f"Username must be at most {USERNAME_MAX_LENGTH} characters")
+            raise ValueError(
+                f"Username must be at most {USERNAME_MAX_LENGTH} characters"
+            )
         if not USERNAME_PATTERN.match(v):
-            raise ValueError("Username may only contain letters, numbers, underscores, and hyphens")
+            raise ValueError(
+                "Username may only contain letters, numbers, underscores, and hyphens"
+            )
         return v
 
     @field_validator("password")
     @classmethod
     def validate_password(cls, v: str) -> str:
         if len(v) < PASSWORD_MIN_LENGTH:
-            raise ValueError(f"Password must be at least {PASSWORD_MIN_LENGTH} characters")
+            raise ValueError(
+                f"Password must be at least {PASSWORD_MIN_LENGTH} characters"
+            )
         if len(v) > PASSWORD_MAX_LENGTH:
-            raise ValueError(f"Password must be at most {PASSWORD_MAX_LENGTH} characters")
+            raise ValueError(
+                f"Password must be at most {PASSWORD_MAX_LENGTH} characters"
+            )
         return v
 
 

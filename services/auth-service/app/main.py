@@ -10,6 +10,7 @@ Includes:
   - Health endpoints (/health liveness, /ready readiness)
   - Global exception handler with structured logging
 """
+
 from contextlib import asynccontextmanager
 
 from alembic import command as alembic_command
@@ -24,7 +25,11 @@ from app.core.database import engine
 from app.core.logging import get_logger, setup_logging
 from app.core.security import hash_password
 from app.dal import user_dal
-from app.infrastructure.kafka_producer import close_producer, init_producer, is_kafka_available
+from app.infrastructure.kafka_producer import (
+    close_producer,
+    init_producer,
+    is_kafka_available,
+)
 from app.middleware.correlation import CorrelationIdMiddleware
 from app.routers import auth
 
@@ -47,7 +52,10 @@ async def lifespan(app: FastAPI):
                 "Set a strong SECRET_KEY via environment variable before deploying.",
             )
         else:
-            logger.warning("default_secret_key", msg="Using default SECRET_KEY (acceptable for dev only)")
+            logger.warning(
+                "default_secret_key",
+                msg="Using default SECRET_KEY (acceptable for dev only)",
+            )
 
     if ADMIN_PASSWORD == "changeme" and APP_ENV in ("staging", "prod"):
         logger.error(
@@ -59,7 +67,9 @@ async def lifespan(app: FastAPI):
     try:
         import os
 
-        alembic_ini = os.path.join(os.path.dirname(os.path.dirname(__file__)), "alembic.ini")
+        alembic_ini = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "alembic.ini"
+        )
         alembic_cfg = AlembicConfig(alembic_ini)
         alembic_command.upgrade(alembic_cfg, "head")
         logger.info("alembic_migrations_applied")
@@ -72,7 +82,12 @@ async def lifespan(app: FastAPI):
             if ADMIN_USERNAME:
                 admin_user = user_dal.get_by_username(db, ADMIN_USERNAME)
                 if not admin_user:
-                    user_dal.create(db, ADMIN_USERNAME, hash_password(ADMIN_PASSWORD), is_global_admin=True)
+                    user_dal.create(
+                        db,
+                        ADMIN_USERNAME,
+                        hash_password(ADMIN_PASSWORD),
+                        is_global_admin=True,
+                    )
                     logger.info("admin_user_seeded", username=ADMIN_USERNAME)
                 elif not admin_user.is_global_admin:
                     admin_user.is_global_admin = True
@@ -162,5 +177,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
     Never leak internal error details to the client.
     """
-    logger.error("unhandled_exception", path=request.url.path, error=str(exc), exc_info=True)
+    logger.error(
+        "unhandled_exception", path=request.url.path, error=str(exc), exc_info=True
+    )
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})

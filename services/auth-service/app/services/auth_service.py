@@ -6,6 +6,7 @@ Key differences from monolith:
 2. Produces Kafka events (fire-and-forget) for user_registered, user_logged_in, user_logged_out.
 3. ping simply returns ok — no presence management needed.
 """
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -31,11 +32,15 @@ async def register(db: Session, body: UserRegister) -> dict:
     if user_dal.get_by_username(db, body.username):
         raise HTTPException(status_code=409, detail="Username already taken")
 
-    user = user_dal.create(db, username=body.username.strip(), password_hash=hash_password(body.password))
+    user = user_dal.create(
+        db, username=body.username.strip(), password_hash=hash_password(body.password)
+    )
     logger.info("user_registered", username=user.username, user_id=user.id)
 
     # Fire-and-forget Kafka event — don't fail registration if Kafka is down
-    await produce_event("user_registered", {"user_id": user.id, "username": user.username})
+    await produce_event(
+        "user_registered", {"user_id": user.id, "username": user.username}
+    )
 
     return {"message": "Registered successfully"}
 
@@ -54,7 +59,9 @@ async def login(db: Session, body: UserLogin) -> TokenResponse:
     logger.info("user_logged_in", username=user.username, user_id=user.id)
 
     # Fire-and-forget Kafka event
-    await produce_event("user_logged_in", {"user_id": user.id, "username": user.username})
+    await produce_event(
+        "user_logged_in", {"user_id": user.id, "username": user.username}
+    )
 
     return TokenResponse(
         access_token=token,

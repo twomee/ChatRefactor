@@ -9,6 +9,7 @@ Key differences from monolith:
 3. Internal user lookup endpoints are NEW — used by other services for inter-service calls.
 4. Service functions are async (for Kafka event production).
 """
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 

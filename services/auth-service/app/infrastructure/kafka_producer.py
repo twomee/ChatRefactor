@@ -9,6 +9,7 @@ Event types:
 - user_logged_in:  { user_id, username }
 - user_logged_out: { user_id, username }
 """
+
 import json
 from datetime import datetime, timezone
 

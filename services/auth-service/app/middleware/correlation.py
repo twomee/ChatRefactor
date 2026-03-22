@@ -7,6 +7,7 @@ response headers for downstream tracing.
 If no X-Request-ID is provided, generates a new UUID. This ensures every request
 has a traceable ID even when called directly (not through Kong).
 """
+
 import uuid
 
 import structlog
@@ -18,7 +19,9 @@ from starlette.responses import Response
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
     """Extracts or generates a correlation ID and binds it to structured logging."""
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         # Read correlation ID from header, or generate a new one
         correlation_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
 

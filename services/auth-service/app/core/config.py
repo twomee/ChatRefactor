@@ -6,6 +6,7 @@ Loads .env from the auth-service root directory (not the project root).
 Uses chatbox_auth database (not chatbox) — each service owns its own database in the
 microservice architecture.
 """
+
 import os
 import secrets
 import sys
@@ -23,7 +24,9 @@ def _require_env(key: str) -> str:
     """Require an environment variable in production. Fail fast if missing."""
     value = os.getenv(key)
     if not value and APP_ENV == "prod":
-        print(f"FATAL: Required environment variable '{key}' is not set.", file=sys.stderr)
+        print(
+            f"FATAL: Required environment variable '{key}' is not set.", file=sys.stderr
+        )
         sys.exit(1)
     return value or ""
 
@@ -38,7 +41,10 @@ DATABASE_URL = os.getenv(
     "postgresql://chatbox:chatbox_pass@localhost:5432/chatbox_auth",
 )
 if not DATABASE_URL and APP_ENV == "prod":
-    print("FATAL: Required environment variable 'DATABASE_URL' is not set.", file=sys.stderr)
+    print(
+        "FATAL: Required environment variable 'DATABASE_URL' is not set.",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 ADMIN_USERNAME = _require_env("ADMIN_USERNAME")

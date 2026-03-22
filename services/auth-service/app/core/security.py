@@ -8,6 +8,7 @@ DB calls.
 
 get_current_user returns a dict (not a User ORM object) with the JWT claims.
 """
+
 from datetime import datetime, timedelta, timezone
 
 from argon2 import PasswordHasher
@@ -43,7 +44,9 @@ def verify_password(plain: str, hashed: str) -> bool:
 def create_access_token(data: dict) -> str:
     """Create a JWT access token with an expiry claim."""
     payload = data.copy()
-    payload["exp"] = datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+    payload["exp"] = datetime.now(timezone.utc) + timedelta(
+        hours=ACCESS_TOKEN_EXPIRE_HOURS
+    )
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -119,10 +122,6 @@ def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     """
     # For admin check, we need to verify against the DB since admin status
     # could have changed since the token was issued
-    from sqlalchemy.orm import Session
-
-    from app.core.database import get_db
-    from app.dal import user_dal
 
     # This is a workaround — in practice, admin-only routes will inject db separately
     # and check admin status. This dependency is kept for backward compatibility.
