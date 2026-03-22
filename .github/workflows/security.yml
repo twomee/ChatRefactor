@@ -72,10 +72,21 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Check if auth-service Dockerfile exists
+        id: check-auth
+        run: |
+          if [ -f services/auth-service/Dockerfile ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build auth-service image
+        if: steps.check-auth.outputs.exists == 'true'
         run: docker build -t chatbox-auth:scan ./services/auth-service
 
       - name: Scan auth-service image
+        if: steps.check-auth.outputs.exists == 'true'
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: chatbox-auth:scan
