@@ -14,7 +14,7 @@ const initialState = {
   mutedUsers: {},      // { roomId: [username] }
 };
 
-function chatReducer(state, action) {
+export function chatReducer(state, action) {
   switch (action.type) {
 
     // ── Existing actions (unchanged) ──────────────────────────────────────
