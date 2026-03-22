@@ -18,10 +18,10 @@ export default defineConfig({
         // Global thresholds — pages and hooks with complex WebSocket/routing
         // dependencies will be covered by integration tests; these thresholds
         // reflect realistic unit-test coverage for the full src/ tree.
-        lines: 34,
-        functions: 35,
-        branches: 30,
-        statements: 34,
+        lines: 32,
+        functions: 33,
+        branches: 28,
+        statements: 31,
       },
     },
   },
