@@ -257,3 +257,53 @@ input::placeholder {
   scrollbar-width: thin;
   scrollbar-color: var(--text-muted) transparent;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Connection Status Indicator
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.connection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 500;
+  animation: fadeIn 200ms ease-out;
+}
+
+.connection-status.reconnecting {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+}
+
+.connection-status.disconnected {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.connection-status.reconnecting .connection-dot {
+  background: var(--warning);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.connection-status.disconnected .connection-dot {
+  background: var(--danger);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

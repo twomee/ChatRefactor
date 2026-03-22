@@ -1,11 +1,22 @@
 // src/hooks/useMultiRoomChat.js
-import { useEffect, useRef, useCallback, startTransition } from 'react';
+import { useEffect, useRef, useCallback, useState, startTransition } from 'react';
 import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
 import { useAuth } from '../context/AuthContext';
 import { WS_BASE } from '../config/constants';
-import { listRooms } from '../services/roomApi';
+import { listRooms, getMessagesSince } from '../services/roomApi';
 import { getJoinedRooms, addJoinedRoom, removeJoinedRoom } from '../utils/storage';
+
+// ── Exponential backoff helper ──────────────────────────────────────────────
+const BACKOFF_BASE_MS = 1000;
+const BACKOFF_MAX_MS = 30000;
+
+function getBackoffDelay(attempt) {
+  const delay = BACKOFF_BASE_MS * Math.pow(2, attempt);
+  // Add ±20 % jitter to prevent thundering herd on server restart
+  const jitter = delay * 0.2 * (Math.random() * 2 - 1);
+  return Math.min(delay + jitter, BACKOFF_MAX_MS);
+}
 
 export function useMultiRoomChat() {
   const { state, dispatch } = useChat();
@@ -13,24 +24,68 @@ export function useMultiRoomChat() {
   const { token, user } = useAuth();
   const username = user?.username ?? 'anonymous';
 
+  // ── Connection status ─────────────────────────────────────────────────────
+  // 'connected' | 'reconnecting' | 'disconnected'
+  const [connectionStatus, setConnectionStatus] = useState('connected');
+  const reconnectingRoomsRef = useRef(new Set());
+
+  function updateConnectionStatus() {
+    if (reconnectingRoomsRef.current.size > 0) {
+      setConnectionStatus('reconnecting');
+    } else {
+      setConnectionStatus('connected');
+    }
+  }
+
   // Mutable refs — changes don't need re-renders
   const socketsRef = useRef(new Map());
-  const lobbyRef = useRef(null);              // lobby WebSocket for PM delivery
+  const lobbyRef = useRef(null);
   const seenMsgIdsRef = useRef(new Set());
   const activeRoomIdRef = useRef(state.activeRoomId);
   const stateRef = useRef(state);
   const pmStateRef = useRef(pmState);
+  const retryCountsRef = useRef(new Map());     // roomId → attempt number
+  const lobbyRetryRef = useRef(0);
+  const lastMsgTimeRef = useRef(new Map());     // roomId → ISO timestamp
 
   // Keep refs in sync with latest state
   useEffect(() => { activeRoomIdRef.current = state.activeRoomId; }, [state.activeRoomId]);
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { pmStateRef.current = pmState; }, [pmState]);
 
-  // ── Message handler ────────────────────────────────────────────────
+  // ── Message replay after reconnect ────────────────────────────────────────
+  function replayMissedMessages(roomId) {
+    const since = lastMsgTimeRef.current.get(roomId);
+    if (!since) return;
+
+    getMessagesSince(roomId, since).then(res => {
+      if (res.status !== 200 || !Array.isArray(res.data)) return;
+      for (const m of res.data) {
+        if (m.message_id && seenMsgIdsRef.current.has(m.message_id)) continue;
+        if (m.message_id) seenMsgIdsRef.current.add(m.message_id);
+
+        if (!m.is_private) {
+          dispatch({
+            type: 'ADD_MESSAGE',
+            roomId: m.room_id,
+            message: { from: m.sender, text: m.content },
+          });
+        }
+      }
+    }).catch(() => {});
+  }
+
+  // ── Track last message timestamp ──────────────────────────────────────────
+  function trackTimestamp(roomId) {
+    lastMsgTimeRef.current.set(roomId, new Date().toISOString());
+  }
+
+  // ── Message handler ────────────────────────────────────────────────────────
   const handleMessage = useCallback((msg, roomId) => {
     switch (msg.type) {
       case 'history':
         dispatch({ type: 'SET_HISTORY', roomId: msg.room_id, messages: msg.messages });
+        trackTimestamp(msg.room_id);
         break;
 
       case 'user_join':
@@ -42,6 +97,7 @@ export function useMultiRoomChat() {
 
       case 'system':
         dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { isSystem: true, text: msg.text } });
+        trackTimestamp(msg.room_id);
         break;
 
       case 'message':
@@ -49,6 +105,7 @@ export function useMultiRoomChat() {
         if (msg.room_id !== activeRoomIdRef.current) {
           dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
         }
+        trackTimestamp(msg.room_id);
         break;
 
       case 'private_message': {
@@ -80,6 +137,7 @@ export function useMultiRoomChat() {
         if (msg.room_id !== activeRoomIdRef.current) {
           dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
         }
+        trackTimestamp(msg.room_id);
         break;
 
       case 'kicked': {
@@ -110,7 +168,6 @@ export function useMultiRoomChat() {
         startTransition(() => {
           dispatch({ type: 'SET_ROOMS', rooms: msg.rooms });
         });
-        // Auto-exit rooms that no longer exist on the server
         {
           const serverIds = new Set(msg.rooms.map(r => r.id));
           const joined = stateRef.current.joinedRooms;
@@ -143,7 +200,7 @@ export function useMultiRoomChat() {
       default:
         break;
     }
-   
+
   }, [dispatch, pmDispatch]);
 
   // ── Stable refs for functions that call each other ──────────────────
@@ -153,19 +210,26 @@ export function useMultiRoomChat() {
   const exitRoomRef = useRef(() => {});
   const exitAllRoomsRef = useRef(() => {});
 
-  // ── joinRoom ───────────────────────────────────────────────────────
+  // ── joinRoom (with exponential backoff on reconnect) ──────────────────────
   const joinRoom = useCallback((roomId, isRetry = false) => {
     if (socketsRef.current.has(roomId)) return;
 
     if (!isRetry) {
       dispatch({ type: 'JOIN_ROOM', roomId });
       addJoinedRoom(username, roomId);
+      retryCountsRef.current.set(roomId, 0);
     }
 
     const ws = new WebSocket(`${WS_BASE}/ws/${roomId}?token=${token}`);
     let wasOpen = false;
 
-    ws.onopen = () => { wasOpen = true; };
+    ws.onopen = () => {
+      wasOpen = true;
+      retryCountsRef.current.set(roomId, 0);
+      reconnectingRoomsRef.current.delete(roomId);
+      updateConnectionStatus();
+      if (isRetry) replayMissedMessages(roomId);
+    };
 
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
@@ -173,14 +237,14 @@ export function useMultiRoomChat() {
     };
 
     ws.onclose = (event) => {
-      // Only clean up if this is still the active socket for this room
-      // (StrictMode double-mount can fire stale onclose for the first socket)
       if (socketsRef.current.get(roomId) === ws) {
         socketsRef.current.delete(roomId);
       }
 
       // 4003 = "already in room" — retry once then give up
       if (event.code === 4003 && !isRetry) {
+        reconnectingRoomsRef.current.add(roomId);
+        updateConnectionStatus();
         setTimeout(() => {
           if (getJoinedRooms(username).includes(roomId)) {
             joinRoom(roomId, true);
@@ -189,19 +253,32 @@ export function useMultiRoomChat() {
       } else if (event.code === 4003 && isRetry) {
         dispatch({ type: 'EXIT_ROOM', roomId });
         removeJoinedRoom(username, roomId);
+        reconnectingRoomsRef.current.delete(roomId);
+        retryCountsRef.current.delete(roomId);
+        updateConnectionStatus();
       }
-      // 4001 = auth failure, 4002 = room closed, 4004 = room not found — don't reconnect
+      // 4001–4004: permanent failures — don't reconnect
       else if (event.code >= 4001 && event.code <= 4004) {
         dispatch({ type: 'EXIT_ROOM', roomId });
         removeJoinedRoom(username, roomId);
+        reconnectingRoomsRef.current.delete(roomId);
+        retryCountsRef.current.delete(roomId);
+        updateConnectionStatus();
       }
-      // Unexpected closure (server restart, network drop) — auto-reconnect
+      // Unexpected closure — auto-reconnect with exponential backoff
       else if (wasOpen && getJoinedRooms(username).includes(roomId)) {
+        const attempt = (retryCountsRef.current.get(roomId) || 0) + 1;
+        retryCountsRef.current.set(roomId, attempt);
+        const delay = getBackoffDelay(attempt - 1);
+
+        reconnectingRoomsRef.current.add(roomId);
+        updateConnectionStatus();
+
         setTimeout(() => {
           if (!socketsRef.current.has(roomId) && getJoinedRooms(username).includes(roomId)) {
             joinRoom(roomId, true);
           }
-        }, 2000);
+        }, delay);
       }
     };
 
@@ -217,6 +294,10 @@ export function useMultiRoomChat() {
     }
     dispatch({ type: 'EXIT_ROOM', roomId });
     removeJoinedRoom(username, roomId);
+    retryCountsRef.current.delete(roomId);
+    reconnectingRoomsRef.current.delete(roomId);
+    lastMsgTimeRef.current.delete(roomId);
+    updateConnectionStatus();
   }, [username, dispatch]);
 
   // ── exitAllRooms ───────────────────────────────────────────────────
@@ -244,10 +325,10 @@ export function useMultiRoomChat() {
         });
       }
     }).catch(() => {});
-   
+
   }, [dispatch]);
 
-  // ── Lobby connection — always-on for PM delivery ────────────────────
+  // ── Lobby connection — always-on with exponential backoff ────────────
   useEffect(() => {
     let intentionallyClosed = false;
 
@@ -256,23 +337,25 @@ export function useMultiRoomChat() {
       let wasOpen = false;
       let authRejected = false;
 
-      ws.onopen = () => { wasOpen = true; };
+      ws.onopen = () => {
+        wasOpen = true;
+        lobbyRetryRef.current = 0;
+      };
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         handleMessageRef.current(msg, null);
       };
       ws.onclose = (event) => {
-        // Only clean up if this is still the active lobby socket
         if (lobbyRef.current === ws) {
           lobbyRef.current = null;
         }
-        // 4001 = auth rejected — don't retry (token is invalid)
         if (event.code === 4001) authRejected = true;
-        // Reconnect unless we closed intentionally or auth was rejected
         if (!intentionallyClosed && !authRejected) {
+          const attempt = lobbyRetryRef.current++;
+          const delay = wasOpen ? getBackoffDelay(attempt) : 5000;
           setTimeout(() => {
             if (!lobbyRef.current) connectLobby();
-          }, wasOpen ? 3000 : 5000);
+          }, delay);
         }
       };
       lobbyRef.current = ws;
@@ -295,9 +378,12 @@ export function useMultiRoomChat() {
       socketsRef.current.forEach(ws => ws.close());
       socketsRef.current.clear();
       seenMsgIdsRef.current.clear();
+      retryCountsRef.current.clear();
+      reconnectingRoomsRef.current.clear();
+      lastMsgTimeRef.current.clear();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { joinRoom, exitRoom, exitAllRooms, sendMessage };
+  return { joinRoom, exitRoom, exitAllRooms, sendMessage, connectionStatus };
 }
