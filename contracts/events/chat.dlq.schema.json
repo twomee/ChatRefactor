@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chat.dlq.schema.json",
+  "title": "Dead Letter Queue Message",
+  "description": "Produced by Message Service when a message fails persistence after 3 retries.",
+  "type": "object",
+  "required": ["original_topic", "original_key", "original_value", "error", "timestamp"],
+  "properties": {
+    "original_topic": {
+      "type": "string",
+      "enum": ["chat.messages", "chat.private"],
+      "description": "Topic the failed message came from"
+    },
+    "original_key": {
+      "type": "string",
+      "description": "Kafka key of the original message"
+    },
+    "original_value": {
+      "type": "object",
+      "description": "Original message payload that failed to persist"
+    },
+    "error": {
+      "type": "string",
+      "description": "Error description from the last retry attempt"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of DLQ routing"
+    }
+  },
+  "additionalProperties": false,
+  "_kafka": {
+    "topic": "chat.dlq",
+    "key": "original_topic",
+    "retention": "30 days",
+    "producer": "Message Service (Python)",
+    "consumer": "none (monitoring)"
+  }
+}

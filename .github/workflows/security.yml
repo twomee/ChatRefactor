@@ -2,9 +2,9 @@ name: Security Scan
 
 on:
   push:
-    branches: [main]
+    branches: [main, microservices]
   pull_request:
-    branches: [main]
+    branches: [main, microservices]
   schedule:
     # Run every Monday at 9:00 AM UTC
     - cron: "0 9 * * 1"
@@ -61,6 +61,24 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: chatbox-frontend:scan
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+  trivy-auth-service-image:
+    name: Trivy Auth Service Image Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build auth-service image
+        run: docker build -t chatbox-auth:scan ./services/auth-service
+
+      - name: Scan auth-service image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: chatbox-auth:scan
           format: table
           exit-code: 1
           severity: CRITICAL,HIGH
