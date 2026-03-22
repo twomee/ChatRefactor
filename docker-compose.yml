@@ -1,6 +1,9 @@
-version: '3.8'
+version: "3.8"
 
 services:
+  # ---------------------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
     environment:
@@ -9,8 +12,7 @@ services:
       POSTGRES_DB: chatbox
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+      - ./docker/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U chatbox"]
       interval: 5s
@@ -19,8 +21,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -49,21 +49,52 @@ services:
       retries: 5
       start_period: 30s
 
-  backend:
+  # ---------------------------------------------------------------------------
+  # API Gateway
+  # ---------------------------------------------------------------------------
+  kong:
+    image: kong:3.6
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_LOG_LEVEL: info
+    volumes:
+      - ./kong/kong.yml:/etc/kong/kong.yml:ro
+    ports:
+      - "80:8000"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
+      message-service:
+        condition: service_healthy
+      file-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Microservices
+  # ---------------------------------------------------------------------------
+  auth-service:
     build:
-      context: ./backend
+      context: ./services/auth-service
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:-chatbox_pass}@postgres:5432/chatbox
+      - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:-chatbox_pass}@postgres:5432/chatbox_auth
       - REDIS_URL=redis://redis:6379/0
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - APP_ENV=prod
       - SECRET_KEY=${SECRET_KEY:-change-this-in-production-use-openssl-rand-hex-32}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-ido}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
-      - CORS_ORIGINS=*
-    volumes:
-      - uploads:/app/uploads
+      - APP_ENV=${APP_ENV:-prod}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,19 +103,94 @@ services:
       kafka:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 15s
 
+  chat-service:
+    build:
+      context: ./services/chat-service
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:-chatbox_pass}@postgres:5432/chatbox_chat
+      - REDIS_URL=redis://redis:6379/0
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production-use-openssl-rand-hex-32}
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - MESSAGE_SERVICE_URL=http://message-service:8004
+      - APP_ENV=${APP_ENV:-prod}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  message-service:
+    build:
+      context: ./services/message-service
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:-chatbox_pass}@postgres:5432/chatbox_messages
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production-use-openssl-rand-hex-32}
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - APP_ENV=${APP_ENV:-prod}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  file-service:
+    build:
+      context: ./services/file-service
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:-chatbox_pass}@postgres:5432/chatbox_files
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production-use-openssl-rand-hex-32}
+      - APP_ENV=${APP_ENV:-prod}
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Frontend
+  # ---------------------------------------------------------------------------
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "80:80"
+      - "3000:80"
     depends_on:
-      backend:
+      kong:
         condition: service_healthy
 
 volumes:

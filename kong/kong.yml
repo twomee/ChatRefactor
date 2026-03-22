@@ -1,0 +1,140 @@
+_format_version: "3.0"
+_transform: true
+
+# ---------------------------------------------------------------------------
+# Global plugins
+# ---------------------------------------------------------------------------
+plugins:
+  - name: cors
+    config:
+      origins:
+        - "*"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      headers:
+        - Authorization
+        - Content-Type
+        - X-Request-ID
+      credentials: true
+      preflight_continue: false
+
+  - name: request-transformer
+    config:
+      add:
+        headers:
+          - "X-Request-ID:$(uuid)"
+
+  - name: rate-limiting
+    config:
+      minute: 100
+      policy: local
+      fault_tolerant: true
+      hide_client_headers: false
+
+# ---------------------------------------------------------------------------
+# Services & Routes
+# ---------------------------------------------------------------------------
+services:
+  # -- Auth Service ---------------------------------------------------------
+  - name: auth-service
+    url: http://auth-service:8001
+    routes:
+      - name: auth-routes
+        paths:
+          - /auth
+        strip_path: false
+
+  # -- Auth register (stricter rate limit) ----------------------------------
+  - name: auth-register
+    url: http://auth-service:8001/auth/register
+    routes:
+      - name: auth-register-route
+        paths:
+          - /auth/register
+        strip_path: false
+        methods:
+          - POST
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 5
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
+  # -- Auth login (stricter rate limit) -------------------------------------
+  - name: auth-login
+    url: http://auth-service:8001/auth/login
+    routes:
+      - name: auth-login-route
+        paths:
+          - /auth/login
+        strip_path: false
+        methods:
+          - POST
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 10
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
+  # -- Chat Service (REST) --------------------------------------------------
+  - name: chat-service-rooms
+    url: http://chat-service:8003
+    routes:
+      - name: chat-rooms-routes
+        paths:
+          - /rooms
+        strip_path: false
+
+  - name: chat-service-pm
+    url: http://chat-service:8003
+    routes:
+      - name: chat-pm-routes
+        paths:
+          - /pm
+        strip_path: false
+
+  - name: chat-service-admin
+    url: http://chat-service:8003
+    routes:
+      - name: chat-admin-routes
+        paths:
+          - /admin
+        strip_path: false
+
+  # -- Chat Service (WebSocket) ---------------------------------------------
+  - name: chat-service-ws
+    url: http://chat-service:8003
+    routes:
+      - name: chat-ws-routes
+        paths:
+          - /ws
+        strip_path: false
+        protocols:
+          - ws
+          - wss
+
+  # -- Message Service ------------------------------------------------------
+  - name: message-service
+    url: http://message-service:8004
+    routes:
+      - name: message-routes
+        paths:
+          - /messages
+        strip_path: false
+
+  # -- File Service ---------------------------------------------------------
+  - name: file-service
+    url: http://file-service:8005
+    routes:
+      - name: file-routes
+        paths:
+          - /files
+        strip_path: false
