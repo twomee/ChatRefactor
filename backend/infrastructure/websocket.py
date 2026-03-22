@@ -167,15 +167,20 @@ class ConnectionManager:
                 del self.user_to_socket[username]
 
     async def broadcast_all(self, message: dict):
-        """Send a message to every connected lobby socket."""
+        """Send a message to every connected lobby socket.
+
+        Always delivers locally first (guarantees same-worker delivery),
+        then publishes to Redis for cross-worker relay in multi-process mode.
+        Double-delivery is harmless because lobby messages (e.g. room_list_updated)
+        trigger idempotent state updates on the frontend.
+        """
+        await self._local_broadcast_lobby(message)
         r = self._get_redis()
         if r:
             try:
                 r.publish("lobby", json.dumps(message))
-                return
             except Exception:
                 logger.warning("redis_publish_failed", channel="lobby")
-        await self._local_broadcast_lobby(message)
 
     async def _local_broadcast_lobby(self, message: dict):
         """Direct local delivery to all lobby sockets."""

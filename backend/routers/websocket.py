@@ -47,6 +47,32 @@ def _extract_error_detail(exc: Exception) -> str:
     return exc.detail if hasattr(exc, "detail") else str(exc)
 
 
+# ── Lobby endpoint MUST be registered before /ws/{room_id} ──────────
+# Otherwise FastAPI matches "/ws/lobby" against the {room_id} wildcard,
+# tries to parse "lobby" as int, fails, and the connection dies (1006).
+
+@router.websocket("/ws/lobby")
+async def lobby_endpoint(
+    websocket: WebSocket,
+    token: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Lightweight WebSocket for PM delivery — no room required."""
+    user = decode_token(token, db)
+    if not user:
+        await websocket.close(code=4001)
+        return
+
+    await manager.connect_lobby(websocket, user.username)
+    logger.debug("lobby_connected", username=user.username)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect_lobby(websocket)
+        logger.debug("lobby_disconnected", username=user.username)
+
+
 @router.websocket("/ws/{room_id}")
 async def websocket_endpoint(
     websocket: WebSocket,
@@ -136,6 +162,11 @@ async def websocket_endpoint(
                 )
                 continue
 
+            # Private messages are independent of room state — allow even if room is closed
+            if msg_type == "private_message":
+                await _handle_private_message(websocket, user, data)
+                continue
+
             db.refresh(room)
             if not room.is_active:
                 await websocket.send_json({"type": "error", "detail": "Room is closed"})
@@ -143,9 +174,6 @@ async def websocket_endpoint(
 
             if msg_type == "message":
                 await _handle_chat_message(websocket, user, room_id, data, db)
-
-            elif msg_type == "private_message":
-                await _handle_private_message(websocket, user, data)
 
             elif msg_type == "kick":
                 await _handle_kick(websocket, user, room_id, data, db)
@@ -424,23 +452,3 @@ async def _handle_disconnect(websocket, user, room_id, db):
     await _produce_event(room_id, "user_left", username=user.username)
 
 
-@router.websocket("/ws/lobby")
-async def lobby_endpoint(
-    websocket: WebSocket,
-    token: str = Query(...),
-    db: Session = Depends(get_db),
-):
-    """Lightweight WebSocket for PM delivery — no room required."""
-    user = decode_token(token, db)
-    if not user:
-        await websocket.close(code=4001)
-        return
-
-    await manager.connect_lobby(websocket, user.username)
-    logger.debug("lobby_connected", username=user.username)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect_lobby(websocket)
-        logger.debug("lobby_disconnected", username=user.username)

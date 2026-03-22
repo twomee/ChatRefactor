@@ -254,23 +254,28 @@ export function useMultiRoomChat() {
     function connectLobby() {
       const ws = new WebSocket(`${WS_BASE}/ws/lobby?token=${token}`);
       let wasOpen = false;
+      let authRejected = false;
 
-      ws.onopen = () => { wasOpen = true; };
+      ws.onopen = () => { wasOpen = true; console.log('[lobby] connected'); };
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
+        console.log('[lobby] received:', msg.type);
         handleMessageRef.current(msg, null);
       };
-      ws.onclose = () => {
+      ws.onerror = (err) => { console.error('[lobby] error', err); };
+      ws.onclose = (event) => {
+        console.log('[lobby] closed, code:', event.code);
         // Only clean up if this is still the active lobby socket
         if (lobbyRef.current === ws) {
           lobbyRef.current = null;
         }
-        // Only reconnect if the connection was previously established
-        // (not a 403/auth rejection) and we didn't close intentionally.
-        if (!intentionallyClosed && wasOpen) {
+        // 4001 = auth rejected — don't retry (token is invalid)
+        if (event.code === 4001) authRejected = true;
+        // Reconnect unless we closed intentionally or auth was rejected
+        if (!intentionallyClosed && !authRejected) {
           setTimeout(() => {
             if (!lobbyRef.current) connectLobby();
-          }, 3000);
+          }, wasOpen ? 3000 : 5000);
         }
       };
       lobbyRef.current = ws;
@@ -281,7 +286,7 @@ export function useMultiRoomChat() {
       const ws = lobbyRef.current;
       if (ws) { lobbyRef.current = null; ws.close(); }
     };
-   
+
   }, [token]);
 
   // ── Mount: restore joined rooms from localStorage ──────────────────
