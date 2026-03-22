@@ -14,8 +14,10 @@ WORKDIR /app
 
 # Install Python dependencies first (layer caching)
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade -r requirements.txt && \
-    pip install --no-cache-dir --upgrade "jaraco.context>=6.1.0" "wheel>=0.46.2"
+# Upgrade pip and setuptools first — setuptools vendors jaraco.context and wheel,
+# old vendored copies trigger CVE-2026-23949 and CVE-2026-24049 in Trivy scans
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir --upgrade -r requirements.txt
 
 # Copy application code
 COPY alembic.ini .
