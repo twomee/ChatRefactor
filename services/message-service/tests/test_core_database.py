@@ -1,4 +1,4 @@
-# tests/test_database.py — Tests for database session management
+# tests/test_core_database.py — Tests for app/core/database.py
 #
 # Covers:
 #   - get_db yields a working session

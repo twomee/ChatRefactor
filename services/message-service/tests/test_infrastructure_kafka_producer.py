@@ -1,4 +1,4 @@
-# tests/test_kafka_producer.py — Tests for the Kafka producer module
+# tests/test_infrastructure_kafka_producer.py — Tests for app/infrastructure/kafka_producer.py
 #
 # Covers:
 #   - init_producer: success, failure (Kafka unavailable)

@@ -1,9 +1,10 @@
-# tests/test_main.py — Tests for application lifespan and main module
+# tests/test_main.py — Tests for app/main.py
 #
 # Covers:
 #   - Lifespan: security warnings for default SECRET_KEY (dev vs prod)
 #   - Lifespan: Alembic migration failure (should not crash)
 #   - Lifespan: Kafka consumer start failure (should not crash)
+#   - Health endpoints (/health, /ready)
 #   - Ready endpoint: database down returns 503
 #   - Ready endpoint: Kafka check exception handling
 #   - Global exception handler returns 500
@@ -232,6 +233,38 @@ class TestReadyEndpointFailures:
                 assert "degraded" in data["kafka"]
 
             app.dependency_overrides.clear()
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Health endpoints (/health and /ready)
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestHealthEndpoints:
+    """Tests for /health and /ready endpoints."""
+
+    def test_health_returns_ok(self, client):
+        """Liveness probe should always return 200."""
+        response = client.get("/health")
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+
+    def test_ready_returns_database_status(self, client):
+        """Readiness probe should check database connectivity."""
+        response = client.get("/ready")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ready"
+        assert data["database"] == "ok"
+
+    def test_ready_includes_kafka_status(self, client):
+        """Readiness probe should report Kafka status (non-blocking)."""
+        response = client.get("/ready")
+
+        data = response.json()
+        assert "kafka" in data
 
 
 # ══════════════════════════════════════════════════════════════════════

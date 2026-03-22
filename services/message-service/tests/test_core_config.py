@@ -1,4 +1,4 @@
-# tests/test_config.py — Tests for configuration loading
+# tests/test_core_config.py — Tests for app/core/config.py
 #
 # Covers:
 #   - _require_env in dev mode (returns empty string when var is missing)

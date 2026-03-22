@@ -1,10 +1,11 @@
-# tests/test_auth_client.py — Tests for the Auth Service HTTP client
+# tests/test_infrastructure_auth_client.py — Tests for app/infrastructure/auth_client.py
 #
 # Covers:
 #   - Circuit breaker states (closed, open, half-open)
 #   - HTTP call success (200), not found (404), server error (5xx)
 #   - Timeout and connection errors with retry + backoff
 #   - reset_circuit_breaker utility
+#   - Username validation (SSRF prevention)
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
