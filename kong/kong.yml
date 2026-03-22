@@ -110,6 +110,8 @@ services:
         strip_path: false
 
   # -- Chat Service (WebSocket) ---------------------------------------------
+  # Kong proxies WebSocket over HTTP — the Upgrade: websocket header triggers
+  # protocol switching. No special ws/wss protocol declaration needed.
   - name: chat-service-ws
     url: http://chat-service:8003
     routes:
@@ -118,8 +120,8 @@ services:
           - /ws
         strip_path: false
         protocols:
-          - ws
-          - wss
+          - http
+          - https
 
   # -- Message Service ------------------------------------------------------
   - name: message-service
