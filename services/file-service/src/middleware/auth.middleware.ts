@@ -55,8 +55,14 @@ export function authMiddleware(
       return;
     }
 
+    const userId = parseInt(decoded.sub, 10);
+    if (isNaN(userId)) {
+      res.status(401).json({ error: "Invalid token payload" });
+      return;
+    }
+
     authReq.user = {
-      userId: parseInt(decoded.sub, 10),
+      userId,
       username: decoded.username,
     };
 

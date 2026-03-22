@@ -26,8 +26,9 @@ export function sanitizeFilename(rawName: string): SanitizeResult {
   // path.basename strips all directory components (like Python Path.name)
   let cleanName = path.basename(normalized);
 
-  // Remove null bytes
-  cleanName = cleanName.replace(/\0/g, "");
+  // Remove null bytes and CRLF characters (prevents header injection via
+  // Content-Disposition when the filename is embedded in HTTP headers)
+  cleanName = cleanName.replace(/[\0\r\n]/g, "");
 
   // Strip leading dots to prevent hidden files
   cleanName = cleanName.replace(/^\.+/, "");
