@@ -9,7 +9,7 @@ const initialPMState = {
   activePM: null, // username of currently open PM conversation (or null)
 };
 
-function pmReducer(state, action) {
+export function pmReducer(state, action) {
   switch (action.type) {
     case 'ADD_PM_MESSAGE': {
       const existing = state.threads[action.username] || [];
