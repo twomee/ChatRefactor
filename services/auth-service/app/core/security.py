@@ -14,7 +14,8 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError
 
 from app.core.config import ACCESS_TOKEN_EXPIRE_HOURS, ALGORITHM, APP_ENV, SECRET_KEY
 from app.core.logging import get_logger
@@ -86,7 +87,7 @@ def decode_token(token: str) -> dict | None:
             "user_id": int(sub),
             "username": payload.get("username", ""),
         }
-    except (JWTError, ValueError):
+    except (PyJWTError, ValueError):
         return None
 
 

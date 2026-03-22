@@ -7,6 +7,7 @@ Uses chatbox_auth database (not chatbox) — each service owns its own database 
 microservice architecture.
 """
 import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -28,7 +29,10 @@ def _require_env(key: str) -> str:
 
 
 # --- Security-sensitive settings (no hardcoded defaults) ---
-SECRET_KEY = _require_env("SECRET_KEY")
+# In prod, SECRET_KEY is required via _require_env (sys.exit if missing).
+# In dev, generate a random key per process to avoid signing tokens with an empty string.
+_raw_secret = _require_env("SECRET_KEY")
+SECRET_KEY = _raw_secret if _raw_secret else secrets.token_urlsafe(64)
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://chatbox:chatbox_pass@localhost:5432/chatbox_auth",
