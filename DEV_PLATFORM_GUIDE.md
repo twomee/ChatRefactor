@@ -20,6 +20,7 @@ No prior DevOps knowledge needed.
 11. [Dependabot — Dependency Updates](#dependabot--dependency-updates)
 12. [Pre-commit Hooks — Local Safety Net](#pre-commit-hooks--local-safety-net)
 13. [How It All Works Together](#how-it-all-works-together)
+14. [Microservices CI/CD](#microservices-cicd)
 
 ---
 
@@ -411,3 +412,193 @@ Everything is **free**:
 - Ruff (open source)
 - ESLint (open source)
 - pytest (open source)
+
+---
+
+## Microservices CI/CD
+
+When we moved from a monolith to microservices, the CI pipeline had to evolve. Instead of one pipeline that tests everything, each service now has its own independent pipeline that only runs when that service's code changes.
+
+### Why Per-Service Pipelines?
+
+In a monolith, changing one line of code triggers ALL tests (backend + frontend + Docker build). With 4 microservices, you don't want a change to the auth-service to trigger the file-service pipeline. Per-service pipelines give you:
+
+1. **Faster feedback** — Only the affected service's tests run (~30s instead of ~3min)
+2. **Independent deployability** — Each service can be merged and deployed separately
+3. **Clearer ownership** — When a pipeline fails, you know exactly which service is broken
+4. **Parallel execution** — All 4 pipelines can run simultaneously on different GitHub runners
+
+### Pipeline Files
+
+| Pipeline | File | Triggers On | What It Tests |
+|----------|------|------------|---------------|
+| **Auth Service** | `.github/workflows/ci-auth.yml` | Changes in `services/auth-service/` | Python lint (Ruff), pytest, Docker build |
+| **Chat Service** | `.github/workflows/ci-chat.yml` | Changes in `services/chat-service/` | Go lint (golangci-lint), go test, Docker build |
+| **Message Service** | `.github/workflows/ci-message.yml` | Changes in `services/message-service/` | Python lint (Ruff), pytest, Docker build |
+| **File Service** | `.github/workflows/ci-file.yml` | Changes in `services/file-service/` | TypeScript lint (ESLint), Vitest, Docker build |
+| **Monolith** | `.github/workflows/ci.yml` | Changes in `backend/` or `frontend/` | Same as before (Ruff, pytest, ESLint, Docker build) |
+| **Security** | `.github/workflows/security.yml` | All PRs + weekly | Trivy scans for all service Docker images |
+| **Secrets** | `.github/workflows/secrets.yml` | All PRs | Gitleaks across entire repo |
+
+### How Triggers Work
+
+Each service pipeline uses `paths` filtering so it only runs when relevant files change:
+
+```yaml
+# ci-auth.yml triggers
+on:
+  push:
+    paths: ['services/auth-service/**']
+  pull_request:
+    paths: ['services/auth-service/**']
+
+# ci-chat.yml triggers
+on:
+  push:
+    paths: ['services/chat-service/**']
+  pull_request:
+    paths: ['services/chat-service/**']
+```
+
+If you change a file in `services/auth-service/`, only `ci-auth.yml` runs. If you change files in both `services/auth-service/` and `services/message-service/`, both pipelines run in parallel.
+
+### Multi-Language Testing
+
+With a polyglot stack (Python, Go, Node.js/TypeScript), each service uses the standard testing framework for its language:
+
+| Service | Language | Test Framework | Lint Tool | Coverage Tool |
+|---------|----------|---------------|-----------|---------------|
+| auth-service | Python | **pytest** + pytest-asyncio | **Ruff** | pytest-cov |
+| chat-service | Go | **go test** | **golangci-lint** | go tool cover |
+| message-service | Python | **pytest** + pytest-asyncio | **Ruff** | pytest-cov |
+| file-service | Node.js/TS | **Vitest** | **ESLint** | @vitest/coverage-v8 |
+| backend (monolith) | Python | **pytest** | **Ruff** | pytest-cov |
+| frontend | JavaScript | N/A (planned) | **ESLint** | N/A |
+
+**Running tests locally for each service:**
+
+```bash
+# Auth service (Python)
+cd services/auth-service
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+pytest tests/ -v --cov=app
+
+# Chat service (Go)
+cd services/chat-service
+go test ./... -v -cover
+
+# Message service (Python)
+cd services/message-service
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+pytest tests/ -v --cov=app
+
+# File service (Node.js/TypeScript)
+cd services/file-service
+npm install
+npm test
+npm run test:coverage
+```
+
+### Contract Testing with Kafka Schemas
+
+When services communicate through Kafka, they need to agree on the message format. If auth-service starts sending a different JSON shape than message-service expects, things break silently.
+
+**How we handle it:**
+
+1. **Shared schema definitions** — Kafka message schemas (JSON) are defined in each service's codebase with matching field names and types
+2. **Producer validation** — Each service validates outgoing Kafka messages against the expected schema before producing
+3. **Consumer validation** — Each service validates incoming Kafka messages and sends malformed ones to the DLQ (dead letter queue)
+4. **CI contract checks** — Integration tests verify that producer output matches consumer expectations
+
+**Kafka topics and their schemas:**
+
+| Topic | Producer | Consumer(s) | Key Fields |
+|-------|----------|-------------|------------|
+| `chat.messages` | chat-service | message-service | `message_id`, `room_id`, `sender_id`, `content`, `timestamp` |
+| `chat.private` | chat-service | message-service | `message_id`, `sender_id`, `recipient_id`, `content`, `timestamp` |
+| `chat.events` | chat-service | message-service | `event_type`, `room_id`, `user_id`, `timestamp` |
+| `file.events` | file-service | message-service | `event_type`, `file_id`, `room_id`, `uploader_id`, `filename` |
+| `auth.events` | auth-service | chat-service, message-service | `event_type`, `user_id`, `username`, `timestamp` |
+| `chat.dlq` | any (on failure) | manual investigation | Original message + error metadata |
+
+If a producer changes a field name (e.g., `sender_id` to `user_id`), the consumer's validation will catch it and the integration test will fail, preventing a broken deployment.
+
+### Updated Dependabot Configuration
+
+With microservices, Dependabot now monitors **8 dependency directories** (up from 3):
+
+| Directory | Ecosystem | What It Monitors |
+|-----------|-----------|-----------------|
+| `/backend` | pip (Python) | Monolith backend dependencies |
+| `/frontend` | npm (Node.js) | React frontend dependencies |
+| `/services/auth-service` | pip (Python) | Auth service dependencies |
+| `/services/chat-service` | gomod (Go) | Chat service Go modules |
+| `/services/message-service` | pip (Python) | Message service dependencies |
+| `/services/file-service` | npm (Node.js) | File service dependencies |
+| `/.github/workflows` | github-actions | CI/CD action versions |
+| `/loadtests` | pip (Python) | Load test dependencies |
+
+**What this means in practice:**
+
+- Dependabot creates PRs for each directory independently
+- A vulnerability in a Python package triggers PRs for auth-service, message-service, AND the monolith backend (if they all use that package)
+- Go module updates only affect chat-service
+- npm updates affect both frontend and file-service independently
+
+**Expected weekly Dependabot PR volume:** ~5-15 PRs per week across all directories. Patch updates are generally safe to merge after CI passes. Major version bumps require manual testing.
+
+### Microservices CI Flow
+
+Here's how the full CI flow works when you change a microservice:
+
+```
+1. CREATE TICKET
+   Go to Jira, create a ticket (e.g., KAN-21)
+
+2. CREATE BRANCH
+   git checkout -b KAN-21/message-service
+
+3. WRITE CODE
+   Edit files in services/message-service/
+
+4. COMMIT
+   git add . && git commit -m "KAN-21 add message replay endpoint"
+   |
+   --> Pre-commit hooks run:
+       [gitleaks]  no secrets found           OK
+       [ruff]      auto-fixed 1 import        OK
+
+5. PUSH + OPEN PR
+   git push -u origin KAN-21/message-service
+   Open PR on GitHub
+   |
+   --> ONLY ci-message.yml runs (not ci-auth, ci-chat, ci-file):
+       [Message Lint]      ruff check passed       OK
+       [Message Tests]     42 passed, 78% cov      OK
+       [Message Docker]    image built              OK
+   |
+   --> security.yml and secrets.yml also run (repo-wide):
+       [Trivy]             no CVEs found            OK
+       [Gitleaks]          no secrets found         OK
+
+6. MERGE
+   All checks green --> merge PR
+   Only message-service needs redeployment
+```
+
+### Quick Reference (Microservices)
+
+| I want to... | Command |
+|--------------|---------|
+| Lint auth service | `cd services/auth-service && ruff check .` |
+| Lint chat service | `cd services/chat-service && golangci-lint run ./...` |
+| Lint message service | `cd services/message-service && ruff check .` |
+| Lint file service | `cd services/file-service && npm run lint` |
+| Test auth service | `cd services/auth-service && pytest tests/ -v` |
+| Test chat service | `cd services/chat-service && go test ./... -v` |
+| Test message service | `cd services/message-service && pytest tests/ -v` |
+| Test file service | `cd services/file-service && npm test` |
+| Run all pre-commit hooks | `pre-commit run --all-files` |
+| Run microservices load test | `cd loadtests && locust -f locustfile.py --host http://localhost` |
