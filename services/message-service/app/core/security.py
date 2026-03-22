@@ -58,4 +58,9 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     payload = decode_token(token)
     if payload is None:
         raise _credentials_exception
-    return {"user_id": int(payload["sub"]), "username": payload["username"]}
+    try:
+        user_id = int(payload["sub"])
+    except (ValueError, TypeError):
+        _auth_logger.warning("invalid_sub_claim", sub=payload.get("sub"))
+        raise _credentials_exception
+    return {"user_id": user_id, "username": payload["username"]}

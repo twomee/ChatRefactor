@@ -13,7 +13,9 @@
 # This prevents cascading failures: if the auth service is down, we don't want
 # every private message to hang for the full timeout before failing.
 import asyncio
+import re
 import time
+from urllib.parse import quote
 
 import httpx
 
@@ -82,7 +84,15 @@ async def get_user_by_username(username: str) -> dict | None:
             f"Auth service circuit breaker is open (>{FAILURE_THRESHOLD} consecutive failures)"
         )
 
-    url = f"{AUTH_SERVICE_URL}/auth/users/by-username/{username}"
+    # Validate username to prevent path traversal / SSRF via crafted usernames
+    # in Kafka messages. Only allow alphanumeric, underscore, hyphen, and dot.
+    if not username or not re.match(r"^[a-zA-Z0-9_.\-]+$", username):
+        logger.warning("invalid_username_rejected", username=username)
+        return None
+
+    # URL-encode the username to prevent path injection
+    safe_username = quote(username, safe="")
+    url = f"{AUTH_SERVICE_URL}/auth/users/by-username/{safe_username}"
     last_error = None
 
     for attempt in range(1, MAX_RETRIES + 1):

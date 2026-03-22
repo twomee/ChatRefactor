@@ -32,6 +32,8 @@ from app.infrastructure.kafka_producer import (
 logger = get_logger("persistence_consumer")
 
 MAX_RETRIES = 3
+# Security: limit message content size to prevent DoS from oversized Kafka messages
+MAX_CONTENT_LENGTH = 10_000  # characters
 
 
 class MessagePersistenceConsumer:
@@ -147,6 +149,11 @@ class MessagePersistenceConsumer:
         text = value.get("text", "")
         ts_str = value.get("timestamp")
 
+        # Security: truncate oversized message content to prevent DoS
+        if len(text) > MAX_CONTENT_LENGTH:
+            logger.warning("message_content_truncated", msg_id=msg_id, original_length=len(text))
+            text = text[:MAX_CONTENT_LENGTH]
+
         sent_at = None
         if ts_str:
             sent_at = datetime.fromisoformat(ts_str)
@@ -179,6 +186,11 @@ class MessagePersistenceConsumer:
         recipient_name = value.get("recipient")
         text = value.get("text", "")
         ts_str = value.get("timestamp")
+
+        # Security: truncate oversized message content to prevent DoS
+        if len(text) > MAX_CONTENT_LENGTH:
+            logger.warning("pm_content_truncated", msg_id=msg_id, original_length=len(text))
+            text = text[:MAX_CONTENT_LENGTH]
 
         sent_at = None
         if ts_str:
