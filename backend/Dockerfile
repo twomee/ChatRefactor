@@ -28,8 +28,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy pre-built Python packages from builder
 COPY --from=builder /install /usr/local
 
-# Upgrade base-image packages flagged by Trivy
-RUN pip install --no-cache-dir --upgrade "wheel>=0.46.2"
+# Upgrade base-image packages flagged by Trivy (old versions baked into python:3.11-slim).
+# setuptools vendors its own copy of jaraco.context, so it must be upgraded too.
+RUN pip install --no-cache-dir --upgrade "wheel>=0.46.2" "jaraco.context>=6.1.0" "setuptools>=80.0.0"
 
 COPY . .
 
