@@ -256,15 +256,12 @@ export function useMultiRoomChat() {
       let wasOpen = false;
       let authRejected = false;
 
-      ws.onopen = () => { wasOpen = true; console.log('[lobby] connected'); };
+      ws.onopen = () => { wasOpen = true; };
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
-        console.log('[lobby] received:', msg.type);
         handleMessageRef.current(msg, null);
       };
-      ws.onerror = (err) => { console.error('[lobby] error', err); };
       ws.onclose = (event) => {
-        console.log('[lobby] closed, code:', event.code);
         // Only clean up if this is still the active lobby socket
         if (lobbyRef.current === ws) {
           lobbyRef.current = null;

@@ -51,6 +51,7 @@ def _extract_error_detail(exc: Exception) -> str:
 # Otherwise FastAPI matches "/ws/lobby" against the {room_id} wildcard,
 # tries to parse "lobby" as int, fails, and the connection dies (1006).
 
+
 @router.websocket("/ws/lobby")
 async def lobby_endpoint(
     websocket: WebSocket,
@@ -450,5 +451,3 @@ async def _handle_disconnect(websocket, user, room_id, db):
         },
     )
     await _produce_event(room_id, "user_left", username=user.username)
-
-
