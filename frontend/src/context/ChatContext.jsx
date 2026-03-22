@@ -106,6 +106,7 @@ function chatReducer(state, action) {
     }
 
     case 'CLEAR_UNREAD':
+      if (!state.unreadCounts[action.roomId]) return state;
       return {
         ...state,
         unreadCounts: { ...state.unreadCounts, [action.roomId]: 0 },
