@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chat.event.schema.json",
+  "title": "Chat System Event",
+  "description": "Produced by Chat & Room Service to chat.events topic for audit/analytics.",
+  "type": "object",
+  "required": ["event", "room_id", "timestamp"],
+  "properties": {
+    "event": {
+      "type": "string",
+      "enum": [
+        "user_join",
+        "user_left",
+        "user_kicked",
+        "user_muted",
+        "user_unmuted",
+        "user_promoted",
+        "auto_promote"
+      ],
+      "description": "Type of event"
+    },
+    "room_id": {
+      "type": "integer",
+      "description": "Room where the event occurred"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp"
+    },
+    "username": {
+      "type": "string",
+      "description": "User involved (for user_join, user_left, auto_promote)"
+    },
+    "admin": {
+      "type": "string",
+      "description": "Admin who performed the action (for kick, mute, unmute, promote)"
+    },
+    "target": {
+      "type": "string",
+      "description": "Target user of the action (for kick, mute, unmute, promote)"
+    }
+  },
+  "additionalProperties": false,
+  "_kafka": {
+    "topic": "chat.events",
+    "key": "str(room_id)",
+    "retention": "3 days",
+    "producer": "Chat & Room Service (Go)",
+    "consumer": "none (future analytics)"
+  }
+}

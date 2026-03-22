@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "auth.event.schema.json",
+  "title": "Auth Event",
+  "description": "Produced by Auth Service for user lifecycle events. Currently not consumed (future analytics).",
+  "type": "object",
+  "required": ["event", "username", "timestamp"],
+  "properties": {
+    "event": {
+      "type": "string",
+      "enum": ["user_registered", "user_logged_in", "user_logged_out"],
+      "description": "Type of auth event"
+    },
+    "user_id": {
+      "type": "integer",
+      "description": "Database ID of the user"
+    },
+    "username": {
+      "type": "string",
+      "description": "Username"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp"
+    }
+  },
+  "additionalProperties": false,
+  "_kafka": {
+    "topic": "auth.events",
+    "key": "username",
+    "retention": "3 days",
+    "producer": "Auth Service (Python)",
+    "consumer": "none (future analytics)"
+  }
+}

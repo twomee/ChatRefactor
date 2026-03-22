@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "file.uploaded.schema.json",
+  "title": "File Uploaded Event",
+  "description": "Produced by File Service when a file is uploaded. Chat & Room Service consumes this to broadcast file_shared to the room.",
+  "type": "object",
+  "required": ["file_id", "filename", "size", "from", "room_id", "timestamp"],
+  "properties": {
+    "file_id": {
+      "type": "integer",
+      "description": "Database ID of the uploaded file"
+    },
+    "filename": {
+      "type": "string",
+      "description": "Original filename"
+    },
+    "size": {
+      "type": "integer",
+      "description": "File size in bytes"
+    },
+    "from": {
+      "type": "string",
+      "description": "Username of the uploader"
+    },
+    "room_id": {
+      "type": "integer",
+      "description": "Room the file was uploaded to"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp"
+    }
+  },
+  "additionalProperties": false,
+  "_kafka": {
+    "topic": "file.events",
+    "key": "str(room_id)",
+    "retention": "3 days",
+    "producer": "File Service (Node.js)",
+    "consumer": "Chat & Room Service (Go)"
+  }
+}

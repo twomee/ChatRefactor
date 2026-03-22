@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chat.message.schema.json",
+  "title": "Chat Room Message",
+  "description": "Produced by Chat & Room Service to chat.messages topic when a user sends a message in a room.",
+  "type": "object",
+  "required": ["msg_id", "sender_id", "sender", "room_id", "text", "timestamp"],
+  "properties": {
+    "msg_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID for idempotent persistence (ON CONFLICT DO NOTHING)"
+    },
+    "sender_id": {
+      "type": "integer",
+      "description": "User ID of the sender (foreign key to users table)"
+    },
+    "sender": {
+      "type": "string",
+      "description": "Username of the sender (for display)"
+    },
+    "room_id": {
+      "type": "integer",
+      "description": "Room ID the message was sent to"
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Message content"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp"
+    }
+  },
+  "additionalProperties": false,
+  "_kafka": {
+    "topic": "chat.messages",
+    "key": "str(room_id)",
+    "retention": "7 days",
+    "producer": "Chat & Room Service (Go)",
+    "consumer": "Message Service (Python)"
+  }
+}
