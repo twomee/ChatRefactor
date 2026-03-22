@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Backend Python dependencies
+  # Backend Python dependencies (monolith)
   - package-ecosystem: pip
     directory: /backend
     schedule:
@@ -10,6 +10,39 @@ updates:
     labels:
       - dependencies
       - backend
+
+  # Auth Service Python dependencies
+  - package-ecosystem: pip
+    directory: /services/auth-service
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - auth-service
+
+  # Message Service Python dependencies
+  - package-ecosystem: pip
+    directory: /services/message-service
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - message-service
+
+  # File Service npm dependencies
+  - package-ecosystem: npm
+    directory: /services/file-service
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - file-service
 
   # Frontend npm dependencies
   - package-ecosystem: npm
@@ -21,6 +54,17 @@ updates:
     labels:
       - dependencies
       - frontend
+
+  # Chat Service Go dependencies
+  - package-ecosystem: gomod
+    directory: /services/chat-service
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - chat-service
 
   # GitHub Actions versions
   - package-ecosystem: github-actions
