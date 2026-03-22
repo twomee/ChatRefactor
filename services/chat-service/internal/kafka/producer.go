@@ -15,9 +15,16 @@ import (
 	"go.uber.org/zap"
 )
 
+// MessageWriter is the interface for writing Kafka messages. This allows
+// the Producer to be tested with a mock writer.
+type MessageWriter interface {
+	WriteMessages(ctx context.Context, msgs ...kafkago.Message) error
+	Close() error
+}
+
 // Producer wraps a kafka-go Writer for topic-based message production.
 type Producer struct {
-	writer *kafkago.Writer
+	writer MessageWriter
 	logger *zap.Logger
 }
 
@@ -32,6 +39,12 @@ func NewProducer(brokers []string, logger *zap.Logger) *Producer {
 		RequiredAcks: kafkago.RequireOne,
 		Async:        false, // synchronous writes so callers know about failures
 	}
+	return &Producer{writer: w, logger: logger}
+}
+
+// NewProducerWithWriter creates a Producer with a custom writer, useful for
+// testing with mock writers.
+func NewProducerWithWriter(w MessageWriter, logger *zap.Logger) *Producer {
 	return &Producer{writer: w, logger: logger}
 }
 

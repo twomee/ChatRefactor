@@ -6,18 +6,33 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/twomee/chatbox/chat-service/internal/model"
 )
 
+// PgxPool defines the subset of pgxpool.Pool methods used by the store.
+// Both *pgxpool.Pool and pgxmock satisfy this interface, enabling unit tests.
+type PgxPool interface {
+	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+	Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
+}
+
 // RoomStore handles all room-related database operations.
 type RoomStore struct {
-	pool *pgxpool.Pool
+	pool PgxPool
 }
 
 // NewRoomStore creates a RoomStore backed by the given connection pool.
 func NewRoomStore(pool *pgxpool.Pool) *RoomStore {
+	return &RoomStore{pool: pool}
+}
+
+// NewRoomStoreWithPool creates a RoomStore with a custom pool implementation.
+// This is used for testing with mock pools.
+func NewRoomStoreWithPool(pool PgxPool) *RoomStore {
 	return &RoomStore{pool: pool}
 }
 

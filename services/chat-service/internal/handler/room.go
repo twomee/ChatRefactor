@@ -17,13 +17,13 @@ import (
 
 // RoomHandler groups all room-related HTTP handlers.
 type RoomHandler struct {
-	store   *store.RoomStore
+	store   store.RoomRepository
 	manager *ws.Manager
 	logger  *zap.Logger
 }
 
 // NewRoomHandler creates a RoomHandler.
-func NewRoomHandler(s *store.RoomStore, m *ws.Manager, logger *zap.Logger) *RoomHandler {
+func NewRoomHandler(s store.RoomRepository, m *ws.Manager, logger *zap.Logger) *RoomHandler {
 	return &RoomHandler{store: s, manager: m, logger: logger}
 }
 

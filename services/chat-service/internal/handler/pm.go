@@ -18,7 +18,7 @@ import (
 // PMHandler handles private message REST endpoints.
 type PMHandler struct {
 	manager    *ws.Manager
-	authClient *client.AuthClient
+	authClient client.UserLookup
 	delivery   delivery.Strategy
 	logger     *zap.Logger
 }
@@ -26,7 +26,7 @@ type PMHandler struct {
 // NewPMHandler creates a PMHandler.
 func NewPMHandler(
 	manager *ws.Manager,
-	authClient *client.AuthClient,
+	authClient client.UserLookup,
 	delivery delivery.Strategy,
 	logger *zap.Logger,
 ) *PMHandler {

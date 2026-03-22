@@ -14,19 +14,19 @@ import (
 
 // HealthHandler provides liveness and readiness probes.
 type HealthHandler struct {
-	db           *pgxpool.Pool
-	redis        *redis.Client
+	db            *pgxpool.Pool
+	redis         *redis.Client
 	kafkaProducer *kafka.Producer
-	kafkaBrokers []string
+	kafkaBrokers  []string
 }
 
 // NewHealthHandler creates a HealthHandler with the infrastructure deps.
 func NewHealthHandler(db *pgxpool.Pool, rdb *redis.Client, kp *kafka.Producer, brokers []string) *HealthHandler {
 	return &HealthHandler{
-		db:           db,
-		redis:        rdb,
+		db:            db,
+		redis:         rdb,
 		kafkaProducer: kp,
-		kafkaBrokers: brokers,
+		kafkaBrokers:  brokers,
 	}
 }
 
@@ -39,6 +39,8 @@ func (h *HealthHandler) Health(c *gin.Context) {
 }
 
 // Ready is the readiness probe — checks DB, Redis, Kafka connectivity.
+// Error details are intentionally omitted from the response to avoid
+// leaking internal infrastructure information (CWE-209).
 func (h *HealthHandler) Ready(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
 	defer cancel()
@@ -49,7 +51,7 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 	// PostgreSQL
 	if h.db != nil {
 		if err := h.db.Ping(ctx); err != nil {
-			checks["database"] = "unhealthy: " + err.Error()
+			checks["database"] = "unhealthy"
 			healthy = false
 		} else {
 			checks["database"] = "ok"
@@ -61,7 +63,7 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 	// Redis
 	if h.redis != nil {
 		if err := h.redis.Ping(ctx).Err(); err != nil {
-			checks["redis"] = "unhealthy: " + err.Error()
+			checks["redis"] = "unhealthy"
 			healthy = false
 		} else {
 			checks["redis"] = "ok"
@@ -73,7 +75,7 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 	// Kafka
 	if h.kafkaProducer != nil {
 		if err := h.kafkaProducer.Ping(ctx, h.kafkaBrokers); err != nil {
-			checks["kafka"] = "unhealthy: " + err.Error()
+			checks["kafka"] = "unhealthy"
 			healthy = false
 		} else {
 			checks["kafka"] = "ok"

@@ -48,6 +48,12 @@ func Load() (*Config, error) {
 	v.SetDefault("AUTH_SERVICE_URL", "http://localhost:8001")
 	v.SetDefault("MESSAGE_SERVICE_URL", "http://localhost:8002")
 
+	// Bind env vars for fields without defaults so Viper reads them from
+	// the environment. Without this, AutomaticEnv + Unmarshal silently
+	// ignores env vars for keys Viper doesn't already know about.
+	_ = v.BindEnv("SECRET_KEY")
+	_ = v.BindEnv("DATABASE_URL")
+
 	// Read .env file if present (not required).
 	v.SetConfigName(".env")
 	v.SetConfigType("env")

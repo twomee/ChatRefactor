@@ -34,6 +34,10 @@ type Manager struct {
 	userConns map[int]map[*websocket.Conn]bool
 	// lobbyConns maps lobby connections to their user info.
 	lobbyConns map[*websocket.Conn]UserInfo
+	// connMu maps each connection to a write mutex. gorilla/websocket does not
+	// support concurrent writes, so every write to a connection must be
+	// serialized through its mutex.
+	connMu map[*websocket.Conn]*sync.Mutex
 
 	logger *zap.Logger
 }
@@ -45,8 +49,25 @@ func NewManager(logger *zap.Logger) *Manager {
 		connUser:   make(map[*websocket.Conn]UserInfo),
 		userConns:  make(map[int]map[*websocket.Conn]bool),
 		lobbyConns: make(map[*websocket.Conn]UserInfo),
+		connMu:     make(map[*websocket.Conn]*sync.Mutex),
 		logger:     logger,
 	}
+}
+
+// safeWrite sends data to a connection while holding its per-connection write
+// mutex. This prevents concurrent writes which would violate gorilla/websocket
+// thread safety requirements.
+func (m *Manager) safeWrite(conn *websocket.Conn, data []byte) error {
+	m.mu.RLock()
+	mu, ok := m.connMu[conn]
+	m.mu.RUnlock()
+	if !ok {
+		// Connection already removed; treat as write failure.
+		return websocket.ErrCloseSent
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	return conn.WriteMessage(websocket.TextMessage, data)
 }
 
 // ---------- Room connections ----------
@@ -61,6 +82,7 @@ func (m *Manager) ConnectRoom(roomID int, conn *websocket.Conn, user UserInfo) {
 	}
 	m.rooms[roomID][conn] = true
 	m.connUser[conn] = user
+	m.connMu[conn] = &sync.Mutex{}
 
 	if m.userConns[user.UserID] == nil {
 		m.userConns[user.UserID] = make(map[*websocket.Conn]bool)
@@ -90,6 +112,7 @@ func (m *Manager) DisconnectRoom(roomID int, conn *websocket.Conn) {
 	}
 
 	delete(m.connUser, conn)
+	delete(m.connMu, conn)
 
 	delete(m.userConns[user.UserID], conn)
 	if len(m.userConns[user.UserID]) == 0 {
@@ -120,7 +143,7 @@ func (m *Manager) BroadcastRoom(roomID int, msg interface{}) {
 
 	var failed []*websocket.Conn
 	for _, c := range conns {
-		if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
+		if err := m.safeWrite(c, data); err != nil {
 			failed = append(failed, c)
 		}
 	}
@@ -133,6 +156,7 @@ func (m *Manager) BroadcastRoom(roomID int, msg interface{}) {
 			if ok {
 				delete(m.rooms[roomID], c)
 				delete(m.connUser, c)
+				delete(m.connMu, c)
 				delete(m.userConns[user.UserID], c)
 				if len(m.userConns[user.UserID]) == 0 {
 					delete(m.userConns, user.UserID)
@@ -170,6 +194,7 @@ func (m *Manager) ConnectLobby(conn *websocket.Conn, user UserInfo) {
 	defer m.mu.Unlock()
 
 	m.lobbyConns[conn] = user
+	m.connMu[conn] = &sync.Mutex{}
 
 	if m.userConns[user.UserID] == nil {
 		m.userConns[user.UserID] = make(map[*websocket.Conn]bool)
@@ -193,6 +218,7 @@ func (m *Manager) DisconnectLobby(conn *websocket.Conn) {
 	}
 
 	delete(m.lobbyConns, conn)
+	delete(m.connMu, conn)
 
 	delete(m.userConns[user.UserID], conn)
 	if len(m.userConns[user.UserID]) == 0 {
@@ -227,7 +253,7 @@ func (m *Manager) SendPersonal(userID int, msg interface{}) bool {
 
 	sent := false
 	for _, c := range targets {
-		if err := c.WriteMessage(websocket.TextMessage, data); err == nil {
+		if err := m.safeWrite(c, data); err == nil {
 			sent = true
 		}
 	}

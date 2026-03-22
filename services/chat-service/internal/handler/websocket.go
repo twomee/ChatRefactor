@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,17 +20,57 @@ import (
 	"github.com/twomee/chatbox/chat-service/internal/ws"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	// In production, restrict origins. For dev, allow all.
-	CheckOrigin: func(r *http.Request) bool { return true },
+const (
+	// maxMessageSize is the maximum WebSocket message size in bytes (64 KB).
+	// This prevents malicious clients from sending enormous payloads to
+	// exhaust server memory.
+	maxMessageSize = 64 * 1024
+
+	// maxContentLength is the maximum chat message content length in characters.
+	maxContentLength = 4096
+)
+
+// newUpgrader creates a WebSocket upgrader with origin checking.
+// In production, only the configured allowed origins are accepted.
+// In dev mode, all origins are allowed for convenience.
+func newUpgrader() websocket.Upgrader {
+	return websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin:     checkOrigin,
+	}
+}
+
+// checkOrigin validates the request origin against allowed origins.
+// In dev mode or when ALLOWED_ORIGINS is not set, all origins are allowed.
+func checkOrigin(r *http.Request) bool {
+	env := os.Getenv("APP_ENV")
+	if env == "" || strings.EqualFold(env, "dev") || strings.EqualFold(env, "test") {
+		return true
+	}
+
+	allowed := os.Getenv("ALLOWED_ORIGINS")
+	if allowed == "" {
+		return true // no restriction configured
+	}
+
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return false // production requires an origin header
+	}
+
+	for _, o := range strings.Split(allowed, ",") {
+		if strings.TrimSpace(o) == origin {
+			return true
+		}
+	}
+	return false
 }
 
 // WSHandler handles WebSocket upgrades for room chat.
 type WSHandler struct {
 	manager   *ws.Manager
-	store     *store.RoomStore
+	store     store.RoomRepository
 	delivery  delivery.Strategy
 	secretKey string
 	logger    *zap.Logger
@@ -37,7 +79,7 @@ type WSHandler struct {
 // NewWSHandler creates a WebSocket handler.
 func NewWSHandler(
 	manager *ws.Manager,
-	store *store.RoomStore,
+	store store.RoomRepository,
 	delivery delivery.Strategy,
 	secretKey string,
 	logger *zap.Logger,
@@ -92,11 +134,15 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 	muted, _ := h.store.IsMuted(c.Request.Context(), roomID, userID)
 
 	// Upgrade to WebSocket.
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	up := newUpgrader()
+	conn, err := up.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		h.logger.Error("ws_upgrade_failed", zap.Error(err))
 		return
 	}
+
+	// Set read size limit to prevent memory exhaustion from oversized frames.
+	conn.SetReadLimit(maxMessageSize)
 
 	user := ws.UserInfo{UserID: userID, Username: username}
 	h.manager.ConnectRoom(roomID, conn, user)
@@ -147,6 +193,13 @@ func (h *WSHandler) readLoop(conn *websocket.Conn, roomID, userID int, username 
 		}
 		if err := json.Unmarshal(raw, &incoming); err != nil || incoming.Content == "" {
 			continue // skip malformed messages
+		}
+
+		// Enforce maximum content length to prevent abuse.
+		if len(incoming.Content) > maxContentLength {
+			errMsg := gin.H{"type": "error", "content": "Message too long"}
+			_ = conn.WriteJSON(errMsg)
+			continue
 		}
 
 		if muted {

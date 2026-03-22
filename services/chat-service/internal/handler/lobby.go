@@ -43,11 +43,15 @@ func (h *LobbyHandler) HandleLobbyWS(c *gin.Context) {
 		return
 	}
 
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	up := newUpgrader()
+	conn, err := up.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		h.logger.Error("lobby_ws_upgrade_failed", zap.Error(err))
 		return
 	}
+
+	// Set read size limit to prevent memory exhaustion.
+	conn.SetReadLimit(maxMessageSize)
 
 	user := ws.UserInfo{UserID: userID, Username: username}
 	h.manager.ConnectLobby(conn, user)
