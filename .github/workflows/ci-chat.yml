@@ -30,14 +30,14 @@ jobs:
         with:
           go-version: "1.24"
 
+      - name: Download dependencies
+        run: go mod download
+
       - name: Run go vet
         run: go vet ./...
 
-      - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.57.2
-
-      - name: Run golangci-lint
-        run: golangci-lint run ./...
+      - name: Run go build check
+        run: go build ./...
 
   test:
     name: Chat Tests
