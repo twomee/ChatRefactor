@@ -10,8 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip wheel setuptools && \
-    pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip "wheel>=0.46.2" setuptools && \
+    pip install --no-cache-dir --prefix=/install -r requirements.txt && \
+    pip install --no-cache-dir --prefix=/install --upgrade "jaraco.context>=6.1.0" "wheel>=0.46.2"
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 # Slim image with only the runtime libraries — no compiler, no dev headers.
@@ -26,6 +27,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy pre-built Python packages from builder
 COPY --from=builder /install /usr/local
+
+# Upgrade base-image packages flagged by Trivy
+RUN pip install --no-cache-dir --upgrade "wheel>=0.46.2"
 
 COPY . .
 
