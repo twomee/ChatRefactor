@@ -151,7 +151,9 @@ class MessagePersistenceConsumer:
 
         # Security: truncate oversized message content to prevent DoS
         if len(text) > MAX_CONTENT_LENGTH:
-            logger.warning("message_content_truncated", msg_id=msg_id, original_length=len(text))
+            logger.warning(
+                "message_content_truncated", msg_id=msg_id, original_length=len(text)
+            )
             text = text[:MAX_CONTENT_LENGTH]
 
         sent_at = None
@@ -189,7 +191,9 @@ class MessagePersistenceConsumer:
 
         # Security: truncate oversized message content to prevent DoS
         if len(text) > MAX_CONTENT_LENGTH:
-            logger.warning("pm_content_truncated", msg_id=msg_id, original_length=len(text))
+            logger.warning(
+                "pm_content_truncated", msg_id=msg_id, original_length=len(text)
+            )
             text = text[:MAX_CONTENT_LENGTH]
 
         sent_at = None
