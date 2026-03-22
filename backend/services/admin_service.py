@@ -24,12 +24,14 @@ def get_all_rooms(db: Session):
 async def close_all_rooms(db: Session, mgr: ConnectionManager):
     rooms = room_dal.set_all_active(db, False)
     logger.info("all_rooms_closed", count=len(rooms))
-    for room in rooms:
-        await mgr.broadcast(room.id, {"type": "chat_closed", "detail": "Admin has closed the chat"})
+    # Send chat_closed directly to each socket (bypass Redis to avoid race),
+    # then close with 4002 so the frontend knows the room was closed.
+    closed_msg = {"type": "chat_closed", "detail": "Admin has closed the chat"}
     for _room_id, sockets in list(mgr.rooms.items()):
         for ws in list(sockets):
             try:
-                await ws.close()
+                await ws.send_json(closed_msg)
+                await ws.close(code=4002)
             except Exception:
                 pass
     return {"message": "All rooms closed"}
@@ -47,16 +49,16 @@ async def close_room(db: Session, room_id: int, mgr: ConnectionManager):
         raise HTTPException(404, "Room not found")
     room_dal.set_active(db, room, False)
     logger.info("room_closed", room_id=room_id, room_name=room.name)
-    await mgr.broadcast(
-        room_id,
-        {
-            "type": "chat_closed",
-            "detail": f"Room '{room.name}' has been closed by admin",
-        },
-    )
+    # Send chat_closed directly to each socket (bypass Redis to avoid race),
+    # then close with 4002 so the frontend knows the room was closed.
+    closed_msg = {
+        "type": "chat_closed",
+        "detail": f"Room '{room.name}' has been closed by admin",
+    }
     for ws in list(mgr.rooms.get(room_id, [])):
         try:
-            await ws.close()
+            await ws.send_json(closed_msg)
+            await ws.close(code=4002)
         except Exception:
             pass
     return {"message": f"Room '{room.name}' closed"}

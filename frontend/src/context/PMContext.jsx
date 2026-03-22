@@ -31,6 +31,7 @@ function pmReducer(state, action) {
     }
 
     case 'CLEAR_PM_UNREAD':
+      if (!state.pmUnread[action.username]) return state;
       return {
         ...state,
         pmUnread: { ...state.pmUnread, [action.username]: 0 },
