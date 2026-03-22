@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { listRooms, createRoom } from '../roomApi';
+import { listRooms, createRoom, getMessagesSince } from '../roomApi';
 import http from '../http';
 
 vi.mock('../http', () => ({
@@ -40,6 +40,25 @@ describe('roomApi', () => {
       const res = await createRoom('general');
       expect(http.post).toHaveBeenCalledWith('/rooms/', { name: 'general' });
       expect(res.data.name).toBe('general');
+    });
+  });
+
+  describe('getMessagesSince', () => {
+    it('calls GET /rooms/{id}/messages with since and limit params', async () => {
+      http.get.mockResolvedValue({ data: [] });
+      const since = '2026-01-01T00:00:00.000Z';
+      await getMessagesSince(42, since);
+      expect(http.get).toHaveBeenCalledWith('/rooms/42/messages', {
+        params: { since, limit: 200 },
+      });
+    });
+
+    it('accepts a custom limit', async () => {
+      http.get.mockResolvedValue({ data: [] });
+      await getMessagesSince(1, '2026-01-01T00:00:00.000Z', 50);
+      expect(http.get).toHaveBeenCalledWith('/rooms/1/messages', {
+        params: { since: '2026-01-01T00:00:00.000Z', limit: 50 },
+      });
     });
   });
 });

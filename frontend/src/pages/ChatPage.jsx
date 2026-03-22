@@ -15,6 +15,7 @@ import UserList from '../components/room/UserList';
 import FileUpload from '../components/chat/FileProgress';
 import PMList from '../components/pm/PMList';
 import PMView from '../components/pm/PMView';
+import ConnectionStatus from '../components/common/ConnectionStatus';
 
 function getInitials(name) {
   if (!name) return '?';
@@ -27,7 +28,7 @@ export default function ChatPage() {
   const { pmState, pmDispatch } = usePM();
   const navigate = useNavigate();
 
-  const { joinRoom, exitRoom, exitAllRooms, sendMessage } = useChatConnection();
+  const { joinRoom, exitRoom, exitAllRooms, sendMessage, connectionStatus } = useChatConnection();
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -136,6 +137,7 @@ export default function ChatPage() {
       <header className="chat-header">
         <Logo />
         <div className="chat-header-actions">
+          <ConnectionStatus status={connectionStatus} />
           <div className="user-badge">
             <div className="user-avatar">{getInitials(user?.username)}</div>
             {user?.username}
