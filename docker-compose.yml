@@ -50,6 +50,31 @@ services:
       start_period: 30s
 
   # ---------------------------------------------------------------------------
+  # One-time init containers (run once, create tables + topics, then exit)
+  # ---------------------------------------------------------------------------
+  db-init:
+    image: postgres:16-alpine
+    entrypoint: ["/bin/sh", "/init/init-db.sh"]
+    volumes:
+      - ./docker/init:/init:ro
+    environment:
+      - PGPASSWORD=${POSTGRES_PASSWORD:-chatbox_pass}
+      - PGUSER=chatbox
+      - PGHOST=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  kafka-init:
+    image: apache/kafka:latest
+    entrypoint: ["/bin/bash", "/init/init-kafka.sh"]
+    volumes:
+      - ./docker/init:/init:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
   # API Gateway
   # ---------------------------------------------------------------------------
   kong:
@@ -96,11 +121,11 @@ services:
       - APP_ENV=${APP_ENV:-prod}
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
     depends_on:
-      postgres:
-        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
       redis:
-        condition: service_healthy
-      kafka:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
@@ -122,14 +147,14 @@ services:
       - MESSAGE_SERVICE_URL=http://message-service:8004
       - APP_ENV=${APP_ENV:-prod}
     depends_on:
-      postgres:
-        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8003/health"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -146,10 +171,10 @@ services:
       - AUTH_SERVICE_URL=http://auth-service:8001
       - APP_ENV=${APP_ENV:-prod}
     depends_on:
-      postgres:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 10s
@@ -169,12 +194,12 @@ services:
     volumes:
       - uploads:/app/uploads
     depends_on:
-      postgres:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8005/health"]
       interval: 10s
       timeout: 5s
       retries: 3
