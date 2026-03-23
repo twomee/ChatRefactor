@@ -27,6 +27,52 @@ import (
 	"github.com/twomee/chatbox/chat-service/internal/ws"
 )
 
+// runMigrations reads the SQL migration file and executes it against the
+// database. It tries two paths: first "migrations/" (Docker working dir),
+// then "services/chat-service/migrations/" (local dev from repo root).
+// After applying the schema, it seeds the default rooms if they don't exist.
+func runMigrations(ctx context.Context, pool *pgxpool.Pool, logger *zap.Logger) error {
+	migrationPaths := []string{
+		"migrations/001_create_rooms.up.sql",
+		"services/chat-service/migrations/001_create_rooms.up.sql",
+	}
+
+	var sqlBytes []byte
+	var usedPath string
+	for _, p := range migrationPaths {
+		data, err := os.ReadFile(p)
+		if err == nil {
+			sqlBytes = data
+			usedPath = p
+			break
+		}
+	}
+	if sqlBytes == nil {
+		return fmt.Errorf("migration file not found in any of %v", migrationPaths)
+	}
+	logger.Info("migration_file_found", zap.String("path", usedPath))
+
+	if _, err := pool.Exec(ctx, string(sqlBytes)); err != nil {
+		return fmt.Errorf("migration exec failed: %w", err)
+	}
+	logger.Info("migration_applied")
+
+	// Seed default rooms if they don't already exist.
+	defaultRooms := []string{"politics", "sports", "movies"}
+	for _, name := range defaultRooms {
+		_, err := pool.Exec(ctx,
+			"INSERT INTO rooms (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
+			name,
+		)
+		if err != nil {
+			return fmt.Errorf("seed room %q failed: %w", name, err)
+		}
+	}
+	logger.Info("default_rooms_seeded", zap.Strings("rooms", defaultRooms))
+
+	return nil
+}
+
 func main() {
 	// --- Logger ---
 	logger, _ := zap.NewProduction()
@@ -60,6 +106,11 @@ func main() {
 			logger.Fatal("db_ping_failed", zap.Error(err))
 		}
 		logger.Info("database_connected")
+
+		// Run SQL migrations and seed default rooms.
+		if err := runMigrations(ctx, dbPool, logger); err != nil {
+			logger.Fatal("migration_failed", zap.Error(err))
+		}
 	} else {
 		logger.Warn("database_not_configured")
 	}
@@ -101,7 +152,7 @@ func main() {
 
 	// --- Handlers ---
 	healthH := handler.NewHealthHandler(dbPool, rdb, kafkaProducer, brokers)
-	roomH := handler.NewRoomHandler(roomStore, wsManager, logger)
+	roomH := handler.NewRoomHandler(roomStore, wsManager, authClient, logger)
 	wsH := handler.NewWSHandler(wsManager, roomStore, deliveryStrategy, cfg.SecretKey, logger)
 	lobbyH := handler.NewLobbyHandler(wsManager, cfg.SecretKey, logger)
 	pmH := handler.NewPMHandler(wsManager, authClient, deliveryStrategy, logger)
