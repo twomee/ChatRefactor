@@ -2,6 +2,8 @@
 **From: Python 2 / wxPython / raw sockets / shelve (2015)**
 **To: Python 3.11 / React / FastAPI / SQLite (2025)**
 
+> **Note:** This document covers the original migration from the 2015 Python 2 desktop client to the FastAPI monolith. The project has since evolved further into a **microservices architecture** with 4 independent services (Python, Go, Node.js) behind a Kong API Gateway. The monolith code is preserved at `v1/backend/` for reference. See [Architecture & Tech Decisions](docs/ARCHITECTURE_AND_TECH_DECISIONS.md) Section 7 for the current microservices design.
+
 Reference document: `chatbox_architecture.docx` (same folder — read it for full design rationale).
 
 ---

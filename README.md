@@ -63,41 +63,31 @@ Each service owns its own database (database-per-service pattern), communicates 
 
 ## Quick Start
 
-### Option A: Full Microservices Stack (Docker)
-
-```bash
-cp .env.example .env                          # configure environment
-docker compose -f docker-compose.microservices.yml up -d --build  # start all services
-```
-
-Services available at:
-- **App**: http://localhost (Kong gateway)
-- **Kong Admin**: http://localhost:8001
-- **Auth Service**: http://localhost:8001
-- **Chat Service**: http://localhost:8003
-- **Message Service**: http://localhost:8004
-- **File Service**: http://localhost:8005
-
-### Option B: Monolith Stack (Docker)
+### Option A: Full Stack (Docker) — Recommended
 
 ```bash
 cp .env.example .env          # configure environment
-docker compose up -d --build  # start all 5 services
+docker compose up -d --build  # start all microservices + Kong + frontend
 ```
 
-App available at **http://localhost**
+Services available at:
+- **App**: http://localhost (Kong gateway routes all traffic)
+- **Auth Service**: http://localhost:8001 (direct) or http://localhost/api/auth
+- **Chat Service**: http://localhost:8003 (direct) or ws://localhost/ws/chat
+- **Message Service**: http://localhost:8004 (direct) or http://localhost/api/messages
+- **File Service**: http://localhost:8005 (direct) or http://localhost/api/files
 
-### Option C: Local Development (recommended for daily work)
+### Option B: Local Development (recommended for daily work)
 
 ```bash
-# 1. Start infrastructure
+# 1. Start infrastructure (PostgreSQL, Redis, Kafka)
 docker compose -f docker-compose.dev.yml up -d
 
-# 2. Start backend (monolith)
-cd backend
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+# 2. Start each microservice natively (in separate terminals)
+cd services/auth-service && source venv/bin/activate && uvicorn app.main:app --reload --port 8001
+cd services/chat-service && go run ./cmd/...
+cd services/message-service && source venv/bin/activate && uvicorn app.main:app --reload --port 8004
+cd services/file-service && npm install && npm run dev
 
 # 3. Start frontend (in a new terminal)
 cd frontend
@@ -105,7 +95,13 @@ npm install
 npm run dev
 ```
 
-Frontend at **http://localhost:5173** | API at **http://localhost:8000** | API Docs at **http://localhost:8000/docs**
+Frontend at **http://localhost:5173** | Services at ports **8001, 8003, 8004, 8005**
+
+> **Note:** In local dev without Kong, the frontend `.env` must point directly to service ports. In Docker, Kong handles all routing through port 80.
+
+### Option C: Legacy Monolith (reference only)
+
+The original monolith is preserved at `v1/backend/` for reference. See [v1/backend/](v1/backend/) if you need to run it.
 
 ---
 
@@ -140,49 +136,36 @@ Register additional accounts from the login page.
 
 ```
 Chat-Project-Final/
-├── backend/                     # Monolith FastAPI server
-│   ├── main.py                  # Entry point with lifespan hooks
-│   ├── routers/                 # API endpoints (auth, rooms, ws, files, admin, pm, messages)
-│   ├── services/                # Business logic layer
-│   ├── dal/                     # Data access layer (database queries)
-│   ├── models.py                # SQLAlchemy ORM models
-│   ├── ws_manager.py            # WebSocket state + Redis pub/sub relay
-│   ├── kafka_client.py          # Kafka producer (graceful degradation)
-│   ├── kafka_consumers.py       # Kafka consumer (async persistence + DLQ)
-│   ├── alembic/                 # Database migrations
-│   ├── tests/                   # Test suite (111 tests, 87% coverage)
-│   ├── Dockerfile               # Production container (Python 3.11 + Gunicorn)
-│   └── requirements.txt
-│
-├── services/                    # Microservices
+├── services/                    # Microservices (current architecture)
 │   ├── auth-service/            # Python/FastAPI — JWT auth, registration, token blacklist
 │   │   ├── app/                 # FastAPI application (routers, services, dal, models)
 │   │   ├── alembic/             # Database migrations
 │   │   ├── tests/               # pytest test suite
-│   │   ├── Dockerfile           # Production container
+│   │   ├── Dockerfile
 │   │   └── requirements.txt
 │   │
-│   ├── chat-service/            # Go — WebSocket server, real-time messaging
-│   │   ├── cmd/                 # Entry point
-│   │   ├── internal/            # Handlers, hub, Redis pub/sub
+│   ├── chat-service/            # Go — WebSocket server, real-time messaging, admin commands
+│   │   ├── cmd/                 # Entry point (main.go)
+│   │   ├── internal/            # Handlers, hub, ws manager, delivery, middleware
 │   │   ├── migrations/          # SQL migrations
+│   │   ├── tests/               # Go test suite
 │   │   └── Dockerfile
 │   │
-│   ├── message-service/         # Python/FastAPI — message history, replay, persistence
+│   ├── message-service/         # Python/FastAPI — message persistence, history, CQRS
 │   │   ├── app/                 # FastAPI application (routers, services, dal, consumers)
 │   │   ├── alembic/             # Database migrations
 │   │   ├── tests/               # pytest test suite
-│   │   ├── Dockerfile           # Production container
+│   │   ├── Dockerfile
 │   │   └── requirements.txt
 │   │
 │   └── file-service/            # Node.js/TypeScript — file upload, download, metadata
 │       ├── src/                 # Express app (routes, services, middleware, kafka)
 │       ├── prisma/              # Prisma ORM schema
 │       ├── tests/               # Vitest test suite
-│       ├── Dockerfile           # Production container
+│       ├── Dockerfile
 │       └── package.json
 │
-├── frontend/                    # React + Vite app
+├── frontend/                    # React 19 + Vite 8
 │   ├── src/
 │   │   ├── pages/               # LoginPage, ChatPage, AdminPage
 │   │   ├── components/          # MessageList, RoomList, UserList, PMView, etc.
@@ -190,34 +173,47 @@ Chat-Project-Final/
 │   │   ├── services/            # API client wrappers (authApi, roomApi, pmApi, etc.)
 │   │   ├── hooks/               # Custom hooks (useMultiRoomChat)
 │   │   └── api/http.js          # Axios instance with JWT interceptor
-│   ├── nginx.conf               # Reverse proxy config (API + WebSocket + SPA)
+│   ├── nginx.conf               # Reverse proxy config (SPA routing)
 │   ├── Dockerfile               # Production container (Node 20 build + Nginx 1.25)
 │   └── package.json
 │
+├── contracts/                   # Kafka event schemas (JSON Schema)
+│   └── events/                  # 6 event contract files (chat, file, auth, dlq)
+│
+├── infra/                       # Infrastructure configs
+│   ├── docker/init/             # init-db.sh, init-kafka.sh
+│   └── kong/                    # kong.yml (declarative gateway config)
+│
 ├── loadtests/                   # Load testing suite (Locust)
 │   ├── locustfile.py            # Microservices load test (4 user classes via Kong)
-│   ├── scenarios/               # Monolith-era scenario files
-│   ├── scripts/                 # Automation and CI gate scripts
+│   ├── scenarios/               # Legacy monolith scenario files
+│   ├── scripts/                 # CI gate scripts
 │   ├── benchmarks/              # pytest-benchmark micro-benchmarks
-│   └── README.md                # Load test documentation
+│   └── README.md
 │
 ├── docs/                        # Documentation
 │   ├── OPERATIONS_GUIDE.md      # How to run, debug, and troubleshoot
-│   └── ARCHITECTURE_AND_TECH_DECISIONS.md  # Why every technology was chosen
+│   ├── ARCHITECTURE_AND_TECH_DECISIONS.md  # Why every technology was chosen
+│   ├── FRONTEND_EXPLAINED.md    # Frontend architecture and component guide
+│   └── MICROSERVICES_VERIFICATION_CHECKLIST.md  # 174-item feature parity checklist
+│
+├── v1/                          # Original monolith (kept for reference)
+│   └── backend/                 # FastAPI monolith — deprecated
 │
 ├── .github/workflows/           # CI/CD pipelines
-│   ├── ci.yml                   # Monolith CI (lint, test, build)
+│   ├── ci.yml                   # Legacy monolith CI (lint, test, build)
 │   ├── ci-auth.yml              # Auth service CI
 │   ├── ci-chat.yml              # Chat service CI
 │   ├── ci-message.yml           # Message service CI
 │   ├── ci-file.yml              # File service CI
+│   ├── ci-microservices.yml     # Docker Compose syntax validation
 │   ├── security.yml             # Trivy vulnerability scanning
 │   └── secrets.yml              # Gitleaks secret scanning
 │
-├── docker-compose.yml           # Production: monolith stack
-├── docker-compose.microservices.yml  # Production: microservices stack
+├── docker-compose.yml           # Production: microservices + Kong + frontend
 ├── docker-compose.dev.yml       # Development: PostgreSQL + Redis + Kafka only
 ├── .env.example                 # Environment variable template
+├── .pre-commit-config.yaml      # Pre-commit hooks (gitleaks, ruff, eslint)
 └── .env                         # Local environment config (not committed)
 ```
 
@@ -227,9 +223,12 @@ Chat-Project-Final/
 
 | Document | What's in it |
 |----------|-------------|
-| **[Operations Guide](docs/OPERATIONS_GUIDE.md)** | Step-by-step setup for dev/staging/production, PostgreSQL commands, Redis commands, Kafka commands, health checks, troubleshooting, microservices operations |
-| **[Architecture & Tech Decisions](docs/ARCHITECTURE_AND_TECH_DECISIONS.md)** | Why every technology and library was chosen, data flow diagrams, microservice architecture, alternatives considered, design trade-offs |
-| **[Dev Platform Guide](DEV_PLATFORM_GUIDE.md)** | CI/CD pipelines, linting, testing, security scanning, per-service CI |
+| **[Operations Guide](docs/OPERATIONS_GUIDE.md)** | Setup, running, debugging, and troubleshooting for all microservices |
+| **[Architecture & Tech Decisions](docs/ARCHITECTURE_AND_TECH_DECISIONS.md)** | Why every technology was chosen, microservice architecture, design patterns, trade-offs |
+| **[Dev Platform Guide](DEV_PLATFORM_GUIDE.md)** | CI/CD pipelines, per-service linting/testing, security scanning, pre-commit hooks |
+| **[Frontend Explained](docs/FRONTEND_EXPLAINED.md)** | Frontend architecture, React concepts, component structure, data flow |
+| **[Kafka Event Contracts](contracts/README.md)** | Kafka event schemas, producer/consumer mapping, contract rules |
+| **[Verification Checklist](docs/MICROSERVICES_VERIFICATION_CHECKLIST.md)** | 174-item feature parity checklist (171/174 passed) |
 | **[Load Tests](loadtests/README.md)** | Load testing suite, performance baselines, user classes, pass/fail criteria |
 
 ---
@@ -237,25 +236,25 @@ Chat-Project-Final/
 ## Running Tests
 
 ```bash
-# Monolith backend tests
-cd backend
-pytest tests/ -v
-
-# Auth service tests
+# Auth service (Python)
 cd services/auth-service
 pytest tests/ -v
 
-# Message service tests
+# Chat service (Go)
+cd services/chat-service
+go test ./... -v
+
+# Message service (Python)
 cd services/message-service
 pytest tests/ -v
 
-# Chat service tests (Go)
-cd services/chat-service
-go test ./...
-
-# File service tests (Node.js)
+# File service (Node.js/TypeScript)
 cd services/file-service
 npm test
+
+# Legacy monolith tests (reference only)
+cd v1/backend
+pytest tests/ -v
 ```
 
 ---
@@ -263,18 +262,17 @@ npm test
 ## Health Checks
 
 ```bash
-# Monolith
-curl http://localhost:8000/health    # Liveness: is the process running?
-curl http://localhost:8000/ready     # Readiness: DB + Redis + Kafka status
-
-# Microservices (through Kong)
+# Through Kong gateway (production)
 curl http://localhost/api/auth/health
 curl http://localhost/api/chat/health
 curl http://localhost/api/messages/health
 curl http://localhost/api/files/health
 
-# Kong Gateway status
-curl http://localhost:8001/status
+# Direct service access (development)
+curl http://localhost:8001/health     # Auth service
+curl http://localhost:8003/health     # Chat service
+curl http://localhost:8004/health     # Message service
+curl http://localhost:8005/health     # File service
 ```
 
 ---
@@ -286,10 +284,13 @@ Copy `.env.example` to `.env` and customize. Key variables:
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `APP_ENV` | `dev` | Environment mode: `dev`, `staging`, `prod` |
-| `SECRET_KEY` | (change me) | JWT signing key (shared across services) |
-| `DATABASE_URL` | `postgresql://chatbox:chatbox_pass@localhost:5432/chatbox` | PostgreSQL connection (monolith) |
+| `SECRET_KEY` | (change me) | JWT signing key (shared across all services) |
+| `POSTGRES_USER` | `chatbox` | PostgreSQL superuser |
+| `POSTGRES_PASSWORD` | `chatbox_pass` | PostgreSQL password |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection |
-| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Kafka broker address |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Kafka broker address (host), `kafka:9092` (Docker) |
 | `KONG_DATABASE` | `off` | Kong config mode (dbless) |
+
+Each service connects to its own database (`chatbox_auth`, `chatbox_chat`, `chatbox_messages`, `chatbox_files`) created automatically by the init script.
 
 See the [Operations Guide](docs/OPERATIONS_GUIDE.md) for full configuration reference.

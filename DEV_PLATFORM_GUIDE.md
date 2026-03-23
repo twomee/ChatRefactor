@@ -31,19 +31,19 @@ your code is clean, secure, tested, and doesn't break anything. You don't have t
 run them manually — they just work.
 
 ```
-You write code
+You write code (in one of 4 microservices or the frontend)
     |
     v
 git commit --> pre-commit hooks catch problems BEFORE the code leaves your machine
     |
     v
 git push + open PR --> GitHub Actions run in the cloud:
-    |                    - Is the code formatted correctly? (Ruff, ESLint)
-    |                    - Do all 111 tests pass? (pytest)
-    |                    - Is 50%+ of the code covered by tests? (pytest-cov)
+    |                    - Is the code formatted correctly? (Ruff, golangci-lint, ESLint)
+    |                    - Do the service's tests pass? (pytest, go test, Vitest)
+    |                    - Is 50%+ of the code covered by tests?
     |                    - Are there security vulnerabilities? (Trivy)
     |                    - Are there leaked secrets? (Gitleaks)
-    |                    - Do the Docker images build? (docker build)
+    |                    - Does the Docker image build? (docker build)
     |
     v
 All checks green? --> Safe to merge into main
@@ -51,6 +51,8 @@ All checks green? --> Safe to merge into main
     v
 Every Monday --> Dependabot checks if any dependencies are outdated or vulnerable
 ```
+
+> **Key difference from monolith:** Each microservice has its own CI pipeline that only triggers when that service's code changes. A change to auth-service doesn't trigger chat-service tests.
 
 ---
 
@@ -127,16 +129,19 @@ in the PR page under "Checks".
 
 **Our pipelines:**
 
-### CI Pipeline (`.github/workflows/ci.yml`)
-Runs on every PR and push to main.
+### Per-Service CI Pipelines
+Each microservice has its own pipeline that only runs when its code changes. See [Microservices CI/CD](#microservices-cicd) for details.
+
+### Legacy Monolith CI Pipeline (`.github/workflows/ci.yml`)
+Runs on changes to `v1/backend/` or `frontend/`.
 
 | Job | What it does | Time |
 |-----|-------------|------|
 | Backend Lint | Checks Python code style with Ruff | ~6s |
-| Backend Tests | Runs 111 tests, checks 50%+ coverage | ~20s |
+| Backend Tests | Runs legacy monolith tests, checks 50%+ coverage | ~20s |
 | Frontend Lint | Checks JavaScript code style with ESLint | ~7s |
 | Frontend Build | Makes sure the React app compiles | ~10s |
-| Docker Build | Makes sure both Docker images build | ~40s |
+| Docker Build | Makes sure Docker images build | ~40s |
 
 ### Security Scan (`.github/workflows/security.yml`)
 Runs on every PR, push to main, and every Monday.
@@ -164,7 +169,10 @@ and the checks re-run automatically.
 **What:** A tool that checks your Python code for bugs, style issues, and
 formatting problems. Think of it as a spell-checker for code.
 
-**Config:** `backend/ruff.toml`
+**Config:** Each Python service has its own `ruff.toml`:
+- `services/auth-service/ruff.toml`
+- `services/message-service/ruff.toml`
+- `v1/backend/ruff.toml` (legacy monolith)
 
 **What it catches:**
 - Unused imports and variables
@@ -175,7 +183,8 @@ formatting problems. Think of it as a spell-checker for code.
 
 **How to use locally:**
 ```bash
-cd backend
+# For a specific service
+cd services/auth-service    # or services/message-service
 
 # Check for issues
 ruff check .
@@ -209,26 +218,44 @@ npm run lint
 
 ---
 
-## pytest + Coverage — Testing
+## Testing — Per-Service
 
-**What:** pytest runs your test files. pytest-cov measures how much of your
-code is actually tested (coverage percentage).
+**What:** Each microservice has its own test suite using the standard framework for its language.
 
-**Our stats:**
-- 111 tests
-- 87% code coverage
-- CI fails if coverage drops below 50%
+**Our stats (per service):**
+
+| Service | Framework | Coverage |
+|---------|-----------|---------|
+| Auth Service (Python) | pytest + pytest-asyncio | 90%+ |
+| Chat Service (Go) | go test | 95%+ |
+| Message Service (Python) | pytest + pytest-asyncio | 85%+ |
+| File Service (Node.js) | Vitest | — |
+
+CI fails if coverage drops below 50% for any service.
 
 **How to run locally:**
 ```bash
-cd backend
-APP_ENV=test SECRET_KEY=test-key ADMIN_USERNAME=admin ADMIN_PASSWORD=pass \
-  DATABASE_URL=sqlite:///./test.db pytest tests/ -v --cov=.
+# Auth service (Python)
+cd services/auth-service
+pytest tests/ -v --cov=app
+
+# Chat service (Go)
+cd services/chat-service
+go test ./... -v -cover
+
+# Message service (Python)
+cd services/message-service
+pytest tests/ -v --cov=app
+
+# File service (Node.js/TypeScript)
+cd services/file-service
+npm test
+npm run test:coverage
 ```
 
 **What the coverage number means:**
-- 87% = 87% of your code lines are executed during tests
-- The other 13% are edge cases, error handlers, or code paths not yet tested
+- 90% = 90% of your code lines are executed during tests
+- The rest are edge cases, error handlers, or code paths not yet tested
 - 50% minimum is enforced in CI — if you add code without tests, it might fail
 
 ---
@@ -339,47 +366,46 @@ You fix the issue and commit again.
 
 ## How It All Works Together
 
-Here's the full flow from writing code to merging:
+Here's the full flow from writing code to merging (using auth-service as an example):
 
 ```
 1. CREATE TICKET
-   Go to Jira, create a ticket (e.g., KAN-16)
+   Go to Jira, create a ticket (e.g., KAN-21)
 
 2. CREATE BRANCH
-   git checkout -b KAN-16-websocket-reconnect
+   git checkout -b KAN-21-auth-rate-limiting
 
 3. WRITE CODE
-   Write your feature/fix
+   Edit files in services/auth-service/
 
 4. COMMIT
-   git add . && git commit -m "KAN-16 add reconnect logic"
+   git add . && git commit -m "KAN-21 add rate limiting to login endpoint"
    |
    --> Pre-commit hooks run automatically:
        [gitleaks]  no secrets found           OK
        [ruff]      auto-fixed 1 import        OK
-       [eslint]    no issues                  OK
    |
    Commit created!
 
 5. PUSH + OPEN PR
-   git push -u origin KAN-16-websocket-reconnect
+   git push -u origin KAN-21-auth-rate-limiting
    Open PR on GitHub
    |
-   --> GitHub Actions run automatically:
-       [Backend Lint]      ruff check passed       OK
-       [Backend Tests]     111 passed, 87% cov     OK
-       [Frontend Lint]     eslint passed            OK
-       [Frontend Build]    build succeeded          OK
-       [Docker Build]      both images built        OK
+   --> ONLY ci-auth.yml triggers (not chat, message, or file service CI):
+       [Auth Lint]         ruff check passed       OK
+       [Auth Tests]        45 passed, 91% cov      OK
+       [Auth Docker]       image built              OK
+   |
+   --> Repo-wide pipelines also trigger:
        [Trivy]             no CVEs found            OK
        [Gitleaks]          no secrets found         OK
 
 6. MERGE
    All checks green --> merge PR
-   Jira ticket auto-updates with the PR link
+   Only auth-service needs redeployment
 
 7. WEEKLY MAINTENANCE (automatic)
-   Monday: Dependabot creates PRs for outdated dependencies
+   Monday: Dependabot creates PRs for outdated deps across all 8 directories
    Monday: Trivy re-scans for newly discovered CVEs
 ```
 
@@ -389,11 +415,15 @@ Here's the full flow from writing code to merging:
 
 | I want to... | Command |
 |--------------|---------|
-| Check Python code style | `cd backend && ruff check .` |
-| Auto-fix Python style | `cd backend && ruff check --fix . && ruff format .` |
-| Check JavaScript code style | `cd frontend && npm run lint` |
-| Run backend tests | `cd backend && pytest tests/ -v` |
-| Run tests with coverage | `cd backend && pytest tests/ --cov=.` |
+| Lint auth service | `cd services/auth-service && ruff check .` |
+| Lint chat service | `cd services/chat-service && golangci-lint run ./...` |
+| Lint message service | `cd services/message-service && ruff check .` |
+| Lint file service | `cd services/file-service && npm run lint` |
+| Lint frontend | `cd frontend && npm run lint` |
+| Test auth service | `cd services/auth-service && pytest tests/ -v` |
+| Test chat service | `cd services/chat-service && go test ./... -v` |
+| Test message service | `cd services/message-service && pytest tests/ -v` |
+| Test file service | `cd services/file-service && npm test` |
 | Install pre-commit hooks | `pip install pre-commit && pre-commit install` |
 | Run all hooks manually | `pre-commit run --all-files` |
 
