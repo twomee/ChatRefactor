@@ -1,8 +1,10 @@
 # app/main.py — Message Service entrypoint
 #
 # Lifespan:
-#   Startup: run Alembic migrations, start Kafka consumer + producer.
+#   Startup: start Kafka consumer + producer.
 #   Shutdown: stop Kafka consumer + producer.
+#
+# Database schema is created by the db-init container (not on startup).
 #
 # Includes:
 #   - Messages router (replay and history endpoints)
@@ -11,8 +13,6 @@
 #   - Global exception handler with structured logging
 from contextlib import asynccontextmanager
 
-from alembic import command as alembic_command
-from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -53,18 +53,11 @@ async def lifespan(app):
                 msg="Using default SECRET_KEY (acceptable for dev only)",
             )
 
-    # Run Alembic migrations to ensure schema is up to date
-    try:
-        alembic_cfg = AlembicConfig("alembic.ini")
-        alembic_command.upgrade(alembic_cfg, "head")
-        logger.info("alembic_migrations_applied")
-    except Exception as e:
-        logger.warning("alembic_migration_skipped", error=str(e))
-
     # Start Kafka producer (for DLQ)
     await init_producer()
 
     # Start Kafka consumer (persistence)
+    # Topics are auto-created by Kafka when auto.create.topics.enable=true (default)
     from app.consumers.persistence_consumer import MessagePersistenceConsumer
 
     persistence_consumer = MessagePersistenceConsumer()

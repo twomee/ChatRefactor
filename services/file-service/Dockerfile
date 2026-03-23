@@ -57,5 +57,5 @@ EXPOSE 8005
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:8005/health || exit 1
 
-# Start the service
+# Start the service (db schema created by db-init container, not here)
 CMD ["node", "dist/index.js"]
