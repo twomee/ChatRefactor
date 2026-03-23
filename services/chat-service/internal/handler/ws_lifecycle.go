@@ -36,13 +36,26 @@ func (h *WSHandler) handleJoin(ctx context.Context, conn *websocket.Conn, roomID
 }
 
 // handleDisconnect cleans up the connection, handles admin succession,
-// and broadcasts the user_left event.
+// clears the user's mute status, and broadcasts the user_left event.
+// For kicked users, the user_left broadcast is skipped (handleKick already sent it).
 func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, roomID, userID int, username string) {
 	h.manager.DisconnectRoom(roomID, conn)
 	_ = conn.Close()
 
+	// If this user was kicked, skip the user_left broadcast — it was already
+	// sent by handleKick. Also skip admin succession (kicked users aren't admins).
+	if h.wasKicked(roomID, userID) {
+		return
+	}
+
 	// Handle admin succession before broadcasting leave.
 	h.handleAdminSuccession(ctx, roomID, userID, username)
+
+	// Clear mute on leave — user should not remain muted after disconnecting.
+	isMuted, _ := h.store.IsMuted(ctx, roomID, userID)
+	if isMuted {
+		_ = h.store.UnmuteUser(ctx, roomID, userID)
+	}
 
 	// Get updated room state for leave broadcast.
 	remainingUsers := h.manager.GetUsernamesInRoom(roomID)

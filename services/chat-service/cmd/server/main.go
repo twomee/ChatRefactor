@@ -108,6 +108,7 @@ func main() {
 	wsH := handler.NewWSHandler(wsManager, roomStore, deliveryStrategy, cfg.SecretKey, logger)
 	lobbyH := handler.NewLobbyHandler(wsManager, cfg.SecretKey, logger)
 	pmH := handler.NewPMHandler(wsManager, authClient, deliveryStrategy, logger)
+	adminH := handler.NewAdminHandler(roomStore, wsManager, authClient, logger)
 
 	// --- Gin router ---
 	if cfg.IsProd() {
@@ -138,6 +139,14 @@ func main() {
 		auth.POST("/rooms/:id/mutes", roomH.MuteUser)
 		auth.DELETE("/rooms/:id/mutes/:userId", roomH.UnmuteUser)
 		auth.POST("/pm/send", pmH.SendPM)
+
+		// Admin dashboard endpoints (global admin only — verified per-handler).
+		auth.GET("/admin/users", roomH.GetRoomUsers) // existing endpoint
+		auth.GET("/admin/rooms", adminH.ListAllRooms)
+		auth.POST("/admin/chat/close", adminH.CloseAllRooms)
+		auth.POST("/admin/chat/open", adminH.OpenAllRooms)
+		auth.DELETE("/admin/db", adminH.ResetDatabase)
+		auth.POST("/admin/promote", adminH.PromoteUserInAllRooms)
 	}
 
 	// --- HTTP Server with graceful shutdown ---
@@ -161,6 +170,9 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	logger.Info("shutting_down")
+
+	// Gracefully close all WebSocket connections with code 1001 (GoingAway).
+	wsManager.CloseAll()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()

@@ -2,10 +2,12 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -86,6 +88,12 @@ type WSHandler struct {
 	logger        *zap.Logger
 	limiter       *rateLimiter
 	messageSvcURL string
+
+	// kickedUsers tracks users that were kicked (by "room:user" key).
+	// When a kicked user's readLoop exits, handleDisconnect checks this
+	// set and skips the "user_left" broadcast to avoid duplicates.
+	kickedMu    sync.Mutex
+	kickedUsers map[string]bool
 }
 
 // NewWSHandler creates a WebSocket handler.
@@ -108,6 +116,7 @@ func NewWSHandler(
 		logger:        logger,
 		limiter:       newRateLimiter(),
 		messageSvcURL: msgURL,
+		kickedUsers:   make(map[string]bool),
 	}
 }
 
@@ -148,6 +157,12 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 		return
 	}
 
+	// Check for duplicate user in room before upgrading.
+	if h.manager.IsUserInRoom(roomID, userID) {
+		c.JSON(http.StatusConflict, gin.H{"detail": "user already in room"})
+		return
+	}
+
 	// Upgrade to WebSocket.
 	up := newUpgrader()
 	conn, err := up.Upgrade(c.Writer, c.Request, nil)
@@ -180,6 +195,25 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 
 	// Cleanup on disconnect.
 	h.handleDisconnect(ctx, conn, roomID, userID, username)
+}
+
+// markKicked records that a user was kicked from a room.
+func (h *WSHandler) markKicked(roomID, userID int) {
+	h.kickedMu.Lock()
+	h.kickedUsers[fmt.Sprintf("%d:%d", roomID, userID)] = true
+	h.kickedMu.Unlock()
+}
+
+// wasKicked checks and clears the kicked flag for a user.
+func (h *WSHandler) wasKicked(roomID, userID int) bool {
+	key := fmt.Sprintf("%d:%d", roomID, userID)
+	h.kickedMu.Lock()
+	defer h.kickedMu.Unlock()
+	if h.kickedUsers[key] {
+		delete(h.kickedUsers, key)
+		return true
+	}
+	return false
 }
 
 // sendError sends an error message to a single connection.

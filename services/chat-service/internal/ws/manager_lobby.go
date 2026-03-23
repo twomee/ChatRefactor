@@ -48,6 +48,27 @@ func (m *Manager) DisconnectLobby(conn *websocket.Conn) {
 	m.logger.Info("ws_lobby_disconnect", zap.Int("user_id", user.UserID))
 }
 
+// BroadcastLobby sends a JSON message to ALL lobby connections.
+// Used for room_list_updated and file_shared notifications.
+func (m *Manager) BroadcastLobby(msg interface{}) {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		m.logger.Error("lobby_broadcast_marshal_error", zap.Error(err))
+		return
+	}
+
+	m.mu.RLock()
+	conns := make([]*websocket.Conn, 0, len(m.lobbyConns))
+	for c := range m.lobbyConns {
+		conns = append(conns, c)
+	}
+	m.mu.RUnlock()
+
+	for _, c := range conns {
+		_ = m.safeWrite(c, data)
+	}
+}
+
 // SendPersonal delivers a JSON message to all lobby connections belonging to a user.
 // Returns true if at least one delivery succeeded.
 func (m *Manager) SendPersonal(userID int, msg interface{}) bool {

@@ -210,3 +210,46 @@ func (s *RoomStore) IsMuted(ctx context.Context, roomID, userID int) (bool, erro
 	).Scan(&exists)
 	return exists, err
 }
+
+// ---------- Admin operations (global) ----------
+
+// GetAllIncludingInactive returns every room regardless of active status.
+func (s *RoomStore) GetAllIncludingInactive(ctx context.Context) ([]model.Room, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, name, is_active, created_at FROM rooms ORDER BY created_at`)
+	if err != nil {
+		return nil, fmt.Errorf("room GetAllIncludingInactive: %w", err)
+	}
+	defer rows.Close()
+
+	var rooms []model.Room
+	for rows.Next() {
+		var r model.Room
+		if err := rows.Scan(&r.ID, &r.Name, &r.IsActive, &r.CreatedAt); err != nil {
+			return nil, fmt.Errorf("room GetAllIncludingInactive scan: %w", err)
+		}
+		rooms = append(rooms, r)
+	}
+	return rooms, rows.Err()
+}
+
+// SetAllActive sets the is_active flag on all rooms. Returns the number of affected rows.
+func (s *RoomStore) SetAllActive(ctx context.Context, active bool) (int, error) {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE rooms SET is_active = $1`, active)
+	if err != nil {
+		return 0, fmt.Errorf("room SetAllActive: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+// DeleteAllData truncates rooms, room_admins, and muted_users tables.
+// Only for dev/staging use.
+func (s *RoomStore) DeleteAllData(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx,
+		`TRUNCATE muted_users, room_admins, rooms RESTART IDENTITY CASCADE`)
+	if err != nil {
+		return fmt.Errorf("room DeleteAllData: %w", err)
+	}
+	return nil
+}

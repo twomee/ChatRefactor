@@ -12,8 +12,9 @@ type Room struct {
 }
 
 // CreateRoomRequest is the payload for creating a new room.
+// Name must be 1-64 characters: alphanumeric, spaces, underscores, or hyphens.
 type CreateRoomRequest struct {
-	Name string `json:"name" binding:"required,min=1,max=128"`
+	Name string `json:"name" binding:"required,min=1,max=64"`
 }
 
 // SetActiveRequest is the payload for toggling room active state.

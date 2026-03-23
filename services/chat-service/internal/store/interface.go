@@ -12,9 +12,11 @@ import (
 // it straightforward to mock the store layer in tests.
 type RoomRepository interface {
 	GetAll(ctx context.Context) ([]model.Room, error)
+	GetAllIncludingInactive(ctx context.Context) ([]model.Room, error)
 	GetByID(ctx context.Context, id int) (*model.Room, error)
 	Create(ctx context.Context, name string) (*model.Room, error)
 	SetActive(ctx context.Context, id int, active bool) error
+	SetAllActive(ctx context.Context, active bool) (int, error)
 	GetAdmins(ctx context.Context, roomID int) ([]model.RoomAdmin, error)
 	AddAdmin(ctx context.Context, roomID, userID int) (*model.RoomAdmin, error)
 	RemoveAdmin(ctx context.Context, roomID, userID int) error
@@ -23,6 +25,7 @@ type RoomRepository interface {
 	MuteUser(ctx context.Context, roomID, userID int) (*model.MutedUser, error)
 	UnmuteUser(ctx context.Context, roomID, userID int) error
 	IsMuted(ctx context.Context, roomID, userID int) (bool, error)
+	DeleteAllData(ctx context.Context) error
 }
 
 // Compile-time check that RoomStore implements RoomRepository.

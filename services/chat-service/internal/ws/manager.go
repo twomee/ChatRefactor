@@ -16,6 +16,7 @@ package ws
 import (
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
@@ -100,4 +101,37 @@ func (m *Manager) TotalConnections() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return len(m.connUser) + len(m.lobbyConns)
+}
+
+// CloseAll gracefully closes every tracked connection with WebSocket close code 1001
+// (GoingAway). Called during server shutdown to ensure clean disconnect.
+func (m *Manager) CloseAll() {
+	m.mu.Lock()
+
+	var allConns []*websocket.Conn
+	for conn := range m.connUser {
+		allConns = append(allConns, conn)
+	}
+	for conn := range m.lobbyConns {
+		allConns = append(allConns, conn)
+	}
+
+	// Clear all tracking maps.
+	m.rooms = make(map[int]map[*websocket.Conn]bool)
+	m.connUser = make(map[*websocket.Conn]UserInfo)
+	m.userConns = make(map[int]map[*websocket.Conn]bool)
+	m.lobbyConns = make(map[*websocket.Conn]UserInfo)
+	m.connMu = make(map[*websocket.Conn]*sync.Mutex)
+	m.roomJoinOrder = make(map[int][]int)
+
+	m.mu.Unlock()
+
+	// Close connections outside the lock to avoid deadlock.
+	closeMsg := websocket.FormatCloseMessage(websocket.CloseGoingAway, "server shutting down")
+	for _, conn := range allConns {
+		_ = conn.WriteControl(websocket.CloseMessage, closeMsg, time.Now().Add(time.Second))
+		_ = conn.Close()
+	}
+
+	m.logger.Info("all_connections_closed", zap.Int("count", len(allConns)))
 }

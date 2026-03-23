@@ -51,6 +51,9 @@ func (h *WSHandler) handleKick(ctx context.Context, conn *websocket.Conn, roomID
 	}
 	h.manager.SendToUserInRoom(roomID, targetID, kickedMsg)
 
+	// Mark user as kicked so handleDisconnect skips the duplicate "user_left" broadcast.
+	h.markKicked(roomID, targetID)
+
 	// Small delay so the kicked message is delivered before close.
 	time.Sleep(50 * time.Millisecond)
 
