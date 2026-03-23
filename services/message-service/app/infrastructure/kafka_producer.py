@@ -33,7 +33,6 @@ async def init_producer():
             value_serializer=lambda v: json.dumps(v).encode("utf-8"),
             key_serializer=lambda k: k.encode("utf-8") if k else None,
             acks=1,
-            compression_type="lz4",
             request_timeout_ms=5000,
         )
         await _producer.start()
