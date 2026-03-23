@@ -28,6 +28,14 @@ Why we chose every piece of technology in cHATBOX — from infrastructure to ind
    - [Code Quality](#code-quality)
 5. [Data Flow: How It All Connects](#5-data-flow-how-it-all-connects)
 6. [What Alternatives Were Considered](#6-what-alternatives-were-considered)
+7. [Microservice Architecture](#7-microservice-architecture)
+   - [Service Decomposition](#service-decomposition)
+   - [Polyglot Stack](#polyglot-stack-why-different-languages)
+   - [Kong API Gateway](#kong-api-gateway)
+   - [Inter-Service Communication](#inter-service-communication)
+   - [Design Patterns](#design-patterns-used)
+   - [Data Architecture](#data-architecture-database-per-service)
+   - [Trade-offs vs Monolith](#trade-offs-vs-monolith)
 
 ---
 
@@ -605,3 +613,159 @@ Two folders (`backend/` and `frontend/`) with separate dependency management is 
 ### "Why not use TypeScript for the frontend?"
 
 The frontend is intentionally lightweight — thin API wrappers, context providers, and presentational components. TypeScript would add value in a larger codebase, but for our scale, the JSDoc hints from `@types/react` give us good-enough editor support without the build complexity.
+
+---
+
+## 7. Microservice Architecture
+
+### Why Microservices?
+
+The monolith served us well for the first phase — fast iteration, simple deployment, one codebase. But as the system grew, we hit natural boundaries where different parts of the application had different scaling needs, different change frequencies, and different optimal technology choices:
+
+| Concern | Monolith Reality | Microservice Benefit |
+|---------|-----------------|---------------------|
+| **WebSocket scaling** | All workers must handle both HTTP and WS — can't scale them independently | Chat service scales separately from REST APIs |
+| **File I/O** | Large file uploads block the Python event loop, affecting chat latency | File service runs in Node.js with native streaming I/O |
+| **Auth changes** | Changing password hashing or token format requires redeploying everything | Auth service deploys independently |
+| **Message queries** | Heavy history queries compete with real-time message writes for DB connections | Message service has its own database and connection pool |
+| **Team scaling** | Everyone works in the same codebase, merge conflicts on shared code | Each service is an independent repo/directory with clear ownership |
+
+### Service Decomposition
+
+We split the monolith into four services based on **bounded contexts** — each service owns a specific business capability:
+
+| Service | Language | Port | Responsibility | Why This Boundary? |
+|---------|----------|------|---------------|-------------------|
+| **auth-service** | Python (FastAPI) | 8001 | Registration, login, logout, JWT issuance, token blacklist | Auth is cross-cutting — every other service depends on it but it changes independently. Argon2 hashing is CPU-intensive and benefits from isolated scaling. |
+| **chat-service** | Go | 8003 | WebSocket connections, real-time message delivery, Redis pub/sub, room management | Real-time chat needs thousands of concurrent connections. Go's goroutines handle this with minimal memory (4KB per goroutine vs ~8MB per Python thread). |
+| **message-service** | Python (FastAPI) | 8004 | Message persistence, history queries, replay API, Kafka consumer | Read-heavy workload (users loading history) that benefits from its own database with read replicas. Kafka consumer runs independently of the HTTP API. |
+| **file-service** | Node.js (TypeScript) | 8005 | File upload, download, metadata, virus scanning hooks | I/O-bound workload. Node.js streams files without buffering entire content in memory. TypeScript gives type safety for a service that handles binary data and metadata. |
+
+### Polyglot Stack: Why Different Languages?
+
+This is a deliberate architectural choice, not accidental complexity. Each language was chosen because it's the **best tool for that specific workload**:
+
+**Python (FastAPI) for auth-service and message-service:**
+- FastAPI's dependency injection handles JWT validation and database sessions cleanly
+- SQLAlchemy + Alembic provide mature database tooling
+- Argon2 password hashing has excellent Python bindings
+- Pydantic validation catches malformed requests before they hit business logic
+- The team already has deep Python expertise from the monolith
+
+**Go for chat-service:**
+- Goroutines handle 10,000+ concurrent WebSocket connections with ~40MB total memory (vs ~80GB if Python spawned a thread per connection)
+- Go's standard library includes production-ready HTTP and WebSocket servers
+- Static binary compilation means the Docker image is ~15MB (vs ~200MB for Python)
+- Garbage collection pauses are sub-millisecond — critical for real-time chat
+- Built-in race detector catches concurrency bugs during testing
+
+**Node.js/TypeScript for file-service:**
+- Node.js streams handle file uploads/downloads without loading entire files into memory
+- Express middleware ecosystem provides battle-tested multipart parsing (Multer)
+- TypeScript catches type errors at compile time for a service that juggles file metadata, S3 paths, and Kafka events
+- npm ecosystem has mature libraries for virus scanning hooks and image processing
+- Non-blocking I/O naturally fits a service that's primarily waiting on disk/network
+
+### Kong API Gateway
+
+Kong sits in front of all services and handles cross-cutting concerns:
+
+```
+Client → Kong (port 80) → auth-service   /api/auth/*
+                        → chat-service   /ws/chat/*
+                        → message-service /api/messages/*
+                        → file-service   /api/files/*
+```
+
+**What Kong handles:**
+- **Routing**: Maps URL paths to upstream services
+- **JWT validation**: Validates tokens on protected routes (offloads auth from individual services)
+- **Rate limiting**: Per-consumer and per-IP rate limits
+- **Request logging**: Centralized access logs across all services
+- **Load balancing**: Round-robin distribution to service replicas
+- **Health checks**: Automatic removal of unhealthy service instances
+
+**Why Kong over alternatives:**
+
+| Considered | Why Not |
+|-----------|---------|
+| Nginx reverse proxy | Would work for routing, but no built-in JWT validation, rate limiting, or service discovery. We'd have to bolt on Lua plugins for each feature. |
+| Traefik | Good auto-discovery with Docker labels, but less mature plugin ecosystem for JWT validation and rate limiting. |
+| AWS API Gateway | Vendor lock-in, pricing per request, higher latency for local development. |
+| Custom gateway | Why build what already exists? Kong is battle-tested at companies handling billions of requests. |
+
+### Inter-Service Communication
+
+Services communicate through two channels:
+
+**Synchronous (REST via Kong):**
+- Client-facing requests routed through Kong to individual services
+- Service-to-service calls for validation (e.g., chat-service validates JWT by calling auth-service)
+- Used when the caller needs an immediate response
+
+**Asynchronous (Kafka):**
+- Message persistence: chat-service produces messages to Kafka, message-service consumes and persists
+- File events: file-service publishes upload/delete events, other services react
+- User events: auth-service publishes registration/deletion events
+- Used when the caller doesn't need to wait for the result
+
+```
+chat-service  --produce-->  Kafka [chat.messages]  --consume-->  message-service
+file-service  --produce-->  Kafka [file.events]    --consume-->  message-service
+auth-service  --produce-->  Kafka [auth.events]    --consume-->  chat-service, message-service
+```
+
+### Design Patterns Used
+
+The microservices architecture employs these patterns:
+
+| # | Pattern | Where It's Used | Why |
+|---|---------|----------------|-----|
+| 1 | **Database per Service** | Each service has its own PostgreSQL schema | Loose coupling — services can change their schema without coordinating |
+| 2 | **API Gateway** | Kong in front of all services | Single entry point, cross-cutting concerns (auth, rate limiting, logging) |
+| 3 | **Event-Driven Architecture** | Kafka for async communication | Temporal decoupling — services don't need to be online simultaneously |
+| 4 | **CQRS (Command Query Responsibility Segregation)** | chat-service writes, message-service reads | Optimized read and write paths with different data models |
+| 5 | **Saga Pattern** | User deletion across services | Coordinated multi-service operations via Kafka events |
+| 6 | **Circuit Breaker** | Service-to-service REST calls | Prevents cascade failures when a downstream service is down |
+| 7 | **Strangler Fig** | Migration from monolith to microservices | Incremental extraction — monolith still runs alongside services |
+| 8 | **Sidecar/Ambassador** | Kong routes and authenticates | Offloads cross-cutting concerns from business services |
+| 9 | **Correlation ID** | X-Correlation-ID header propagated across services | Trace a single user request across all four services in logs |
+| 10 | **Dead Letter Queue** | Kafka chat.dlq topic | Failed messages are preserved for investigation, not lost |
+| 11 | **Health Check API** | /health and /ready per service | Kubernetes-style probes for orchestration and load balancing |
+| 12 | **Consumer Group** | Kafka consumer groups per service | Multiple instances of a service share the workload |
+| 13 | **Idempotent Consumer** | ON CONFLICT DO NOTHING in message persistence | Kafka at-least-once delivery + DB uniqueness = exactly-once semantics |
+| 14 | **Bulkhead** | Separate connection pools per service | A connection leak in one service doesn't exhaust connections for others |
+| 15 | **Externalized Configuration** | Environment variables per service | Same container image runs in dev/staging/prod with different config |
+
+### Data Architecture (Database per Service)
+
+Each service owns its data and exposes it only through APIs:
+
+| Service | Database | Tables Owned | Why Separate? |
+|---------|----------|-------------|---------------|
+| auth-service | `auth_db` | `users`, `token_blacklist` | User credentials are security-critical — isolated access reduces blast radius |
+| chat-service | N/A (stateless) | None (uses Redis only) | Real-time state lives in Redis; persistent state belongs to message-service |
+| message-service | `message_db` | `messages`, `rooms`, `room_admins`, `muted_users` | Read-heavy queries benefit from their own connection pool and indexes |
+| file-service | `file_db` | `files`, `file_chunks` | Large file metadata queries don't compete with message queries |
+
+**Trade-off**: Data joins across services require API calls instead of SQL JOINs. For example, to show a message with the sender's username, the frontend calls both message-service (for the message) and auth-service (for the user info). This is slower than a monolith JOIN but keeps services decoupled.
+
+### Trade-offs vs Monolith
+
+Every architectural decision is a trade-off. Here's what we gained and what we gave up:
+
+| Dimension | Monolith | Microservices |
+|-----------|----------|---------------|
+| **Deployment** | Single `docker compose up` | Per-service CI/CD pipelines, orchestrated deployment |
+| **Debugging** | One log stream, simple stack traces | Distributed tracing with correlation IDs across 4 services |
+| **Data consistency** | SQL transactions across all tables | Eventual consistency via Kafka (messages may take milliseconds to persist) |
+| **Development speed** | Fast to start, slows as it grows | More setup upfront, faster iteration per service at scale |
+| **Testing** | One test suite | Per-service unit tests + integration tests + contract tests |
+| **Operational complexity** | Low — one process to monitor | Higher — 4 services + Kong + Kafka + multiple databases |
+| **Scaling** | Scale everything together | Scale each service independently based on its bottleneck |
+| **Technology flexibility** | One language (Python) | Best language per workload (Python, Go, Node.js) |
+| **Team independence** | Everyone touches the same code | Teams own services end-to-end |
+
+**When to choose the monolith**: Small team, early product, uncertain requirements, shipping speed matters more than scaling.
+
+**When to choose microservices**: Clear bounded contexts, different scaling needs per component, multiple teams, polyglot advantages outweigh operational complexity.

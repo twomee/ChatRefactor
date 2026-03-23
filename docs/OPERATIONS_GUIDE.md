@@ -18,6 +18,7 @@ A complete guide for running, debugging, and troubleshooting the cHATBOX applica
 10. [Kafka: Access and Commands](#10-kafka-access-and-commands)
 11. [Health Checks and Monitoring](#11-health-checks-and-monitoring)
 12. [Troubleshooting](#12-troubleshooting)
+13. [Microservices Operations](#13-microservices-operations)
 
 ---
 
@@ -1017,3 +1018,239 @@ alembic upgrade head
 | DLQ messages | `docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic chat.dlq --from-beginning` |
 | Active WebSocket channels | `redis-cli PUBSUB CHANNELS *` |
 | Token blacklist count | `redis-cli KEYS blacklist:* \| wc -l` |
+
+---
+
+## 13. Microservices Operations
+
+This section covers running and managing the microservices stack (4 services + Kong API Gateway), which is the production target architecture. The monolith sections above still apply for local development and the legacy deployment.
+
+### Starting the Microservices Stack
+
+```bash
+# Build and start all microservices
+docker compose -f docker-compose.microservices.yml up -d --build
+
+# Or start specific services
+docker compose -f docker-compose.microservices.yml up -d auth-service
+docker compose -f docker-compose.microservices.yml up -d chat-service
+docker compose -f docker-compose.microservices.yml up -d message-service
+docker compose -f docker-compose.microservices.yml up -d file-service
+```
+
+### Stopping the Microservices Stack
+
+```bash
+# Stop all containers (data preserved in volumes)
+docker compose -f docker-compose.microservices.yml down
+
+# Stop and DELETE all data (fresh start)
+docker compose -f docker-compose.microservices.yml down -v
+```
+
+### Rebuilding After Code Changes
+
+```bash
+# Rebuild a specific service
+docker compose -f docker-compose.microservices.yml up -d --build auth-service
+docker compose -f docker-compose.microservices.yml up -d --build chat-service
+docker compose -f docker-compose.microservices.yml up -d --build message-service
+docker compose -f docker-compose.microservices.yml up -d --build file-service
+
+# Rebuild everything
+docker compose -f docker-compose.microservices.yml up -d --build
+```
+
+### Per-Service Log Viewing
+
+```bash
+# All services at once
+docker compose -f docker-compose.microservices.yml logs -f
+
+# Individual service logs (last 100 lines, follow)
+docker compose -f docker-compose.microservices.yml logs -f --tail=100 auth-service
+docker compose -f docker-compose.microservices.yml logs -f --tail=100 chat-service
+docker compose -f docker-compose.microservices.yml logs -f --tail=100 message-service
+docker compose -f docker-compose.microservices.yml logs -f --tail=100 file-service
+
+# Kong gateway logs
+docker compose -f docker-compose.microservices.yml logs -f --tail=100 kong
+
+# Infrastructure logs
+docker compose -f docker-compose.microservices.yml logs -f --tail=100 kafka
+docker compose -f docker-compose.microservices.yml logs -f --tail=100 redis
+docker compose -f docker-compose.microservices.yml logs -f --tail=100 postgres
+```
+
+### Kong API Gateway
+
+**Kong Admin API** (port 8001 by default):
+
+```bash
+# Check Kong status
+curl http://localhost:8001/status
+
+# List all configured services
+curl http://localhost:8001/services
+
+# List all configured routes
+curl http://localhost:8001/routes
+
+# List active plugins (JWT, rate-limiting, etc.)
+curl http://localhost:8001/plugins
+
+# Check upstream health
+curl http://localhost:8001/upstreams
+```
+
+**Kong routes in cHATBOX:**
+
+| Route | Upstream Service | Port | Protocol |
+|-------|-----------------|------|----------|
+| `/api/auth/*` | auth-service | 8001 | HTTP |
+| `/ws/chat/*` | chat-service | 8003 | WebSocket |
+| `/api/messages/*` | message-service | 8004 | HTTP |
+| `/api/files/*` | file-service | 8005 | HTTP |
+
+### Health Check URLs
+
+Each service exposes health endpoints for monitoring and orchestration:
+
+```bash
+# Auth service
+curl http://localhost:8001/health          # Direct
+curl http://localhost/api/auth/health      # Through Kong
+
+# Chat service
+curl http://localhost:8003/health          # Direct
+curl http://localhost/api/chat/health      # Through Kong
+
+# Message service
+curl http://localhost:8004/health          # Direct
+curl http://localhost/api/messages/health  # Through Kong
+
+# File service
+curl http://localhost:8005/health          # Direct
+curl http://localhost/api/files/health     # Through Kong
+
+# Kong gateway itself
+curl http://localhost:8001/status
+```
+
+**Expected responses:**
+
+```json
+// Healthy service
+{"status": "ok", "service": "auth-service", "version": "1.0.0"}
+
+// Healthy service with dependency checks (readiness)
+{"status": "ready", "database": "ok", "redis": "ok", "kafka": "ok"}
+
+// Kong status
+{"database": {"reachable": true}, "server": {"connections_active": 5}}
+```
+
+### Container Status
+
+```bash
+# See health status of all microservice containers
+docker compose -f docker-compose.microservices.yml ps
+
+# Check a specific container's health
+docker inspect --format='{{.State.Health.Status}}' chatbox-auth-service-1
+docker inspect --format='{{.State.Health.Status}}' chatbox-chat-service-1
+docker inspect --format='{{.State.Health.Status}}' chatbox-message-service-1
+docker inspect --format='{{.State.Health.Status}}' chatbox-file-service-1
+```
+
+### Troubleshooting Per-Service Issues
+
+#### Auth Service (Python/FastAPI, port 8001)
+
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| Login returns 500 | Database connection failed | Check `docker compose logs auth-service`, verify PostgreSQL is healthy |
+| JWT validation fails in other services | SECRET_KEY mismatch between services | Ensure all services share the same `SECRET_KEY` environment variable |
+| Registration rate limited | Redis rate limit state | Check Redis: `redis-cli KEYS rate_limit:*` |
+| Token blacklist not working | Redis connection failed | Check Redis connectivity from auth-service container |
+
+```bash
+# Check auth-service database
+docker compose -f docker-compose.microservices.yml exec auth-service \
+  python -c "from app.core.database import engine; print(engine.url)"
+
+# Run auth-service migrations manually
+docker compose -f docker-compose.microservices.yml exec auth-service \
+  alembic upgrade head
+```
+
+#### Chat Service (Go, port 8003)
+
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| WebSocket connection refused | Service not running or Kong route misconfigured | Check `docker compose logs chat-service`, verify Kong routes |
+| Messages not broadcasting | Redis pub/sub disconnected | Check Redis: `redis-cli PUBSUB CHANNELS *` |
+| High memory usage | Too many idle WebSocket connections | Check goroutine count, verify connection cleanup |
+| Messages not persisting | Kafka producer failed | Check Kafka: `docker compose logs kafka` |
+
+```bash
+# Check goroutine count (Go runtime metrics)
+curl http://localhost:8003/debug/pprof/goroutine?debug=1
+
+# Check active WebSocket connections
+curl http://localhost:8003/metrics
+```
+
+#### Message Service (Python/FastAPI, port 8004)
+
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| History returns empty | Database has no messages yet, or Kafka consumer lagging | Check Kafka consumer lag (see Kafka section above) |
+| Slow history queries | Missing indexes or large dataset | Check PostgreSQL `EXPLAIN ANALYZE` on slow queries |
+| Kafka consumer stuck | Consumer group offset issue | Reset consumer group offsets (see Kafka section) |
+| 500 on message replay | Database connection pool exhausted | Increase pool size in service config |
+
+```bash
+# Check message-service Kafka consumer status
+docker compose -f docker-compose.microservices.yml exec kafka \
+  /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
+  --describe --group message-persistence
+
+# Run message-service migrations
+docker compose -f docker-compose.microservices.yml exec message-service \
+  alembic upgrade head
+```
+
+#### File Service (Node.js/TypeScript, port 8005)
+
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| Upload returns 413 | File too large (exceeds Kong/Nginx limit) | Increase `client_max_body_size` in Kong config |
+| Upload returns 500 | Disk full or permission error | Check disk space: `df -h`, check upload directory permissions |
+| Download returns 404 | File deleted or path mismatch | Check file metadata in database, verify storage path |
+| Slow uploads | Network bottleneck or disk I/O | Check disk IOPS, consider async upload processing |
+
+```bash
+# Check file-service disk usage
+docker compose -f docker-compose.microservices.yml exec file-service \
+  du -sh /app/uploads
+
+# Check file-service database (Prisma)
+docker compose -f docker-compose.microservices.yml exec file-service \
+  npx prisma studio
+```
+
+### Microservices Common Checks Cheat Sheet
+
+| What to Check | Command |
+|----------------|---------|
+| All services running? | `docker compose -f docker-compose.microservices.yml ps` |
+| Kong healthy? | `curl http://localhost:8001/status` |
+| Auth service healthy? | `curl http://localhost/api/auth/health` |
+| Chat service healthy? | `curl http://localhost/api/chat/health` |
+| Message service healthy? | `curl http://localhost/api/messages/health` |
+| File service healthy? | `curl http://localhost/api/files/health` |
+| All service logs | `docker compose -f docker-compose.microservices.yml logs -f` |
+| Kafka consumer lag | `docker compose exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group message-persistence` |
+| Redis pub/sub channels | `redis-cli PUBSUB CHANNELS *` |
+| Kong routes configured? | `curl http://localhost:8001/routes` |
