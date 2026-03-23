@@ -12,7 +12,7 @@ import (
 
 func TestGetUserByUsernameSuccess(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/auth/users/alice" {
+		if r.URL.Path != "/auth/users/by-username/alice" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -118,7 +118,7 @@ func TestGetUserByUsernameEscapesPath(t *testing.T) {
 		t.Fatal("expected non-nil user")
 	}
 	// Verify the raw path contains the escaped slash.
-	if receivedRawPath != "/auth/users/user%2Fslash" {
+	if receivedRawPath != "/auth/users/by-username/user%2Fslash" {
 		t.Errorf("expected escaped raw path, got %q", receivedRawPath)
 	}
 }
