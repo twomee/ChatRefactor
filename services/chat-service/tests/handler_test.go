@@ -64,7 +64,7 @@ func setupRouter() *gin.Engine {
 	manager := ws.NewManager(logger)
 
 	// Room handler with nil store (only testing non-DB endpoints here).
-	roomH := handler.NewRoomHandler(nil, manager, logger)
+	roomH := handler.NewRoomHandler(nil, manager, nil, logger)
 
 	auth := r.Group("/")
 	auth.Use(middleware.JWTAuth(testSecret))
