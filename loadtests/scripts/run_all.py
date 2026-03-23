@@ -62,15 +62,16 @@ def run_command(cmd: list[str], label: str) -> tuple[int, float]:
 
 
 def wait_for_server(host: str, timeout: int = 60) -> bool:
-    """Wait for the server to be ready."""
+    """Wait for Kong and the chat-service to be ready."""
     import requests  # noqa: local import
 
-    print(f"Waiting for server at {host}/ready ...")
+    print(f"Waiting for server at {host}/rooms ...")
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            resp = requests.get(f"{host}/ready", timeout=5)
-            if resp.status_code == 200:
+            resp = requests.get(f"{host}/rooms", timeout=5)
+            # 200 = up and authenticated, 401 = Kong + chat-service is up
+            if resp.status_code in (200, 401):
                 print("Server is ready!")
                 return True
         except Exception:
@@ -93,8 +94,8 @@ def main():
     parser.add_argument(
         "--host",
         type=str,
-        default="http://localhost:8000",
-        help="Target host (default: http://localhost:8000)",
+        default="http://localhost",
+        help="Target host (default: http://localhost)",
     )
     parser.add_argument(
         "--skip-provision", action="store_true",

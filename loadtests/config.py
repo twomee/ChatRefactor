@@ -11,8 +11,8 @@ _HERE = Path(__file__).parent
 
 @dataclass
 class LoadTestConfig:
-    api_base: str = "http://localhost:8000"
-    ws_base: str = "ws://localhost:8000"
+    api_base: str = "http://localhost"
+    ws_base: str = "ws://localhost"
 
     # User provisioning
     num_users: int = 200
@@ -40,8 +40,8 @@ class LoadTestConfig:
 
         rooms_str = os.getenv("LOADTEST_ROOMS", "politics,sports,movies")
         return cls(
-            api_base=os.getenv("LOADTEST_API_BASE", "http://localhost:8000"),
-            ws_base=os.getenv("LOADTEST_WS_BASE", "ws://localhost:8000"),
+            api_base=os.getenv("LOADTEST_API_BASE", "http://localhost"),
+            ws_base=os.getenv("LOADTEST_WS_BASE", "ws://localhost"),
             num_users=int(os.getenv("LOADTEST_NUM_USERS", "200")),
             user_prefix=os.getenv("LOADTEST_USER_PREFIX", "loadtest_user"),
             user_password=os.getenv("LOADTEST_USER_PASSWORD", "loadtest_pass_123"),

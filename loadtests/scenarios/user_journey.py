@@ -13,7 +13,7 @@ Simulates the complete lifecycle a real user goes through:
 This tests the full stack integration — auth, DB, Redis pub/sub, Kafka, WS.
 
 Usage:
-  locust -f scenarios/user_journey.py --host http://localhost:8000 \
+  locust -f scenarios/user_journey.py --host http://localhost \
     --headless --users 30 --spawn-rate 5 --run-time 5m
 """
 
@@ -94,7 +94,7 @@ class UserJourneyUser(HttpUser):
 
             # ── 3. List rooms ──
             with self.client.get(
-                "/rooms/",
+                "/rooms",
                 headers=headers,
                 name="journey: list rooms",
                 catch_response=True,

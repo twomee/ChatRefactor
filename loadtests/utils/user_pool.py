@@ -149,7 +149,7 @@ class UserPool:
     ) -> list[int]:
         """Get list of available room IDs."""
         resp = session.get(
-            f"{base}/rooms/",
+            f"{base}/rooms",
             headers={"Authorization": f"Bearer {token}"},
             timeout=10,
         )
