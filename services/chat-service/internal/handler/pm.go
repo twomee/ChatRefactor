@@ -51,6 +51,12 @@ func (h *PMHandler) SendPM(c *gin.Context) {
 	senderID, _ := c.Get(middleware.CtxUserID)
 	senderName, _ := c.Get(middleware.CtxUsername)
 
+	// Cannot PM yourself.
+	if req.ToUsername == senderName.(string) {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "cannot send PM to yourself"})
+		return
+	}
+
 	// Look up recipient.
 	recipient, err := h.authClient.GetUserByUsername(c.Request.Context(), req.ToUsername)
 	if err != nil {

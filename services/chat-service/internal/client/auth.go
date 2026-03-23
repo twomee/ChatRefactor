@@ -40,7 +40,7 @@ func NewAuthClient(baseURL string, logger *zap.Logger) *AuthClient {
 
 // GetUserByUsername looks up a user by username via the Auth Service.
 func (c *AuthClient) GetUserByUsername(ctx context.Context, username string) (*UserResponse, error) {
-	endpoint := fmt.Sprintf("%s/auth/users/%s", c.baseURL, url.PathEscape(username))
+	endpoint := fmt.Sprintf("%s/auth/users/by-username/%s", c.baseURL, url.PathEscape(username))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
