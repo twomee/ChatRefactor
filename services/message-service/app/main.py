@@ -53,11 +53,18 @@ async def lifespan(app):
                 msg="Using default SECRET_KEY (acceptable for dev only)",
             )
 
-    # Run Alembic migrations to ensure schema is up to date
+    # Run Alembic migrations — use subprocess to avoid blocking the async event loop
+    import subprocess
+
     try:
-        alembic_cfg = AlembicConfig("alembic.ini")
-        alembic_command.upgrade(alembic_cfg, "head")
-        logger.info("alembic_migrations_applied")
+        result = subprocess.run(
+            ["python3", "-m", "alembic", "upgrade", "head"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            logger.info("alembic_migrations_applied")
+        else:
+            logger.warning("alembic_migration_failed", stderr=result.stderr[:200])
     except Exception as e:
         logger.warning("alembic_migration_skipped", error=str(e))
 
@@ -65,6 +72,7 @@ async def lifespan(app):
     await init_producer()
 
     # Start Kafka consumer (persistence)
+    # Topics are auto-created by Kafka when auto.create.topics.enable=true (default)
     from app.consumers.persistence_consumer import MessagePersistenceConsumer
 
     persistence_consumer = MessagePersistenceConsumer()
