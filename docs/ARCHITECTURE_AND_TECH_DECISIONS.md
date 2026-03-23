@@ -2,6 +2,8 @@
 
 Why we chose every piece of technology in cHATBOX — from infrastructure to individual libraries.
 
+> **Reading guide:** cHATBOX has evolved from a monolith to a **microservices architecture**. If you're new to the project, start with **[Section 7: Microservice Architecture](#7-microservice-architecture)** for the current design. Sections 1-6 cover foundational decisions (infrastructure, libraries, data flow) that still apply — they were made during the monolith phase but remain relevant to the microservices architecture.
+
 ---
 
 ## Table of Contents
@@ -41,15 +43,16 @@ Why we chose every piece of technology in cHATBOX — from infrastructure to ind
 
 ## 1. System Architecture
 
-cHATBOX separates three concerns that often get tangled in chat apps:
+cHATBOX separates four concerns that often get tangled in chat apps:
 
 | Concern | What handles it | Why separate? |
 |---------|----------------|---------------|
-| **Real-time delivery** | WebSocket + Redis pub/sub | Must be fast (sub-100ms). No disk I/O. |
-| **Durable storage** | Kafka + PostgreSQL | Can be async. Needs reliability, not speed. |
-| **Static serving + routing** | Nginx | Offloads TLS, compression, and SPA routing from the app server. |
+| **Real-time delivery** | Chat service (Go) + Redis pub/sub | Must be fast (sub-100ms). No disk I/O. Go handles thousands of concurrent WebSockets efficiently. |
+| **Durable storage** | Kafka → Message service (Python) → PostgreSQL | Can be async. Needs reliability, not speed. CQRS pattern — writes via Kafka, reads via REST. |
+| **API routing + auth** | Kong API Gateway | Single entry point, JWT validation, rate limiting, request logging across all services. |
+| **Static serving** | Nginx (frontend container) | Serves the React SPA build. SPA routing via `try_files`. |
 
-This separation means a slow database query doesn't block message delivery, and a WebSocket spike doesn't overwhelm the database.
+This separation means a slow database query doesn't block message delivery, a WebSocket spike doesn't overwhelm the auth service, and each service scales independently based on its specific bottleneck.
 
 ---
 
@@ -57,22 +60,22 @@ This separation means a slow database query doesn't block message delivery, and 
 
 ### PostgreSQL
 
-**What it does here:** Stores users, rooms, messages, files metadata, admin assignments, and muted users.
+**What it does here:** Each microservice has its own PostgreSQL database (database-per-service pattern): `chatbox_auth` (users, tokens), `chatbox_chat` (rooms, muted users), `chatbox_messages` (messages, private messages), and `chatbox_files` (file metadata via Prisma).
 
 **Why PostgreSQL over alternatives:**
 
 | Considered | Why not |
 |-----------|---------|
-| SQLite | No concurrent writes. Works for dev, breaks with multiple Gunicorn workers writing at once. No network access — can't share between containers. |
+| SQLite | No concurrent writes. Can't share between containers. No network access — each service runs in its own container. |
 | MySQL | Would work, but PostgreSQL has better JSON support, better default behavior for concurrent access, and is the more common choice in the Python ecosystem. |
-| MongoDB | Our data is highly relational (users belong to rooms, messages reference both sender and room, admins are a join between users and rooms). Document stores make these relationships awkward and denormalized. |
+| MongoDB | Our data is highly relational (users belong to rooms, messages reference both sender and room). Document stores make these relationships awkward and denormalized. |
 
 **Key PostgreSQL features we rely on:**
 
 - **ACID transactions** — When a user sends a message, we need the insert to either fully succeed or fully fail. No partial writes.
 - **Foreign keys** — The database enforces that a message can't reference a non-existent user or room. This catches bugs that would silently corrupt data in schema-less stores.
-- **`ON CONFLICT DO NOTHING`** — Used for Kafka idempotent writes. When the same `message_id` arrives twice (Kafka at-least-once delivery), PostgreSQL skips the duplicate instead of crashing.
-- **Connection pooling** (`pool_size=10, max_overflow=20`) — Reuses database connections across requests instead of opening a new one per query.
+- **`ON CONFLICT DO NOTHING`** — Used for Kafka idempotent writes in the message-service. When the same `message_id` arrives twice (Kafka at-least-once delivery), PostgreSQL skips the duplicate instead of crashing.
+- **Connection pooling** (per service, e.g., `pool_size=10, max_overflow=20`) — Each service maintains its own pool of reusable connections, isolated from other services.
 - **`pool_pre_ping=True`** — Tests each connection before using it. Prevents "connection closed" errors after database restarts.
 
 ---
@@ -83,19 +86,19 @@ This separation means a slow database query doesn't block message delivery, and 
 
 #### Job 1: WebSocket Message Relay (Pub/Sub)
 
-**The problem:** When running multiple Gunicorn workers (separate processes), each worker has its own set of WebSocket connections. If User A's WebSocket is on Worker 1 and User B's is on Worker 2, Worker 1 can't directly send to User B.
+**The problem:** When running multiple chat-service instances (or scaling horizontally), each instance has its own set of WebSocket connections. If User A's WebSocket is on Instance 1 and User B's is on Instance 2, Instance 1 can't directly send to User B.
 
-**The solution:** Redis pub/sub acts as a message bus between workers.
+**The solution:** Redis pub/sub acts as a message bus between chat-service instances.
 
 ```
 User A sends message
-    → Worker 1 receives it
-    → Worker 1 publishes to Redis channel "room:5"
-    → ALL workers (including Worker 2) receive from Redis
-    → Worker 2 delivers to User B's WebSocket
+    → Chat-service Instance 1 receives it
+    → Instance 1 publishes to Redis channel "room:5"
+    → ALL instances (including Instance 2) receive from Redis
+    → Instance 2 delivers to User B's WebSocket
 ```
 
-**Why Redis for pub/sub (not Kafka)?** Redis pub/sub is fire-and-forget with zero latency overhead. Messages are delivered instantly to subscribers and then gone. We don't need durability here — if a message is missed because a worker crashed, the user will see it when they reconnect (loaded from the database). Kafka's pub/sub adds unnecessary overhead (disk writes, consumer group coordination) for something that should be instant and ephemeral.
+**Why Redis for pub/sub (not Kafka)?** Redis pub/sub is fire-and-forget with zero latency overhead. Messages are delivered instantly to subscribers and then gone. We don't need durability here — if a message is missed because an instance crashed, the user will see it when they reconnect (loaded from the message-service database). Kafka's pub/sub adds unnecessary overhead (disk writes, consumer group coordination) for something that should be instant and ephemeral.
 
 **Channels we use:**
 - `room:<room_id>` — Room chat messages
@@ -106,21 +109,21 @@ User A sends message
 
 **The problem:** JWTs are stateless — once issued, they're valid until they expire. When a user logs out, we need to invalidate their token immediately.
 
-**The solution:** On logout, store the token in Redis with a TTL matching the token's remaining lifetime:
+**The solution:** On logout, the auth-service stores the token in Redis with a TTL matching the token's remaining lifetime:
 ```
 SET blacklist:<token> "1" EX 86400
 ```
-On every authenticated request, check if the token is blacklisted before accepting it.
+On every authenticated request, the auth-service (or any service validating tokens) checks if the token is blacklisted before accepting it.
 
-**Why Redis (not the database)?** This check happens on every single API request. Redis responds in ~0.1ms from memory. PostgreSQL would be ~1-5ms with disk I/O. At 100 requests/second, that's the difference between 10ms and 500ms of cumulative overhead.
+**Why Redis (not the database)?** This check happens on every single API request across all services. Redis responds in ~0.1ms from memory. PostgreSQL would be ~1-5ms with disk I/O. At 100 requests/second, that's the difference between 10ms and 500ms of cumulative overhead.
 
 #### Job 3: Rate Limiting State (Key-Value with TTL)
 
-**The problem:** In staging/production, we rate-limit API endpoints (5 registrations/minute, 10 logins/minute, 100 general requests/minute). The rate limiter needs to count requests per IP across all workers.
+**The problem:** In production, we rate-limit API endpoints (5 registrations/minute, 10 logins/minute, 100 general requests/minute per IP). Rate limits need to be shared across all service instances.
 
-**The solution:** `slowapi` stores counters in Redis, so all Gunicorn workers share the same rate limit state.
+**The solution:** Kong API Gateway handles rate limiting with Redis as the shared state store. This means all incoming requests, regardless of which service instance handles them, share the same rate limit counters.
 
-**Why not in-memory?** In-memory rate limiting is per-worker. With 4 workers, a user could make 400 requests/minute instead of 100.
+**Why not in-memory?** In-memory rate limiting is per-instance. With multiple service replicas, a user could bypass limits by hitting different instances.
 
 ---
 
@@ -134,14 +137,14 @@ Without Kafka, every chat message must be synchronously written to PostgreSQL be
 
 **With Kafka:**
 ```
-1. User sends message via WebSocket
-2. Backend publishes to Kafka (async, ~1ms)
-3. Backend broadcasts via Redis pub/sub (instant delivery to all users)
-4. Kafka consumer picks up the message (background)
-5. Consumer persists to PostgreSQL (async, no user waiting)
+1. User sends message via WebSocket to chat-service (Go)
+2. Chat-service publishes to Kafka topic chat.messages (async, ~1ms)
+3. Chat-service broadcasts via Redis pub/sub (instant delivery to all users)
+4. Message-service's Kafka consumer picks up the message (background)
+5. Message-service persists to its PostgreSQL database (async, no user waiting)
 ```
 
-The user sees the message instantly (step 3). The database write happens whenever it happens (step 5). Even if the database is down for 5 minutes, messages are buffered in Kafka and will be persisted when it comes back.
+The user sees the message instantly (step 3). The database write happens whenever it happens (step 5). Even if the message-service database is down for 5 minutes, messages are buffered in Kafka and will be persisted when it comes back.
 
 **Why Kafka over alternatives:**
 
@@ -154,60 +157,58 @@ The user sees the message instantly (step 3). The database write happens wheneve
 
 **Key Kafka features we rely on:**
 
-- **Consumer groups** (`chat-persistence`) — If we scale to multiple consumer instances, Kafka distributes partitions across them automatically.
+- **Consumer groups** (`message-persistence`) — If we scale to multiple message-service instances, Kafka distributes partitions across them automatically.
 - **At-least-once delivery** — Kafka guarantees every message will be consumed at least once. Combined with `ON CONFLICT DO NOTHING` in PostgreSQL, we get exactly-once semantics.
 - **Dead Letter Queue** (`chat.dlq`) — Messages that fail 3 times go to a separate topic for investigation instead of being lost.
 - **LZ4 compression** — Reduces network and disk usage with minimal CPU overhead.
 - **KRaft mode** — Runs without ZooKeeper, simplifying our deployment to a single Kafka container.
 - **Configurable retention** — 7 days for messages, 3 days for events, 30 days for DLQ. Old data is automatically cleaned up.
 
-**Graceful degradation:** If Kafka is down, the backend falls back to synchronous database writes. Users don't notice — messages still get delivered in real-time via Redis and persisted to the database directly.
+**Graceful degradation:** If Kafka is down, the chat-service falls back to synchronous delivery. Users don't notice — messages still get delivered in real-time via Redis. Persistence resumes when Kafka and the message-service reconnect.
 
 ---
 
 ### Nginx
 
-**What it does here:** Reverse proxy in front of the React SPA and FastAPI backend.
+**What it does here:** Serves the React SPA inside the frontend Docker container. In the microservices architecture, Kong API Gateway handles API routing, JWT validation, and rate limiting — Nginx's role is limited to frontend static file serving.
 
-**Why we need it:**
+**Why we still need Nginx (for the frontend):**
 
 1. **SPA routing** — React Router uses client-side routes (`/chat`, `/admin`). Without Nginx's `try_files $uri /index.html`, refreshing the page on `/chat` would return a 404 because no file exists at that path.
 
-2. **API path rewriting** — The frontend calls `/api/auth/login`. Nginx strips `/api` and forwards to the backend as `/auth/login`. This keeps the backend unaware of the proxy and lets us change the URL structure without touching backend code.
+2. **Static file serving** — Nginx serves the React build files (JS, CSS, images) directly from disk, which it does much faster than any application server.
 
-3. **WebSocket upgrade** — Nginx handles the HTTP→WebSocket protocol upgrade (`Connection: upgrade`), with a long read timeout (86400s = 24 hours) so connections aren't dropped.
+3. **Gzip compression** — Compresses static assets before sending them to the browser, reducing load times.
 
-4. **Static file serving** — Nginx serves the React build files (JS, CSS, images) directly from disk, which it does much faster than any application server.
+> **Note:** API routing (`/api/*`), WebSocket upgrade (`/ws/*`), rate limiting, and JWT validation are all handled by **Kong API Gateway**, not Nginx. See [Section 7: Kong API Gateway](#kong-api-gateway) for details.
 
-5. **File upload limits** — `client_max_body_size 150M` allows our 150MB file uploads without the backend needing to handle chunked transfer encoding at the proxy level.
-
-**Why Nginx over alternatives:**
+**Why Nginx for the frontend (not alternatives):**
 
 | Considered | Why not |
 |-----------|---------|
-| Caddy | Simpler config, auto-HTTPS. But Nginx has better WebSocket support, more ecosystem resources, and we don't need HTTPS in Docker-to-Docker communication. |
-| Traefik | Over-engineered for a single-backend setup. Traefik shines with dynamic service discovery in Kubernetes. |
-| No proxy (serve from FastAPI) | FastAPI/Uvicorn can serve static files, but it's single-threaded per worker. Nginx handles thousands of concurrent static file requests without breaking a sweat. |
+| Caddy | Simpler config, auto-HTTPS. But Nginx has broader ecosystem support and we don't need HTTPS for internal container serving. |
+| Serve from Node.js | Could use `serve` or Express, but Nginx handles thousands of concurrent static file requests with minimal resources. |
+| No proxy (serve from Kong) | Kong can serve static files, but it's an API gateway — adding static file serving overloads its purpose. Better separation of concerns. |
 
 ---
 
 ### Docker & Docker Compose
 
-**What it does here:** Packages every service (PostgreSQL, Redis, Kafka, backend, frontend) into isolated containers with deterministic dependencies.
+**What it does here:** Packages every service (PostgreSQL, Redis, Kafka, Kong, auth-service, chat-service, message-service, file-service, frontend) into isolated containers with deterministic dependencies.
 
 **Why Docker:**
 
-1. **Reproducible environments** — `python:3.11-slim` and `node:20-alpine` give us exact, known base images. No "works on my machine" issues.
-2. **Service isolation** — Each service runs in its own container with its own filesystem. A Kafka crash can't corrupt the PostgreSQL data directory.
-3. **Health checks and dependency ordering** — `depends_on: { postgres: { condition: service_healthy } }` ensures the backend doesn't start until PostgreSQL is actually accepting connections.
+1. **Reproducible environments** — `python:3.11-slim`, `golang:1.22-alpine`, and `node:20-alpine` give us exact, known base images per language. No "works on my machine" issues.
+2. **Service isolation** — Each microservice runs in its own container with its own filesystem. A file-service crash can't affect the chat-service.
+3. **Health checks and dependency ordering** — `depends_on: { postgres: { condition: service_healthy } }` ensures services don't start until infrastructure is ready. Init containers run migrations before application services start.
 4. **Volume management** — `pgdata` persists database files across container restarts. `uploads` persists user-uploaded files.
 
 **Two Compose files for two workflows:**
 
 | File | When to use | What it runs |
 |------|------------|--------------|
-| `docker-compose.dev.yml` | Daily development | Only PostgreSQL, Redis, Kafka. Backend and frontend run natively for hot-reload. |
-| `docker-compose.yml` | Production / CI | All 5 services including backend (Gunicorn) and frontend (Nginx). |
+| `docker-compose.dev.yml` | Daily development | Only PostgreSQL, Redis, Kafka. Services run natively for hot-reload. |
+| `docker-compose.yml` | Production / CI | Full microservices stack: Kong, 4 services, frontend, PostgreSQL, Redis, Kafka. |
 
 **Why Docker Compose (not Kubernetes):**
 
@@ -217,42 +218,45 @@ Kubernetes makes sense when you need auto-scaling, rolling deployments across mu
 
 ## 3. Backend: Why These Libraries
 
+> **Scope note:** This section covers the Python libraries used in **auth-service** and **message-service**. The chat-service (Go) and file-service (Node.js/TypeScript) use language-specific libraries documented in [Section 7: Polyglot Stack](#polyglot-stack-why-different-languages).
+
 ### Framework & Server
 
-#### `fastapi` — Web Framework
+#### `fastapi` — Web Framework (auth-service, message-service)
 
-**What it does:** Handles HTTP routing, request validation, dependency injection, WebSocket support, and auto-generates OpenAPI docs.
+**What it does:** Handles HTTP routing, request validation, dependency injection, and auto-generates OpenAPI docs.
 
 **Why FastAPI over alternatives:**
 
 | Considered | Why not |
 |-----------|---------|
-| Django | Full batteries-included framework. Too heavy for a WebSocket-centric app. Django Channels adds async, but it's bolted on, not native. |
-| Flask | Simple and mature, but synchronous by default. WebSocket support requires `flask-socketio` (which uses Socket.IO protocol, not native WebSocket). No built-in validation or dependency injection. |
-| Express.js (Node) | Would work, but we wanted Python for the backend. Also, FastAPI's type-based validation is more robust than Express middleware. |
+| Django | Full batteries-included framework. Too heavy for focused microservices. Django Channels adds async, but it's bolted on, not native. |
+| Flask | Simple and mature, but synchronous by default. No built-in validation or dependency injection. |
+| Express.js (Node) | Used for file-service where streaming I/O matters. FastAPI's Pydantic validation is better for data-heavy services like auth and messages. |
 
 **FastAPI features we actively use:**
 - **Pydantic validation** — Request/response schemas are validated automatically. A malformed JSON body returns a clear 422 error, not a 500 crash.
 - **Dependency injection** — `Depends(get_db)` gives each request its own database session and auto-closes it. `Depends(get_current_user)` handles JWT validation on every protected endpoint.
-- **Native WebSocket** — First-class `@router.websocket()` support without extra libraries.
-- **Auto-generated docs** — `/docs` gives us Swagger UI for testing endpoints. Free and always up-to-date.
+- **Auto-generated docs** — `/docs` gives us Swagger UI for testing endpoints on each Python service.
 
 #### `uvicorn[standard]` — ASGI Server (Development)
 
-**What it does:** Runs the FastAPI application in development with `--reload` for auto-restart on code changes.
+**What it does:** Runs the FastAPI application (auth-service, message-service) in development with `--reload` for auto-restart on code changes.
 
 **Why the `[standard]` extra:** Installs `uvloop` (faster event loop) and `httptools` (faster HTTP parsing). Both are C-based replacements for Python's default implementations, giving ~2-3x better throughput.
 
 #### `gunicorn` — Process Manager (Production)
 
-**What it does:** Spawns multiple Uvicorn worker processes, so the backend can use all CPU cores.
+**What it does:** Spawns multiple Uvicorn worker processes for each Python service, so they can use all CPU cores.
 
-**Why we need it:** Uvicorn alone runs a single process. With Gunicorn as the process manager, we get:
+**Why we need it:** Uvicorn alone runs a single process. With Gunicorn as the process manager, each Python service gets:
 - Multiple workers (formula: `min(cpu_count * 2 + 1, 8)`)
 - Automatic worker restart if one crashes
 - Graceful shutdown (waits for in-flight requests)
 
 **Configuration:** `worker_class = "uvicorn.workers.UvicornWorker"` means each Gunicorn worker runs a full Uvicorn async event loop. It's not threading — it's genuine multiprocessing with async I/O inside each process.
+
+> **Note:** The chat-service (Go) doesn't need Gunicorn — Go's goroutines handle concurrency natively. The file-service (Node.js) uses its own clustering mechanism.
 
 ---
 
@@ -290,9 +294,10 @@ Kubernetes makes sense when you need auto-scaling, rolling deployments across mu
 **Why we need it:** Without migrations, schema changes require manual SQL. If you add a column and forget to tell a teammate, their app crashes. Alembic ensures the schema is always in sync with the code.
 
 **How it works in this project:**
-- Migration scripts live in `backend/alembic/versions/`
-- On every backend startup, `main.py` runs `alembic upgrade head`
-- Migration history is tracked in the `alembic_version` table
+- Each Python service has its own migrations: `services/auth-service/alembic/versions/` and `services/message-service/alembic/versions/`
+- On every service startup, migrations are applied via `alembic upgrade head`
+- Migration history is tracked in the `alembic_version` table within each service's database
+- The file-service uses Prisma migrations instead of Alembic
 
 ---
 
@@ -317,25 +322,27 @@ Kubernetes makes sense when you need auto-scaling, rolling deployments across mu
 **What it does:** Creates and verifies JSON Web Tokens for stateless authentication.
 
 **Why JWTs for a chat app:**
-- **Stateless** — The backend doesn't need to store session data. The token itself contains the user ID and expiration.
-- **WebSocket-friendly** — The token is passed as a query parameter during WebSocket connection. No cookie/session management needed.
-- **Multi-worker safe** — Any Gunicorn worker can verify any token because they all share the same `SECRET_KEY`.
+- **Stateless** — No service needs to store session data. The token itself contains the user ID and expiration.
+- **WebSocket-friendly** — The token is passed as a query parameter during WebSocket connection to the chat-service. No cookie/session management needed.
+- **Multi-service safe** — Any service can verify any token because they all share the same `SECRET_KEY`. The auth-service issues tokens, but the chat-service, message-service, and file-service can all validate them independently.
 
 **The `[cryptography]` extra:** Uses the `cryptography` package for HMAC-SHA256 signing instead of pure Python. Faster and more secure.
 
 #### `python-multipart` — Form Data Parsing
 
-**What it does:** Parses `multipart/form-data` request bodies — required for file uploads.
+**What it does:** Parses `multipart/form-data` request bodies — used by FastAPI for form-based login endpoints in the auth-service.
 
-**Why a separate library:** FastAPI delegates form parsing to this library. Without it, file upload endpoints would fail at runtime with a confusing import error.
+**Why a separate library:** FastAPI delegates form parsing to this library. Without it, form-based endpoints would fail at runtime with a confusing import error.
+
+> **Note:** File uploads are now handled by the file-service (Node.js) using Multer, not by the Python services.
 
 ---
 
 ### Real-Time Communication
 
-#### `websockets` — WebSocket Protocol Library
+#### WebSocket — Chat Service (Go)
 
-**What it does:** Provides the underlying WebSocket protocol implementation that Uvicorn uses for FastAPI's WebSocket endpoints.
+**What it does:** The chat-service uses Go's `gorilla/websocket` library for WebSocket connections. In the monolith, this was handled by Python's `websockets` library via FastAPI — but the microservices migration moved WebSocket handling to Go for dramatically better concurrency (goroutines handle 10,000+ connections with ~40MB total memory).
 
 **Why we use native WebSockets (not Socket.IO):**
 
@@ -402,18 +409,18 @@ The structured version can be parsed by log aggregation tools (Datadog, ELK, Lok
 
 **Dual rendering:** In dev, structlog uses `ConsoleRenderer` (pretty, colored output). In staging/production, it uses `JSONRenderer` (machine-parseable).
 
-#### `slowapi` — Rate Limiting
+#### Rate Limiting — Kong API Gateway
 
 **What it does:** Limits the number of requests per IP per time window. Prevents abuse like brute-force login attempts or registration spam.
 
-**Current limits:**
+**Current limits (configured in Kong):**
 - Registration: 5/minute
 - Login: 10/minute
 - General: 100/minute
 
-**Why `slowapi`:** It's a FastAPI-specific wrapper around `limits`, with native support for Redis as a shared backend. Minimal setup — a single decorator per endpoint.
+**Why Kong for rate limiting (not per-service):** In the monolith, `slowapi` handled rate limiting per FastAPI endpoint. In the microservices architecture, Kong centralizes rate limiting at the gateway layer — before requests even reach individual services. This is more efficient (one enforcement point) and consistent (limits apply regardless of which service handles the request).
 
-**Environment-aware:** Rate limiting is disabled in dev (avoids interfering with rapid testing) and enabled in staging/prod using Redis for cross-worker state.
+> **Note:** The chat-service also implements its own WebSocket-level rate limiting (30 messages/10 seconds per user, sliding window) since WebSocket connections bypass Kong's HTTP rate limiting.
 
 ---
 
@@ -425,11 +432,13 @@ The structured version can be parsed by log aggregation tools (Datadog, ELK, Lok
 
 **Why:** Keeps secrets (database passwords, JWT key) out of the code. Different `.env` files for different environments (dev/staging/prod) without changing any code.
 
-#### `aiofiles` — Async File I/O
+#### `aiofiles` — Async File I/O (legacy monolith)
 
 **What it does:** Provides async wrappers for file read/write operations.
 
-**Why:** FastAPI's file upload handler needs to write uploaded files to disk. Using synchronous `open()` would block the event loop during large file writes. `aiofiles` makes file I/O non-blocking.
+**Why (in monolith):** FastAPI's file upload handler needed to write uploaded files to disk without blocking the event loop.
+
+> **Note:** File uploads are now handled by the file-service (Node.js), which uses native streams for non-blocking I/O without needing a wrapper library.
 
 #### `httpx` — HTTP Client
 
@@ -541,50 +550,52 @@ The structured version can be parsed by log aggregation tools (Datadog, ELK, Lok
 
 ## 5. Data Flow: How It All Connects
 
-### Sending a Chat Message (Happy Path)
+### Sending a Chat Message (Microservices Architecture)
 
 ```
-Browser                  FastAPI              Redis           Kafka          PostgreSQL
-  |                        |                   |               |               |
-  |-- WebSocket msg ------>|                   |               |               |
-  |                        |-- publish ------->|               |               |
-  |                        |-- produce ------->|               |               |
-  |                        |                   |               |               |
-  |                        |   Redis delivers  |               |               |
-  |<---- all users --------|<-- pub/sub -------|               |               |
-  |                        |                   |               |               |
-  |                        |                   |    Consumer   |               |
-  |                        |                   |    picks up   |               |
-  |                        |                   |       |------>|-- INSERT ---->|
-  |                        |                   |               |   (async)     |
+Browser       Kong        Chat Service     Redis        Kafka        Message Service   PostgreSQL
+  |            |               |             |            |               |               |
+  |--WS msg-->|---upgrade---->|              |            |               |               |
+  |            |               |--publish--->|            |               |               |
+  |            |               |--produce--->|            |               |               |
+  |            |               |             |            |               |               |
+  |            |               |  Redis pub  |            |               |               |
+  |<--all users|<--broadcast--|<--sub--------|            |               |               |
+  |            |               |             |            |               |               |
+  |            |               |             |   Consumer |               |               |
+  |            |               |             |   picks up |               |               |
+  |            |               |             |      |---->|---INSERT----->|               |
+  |            |               |             |            |   (async)     |               |
 ```
+
+In the microservices architecture, the chat-service (Go) handles WebSocket connections and real-time delivery via Redis pub/sub. The message-service (Python) consumes from Kafka and persists to its own database asynchronously.
 
 ### When Kafka Is Down (Graceful Degradation)
 
 ```
-Browser                  FastAPI              Redis           PostgreSQL
-  |                        |                   |               |
-  |-- WebSocket msg ------>|                   |               |
-  |                        |-- publish ------->|               |
-  |                        |-- INSERT (sync) --|-------------->|
-  |                        |                   |               |
-  |<---- all users --------|<-- pub/sub -------|               |
+Browser       Kong        Chat Service     Redis        PostgreSQL
+  |            |               |             |               |
+  |--WS msg-->|---upgrade---->|              |               |
+  |            |               |--publish--->|               |
+  |            |               |--sync write-|-------------->|
+  |            |               |             |               |
+  |<--all users|<--broadcast--|<--sub--------|               |
 ```
 
-The user experience is identical. The only difference is the database write happens synchronously instead of asynchronously.
+The user experience is identical. The chat-service falls back to synchronous delivery when Kafka is unavailable.
 
-### When Redis Is Down (Single-Worker Fallback)
+### When Redis Is Down (Local-Only Delivery)
 
 ```
-Browser                  FastAPI              PostgreSQL
-  |                        |                   |
-  |-- WebSocket msg ------>|                   |
-  |                        |-- local broadcast |
-  |<---- same-worker ------|                   |
-  |                        |-- INSERT -------->|
+Browser       Kong        Chat Service     PostgreSQL
+  |            |               |               |
+  |--WS msg-->|---upgrade---->|                |
+  |            |               |--local bcast  |
+  |<--same-ws-|<--broadcast---|                |
+  |            |               |--INSERT------>|
 ```
 
-Users connected to other Gunicorn workers won't receive the message until they refresh. This is acceptable as a degraded mode — Redis downtime should be rare and short.
+Users connected to other instances won't receive the message until they reconnect. This is acceptable as a degraded mode — Redis downtime should be rare and short.
 
 ---
 
@@ -606,9 +617,9 @@ JWT + Redis blacklist gives us:
 
 Database sessions would require a session lookup on every request and complicate WebSocket auth.
 
-### "Why not use a monorepo tool like Turborepo?"
+### "Why not use a monorepo tool like Turborepo or Nx?"
 
-Two folders (`backend/` and `frontend/`) with separate dependency management is simpler. We don't share code between them, so there's no benefit to a monorepo tool. The overhead isn't justified.
+With 4 microservices (Python, Go, Node.js) plus a React frontend, a monorepo tool could help coordinate builds and testing. However, each service has its own CI pipeline that triggers independently on path changes, and there's minimal shared code between services (only Kafka event contracts). The overhead of learning and configuring a polyglot monorepo tool isn't justified when `docker compose` and per-service CI already handle orchestration.
 
 ### "Why not use TypeScript for the frontend?"
 
@@ -711,8 +722,10 @@ Services communicate through two channels:
 
 ```
 chat-service  --produce-->  Kafka [chat.messages]  --consume-->  message-service
-file-service  --produce-->  Kafka [file.events]    --consume-->  message-service
-auth-service  --produce-->  Kafka [auth.events]    --consume-->  chat-service, message-service
+chat-service  --produce-->  Kafka [chat.private]   --consume-->  message-service
+chat-service  --produce-->  Kafka [chat.events]    --consume-->  (future consumers)
+file-service  --produce-->  Kafka [file.events]    --consume-->  chat-service
+auth-service  --produce-->  Kafka [auth.events]    --consume-->  (future consumers)
 ```
 
 ### Design Patterns Used
@@ -743,10 +756,12 @@ Each service owns its data and exposes it only through APIs:
 
 | Service | Database | Tables Owned | Why Separate? |
 |---------|----------|-------------|---------------|
-| auth-service | `auth_db` | `users`, `token_blacklist` | User credentials are security-critical — isolated access reduces blast radius |
-| chat-service | N/A (stateless) | None (uses Redis only) | Real-time state lives in Redis; persistent state belongs to message-service |
-| message-service | `message_db` | `messages`, `rooms`, `room_admins`, `muted_users` | Read-heavy queries benefit from their own connection pool and indexes |
-| file-service | `file_db` | `files`, `file_chunks` | Large file metadata queries don't compete with message queries |
+| auth-service | `chatbox_auth` | `users` | User credentials are security-critical — isolated access reduces blast radius |
+| chat-service | `chatbox_chat` | `rooms`, `muted_users`, `room_state` | Room management and WebSocket state need fast access without competing with message writes |
+| message-service | `chatbox_messages` | `messages`, `private_messages` | Read-heavy queries (history, replay) benefit from their own connection pool and indexes |
+| file-service | `chatbox_files` | `files` (Prisma-managed) | File metadata queries don't compete with message queries |
+
+All four databases are created automatically by `infra/docker/init/init-db.sh` inside a single PostgreSQL instance. In production, they could be split across separate PostgreSQL hosts for further isolation.
 
 **Trade-off**: Data joins across services require API calls instead of SQL JOINs. For example, to show a message with the sender's username, the frontend calls both message-service (for the message) and auth-service (for the user info). This is slower than a monolith JOIN but keeps services decoupled.
 
