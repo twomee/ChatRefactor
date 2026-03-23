@@ -41,10 +41,10 @@ with TestSessionLocal() as _db:
         _db.add(models.User(username=ADMIN_USERNAME, password_hash=hash_password(ADMIN_PASSWORD), is_global_admin=True))
     _db.commit()
 
-# Override DB dependency and patch startup code before entering the TestClient
-# context so the lifespan doesn't try to connect to PostgreSQL.
+# Override DB dependency and patch the engine used by the lifespan seeding
+# so startup doesn't try to connect to PostgreSQL.
 app.dependency_overrides[get_db] = override_get_db
-with patch("main.alembic_command.upgrade"), patch("main.engine", test_engine):
+with patch("main.engine", test_engine):
     _client_ctx = TestClient(app).__enter__()
 
 
