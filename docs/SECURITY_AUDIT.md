@@ -123,15 +123,28 @@ File Service (Node/Express), Kong API Gateway, React Frontend, and infrastructur
 
 ---
 
-### LOW (tracked, not fixed in this PR)
+### LOW
 
-| # | Issue | File | Notes |
-|---|-------|------|-------|
-| 14 | Token in sessionStorage (XSS-accessible) | `frontend/` | Consider HttpOnly cookies in future |
-| 15 | No antivirus scanning on uploads | `file-service/` | Integrate ClamAV for production |
-| 16 | Shared PostgreSQL with single user | `docker-compose.yml` | Isolate per-service DB users |
-| 17 | Logging doesn't filter passwords/tokens | All services | Add redaction middleware |
-| 18 | No WebSocket ping/pong heartbeat | `chat-service/` | Detect stale connections |
+#### 14. Token in sessionStorage (XSS-accessible) — TECH DEBT
+- **File:** `frontend/`
+- **Status:** [ ] Tech debt — tracked for future sprint
+- **Notes:** CSP header (added in Step 6) is the primary defense against XSS. Migrating to HttpOnly cookies requires a BFF layer or cookie-based auth in Kong, CSRF token handling, and WebSocket auth rework. Not worth the complexity until production with untrusted users.
+
+#### 15. No antivirus scanning on uploads — TECH DEBT
+- **File:** `file-service/`
+- **Status:** [ ] Tech debt — tracked for future sprint
+- **Notes:** MIME validation (added in Step 7) blocks most misnamed executables. Files are served as `application/octet-stream` with `Content-Disposition: attachment`, so browsers won't execute them. ClamAV integration adds ~200MB to images and 1-2s latency per upload. Worth doing before multi-tenant production.
+
+#### 16. Shared PostgreSQL with single user — TECH DEBT
+- **File:** `docker-compose.yml`
+- **Status:** [ ] Tech debt — tracked for future sprint
+- **Notes:** Separate databases per service are already in place (chatbox_auth, chatbox_chat, chatbox_messages, chatbox_files). Per-service DB users add credential management overhead for minimal gain in a single-host Docker deployment. Fix when migrating to managed databases (RDS/Cloud SQL) where IAM-based per-service credentials are easy.
+
+#### 17. Logging doesn't filter passwords/tokens
+- **Status:** [x] Fixed (Step 13)
+
+#### 18. No WebSocket ping/pong heartbeat
+- **Status:** [x] Fixed (Step 13)
 
 ---
 
@@ -238,3 +251,11 @@ Each fix below is tracked with the commit/change that resolved it.
   - Added `REDIS_PASSWORD` to `.env` and `.env.example`
   - Updated healthcheck to use `-a` flag with password
   - Kafka SASL requires significant config changes (JAAS files, SASL mechanism config, client updates in all 4 services) — documented for production but not implemented in dev docker-compose
+
+### Step 13: WebSocket ping/pong heartbeat + Log redaction
+- **Files changed:** `services/chat-service/internal/handler/websocket.go`, `services/chat-service/internal/handler/lobby.go`, `services/auth-service/app/core/logging.py`, `services/message-service/app/core/logging.py`, `services/file-service/src/kafka/logger.ts`
+- **Status:** [x] Done
+- **Notes:**
+  - **Ping/pong:** Added `configurePingPong()` helper that sends WebSocket ping frames every 30s and closes connections that don't respond within 10s. Applied to both room WS and lobby WS handlers. Uses gorilla/websocket's built-in `SetPongHandler` and `WriteControl(PingMessage)`.
+  - **Log redaction (Python):** Added `_redact_sensitive_data` structlog processor to auth-service and message-service. Redacts values for keys matching `password`, `token`, `secret`, `secret_key`, `authorization`, and scrubs `Bearer <token>` patterns from string values.
+  - **Log redaction (Node):** Added `redactSensitive` Winston format to file-service with the same key/pattern redaction logic.

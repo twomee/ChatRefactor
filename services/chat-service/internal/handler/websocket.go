@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -32,6 +33,14 @@ const (
 	// a single user can have open simultaneously (across all rooms + lobby).
 	// Prevents resource exhaustion from a single authenticated user.
 	maxConnectionsPerUser = 5
+
+	// pingInterval is how often the server sends a WebSocket ping frame.
+	// If the client doesn't respond with a pong within pongWait, the
+	// connection is considered dead and closed.
+	pingInterval = 30 * time.Second
+
+	// pongWait is how long to wait for a pong response before closing.
+	pongWait = 10 * time.Second
 )
 
 // IncomingMessage is the generic envelope parsed from the WebSocket client.
@@ -185,6 +194,10 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 	// Set read size limit to prevent memory exhaustion from oversized frames.
 	conn.SetReadLimit(maxMessageSize)
 
+	// Start ping/pong heartbeat to detect dead connections.
+	cancelPing := configurePingPong(conn, h.manager)
+	defer cancelPing()
+
 	user := ws.UserInfo{UserID: userID, Username: username}
 	h.manager.ConnectRoom(roomID, conn, user)
 
@@ -225,6 +238,40 @@ func (h *WSHandler) wasKicked(roomID, userID int) bool {
 		return true
 	}
 	return false
+}
+
+// configurePingPong sets up ping/pong heartbeat on a WebSocket connection.
+// It sets a read deadline that gets extended every time a pong is received,
+// and starts a goroutine that sends pings at a regular interval.
+// The returned cancel function stops the ping goroutine.
+func configurePingPong(conn *websocket.Conn, mgr *ws.Manager) func() {
+	// Set initial read deadline — extended on each pong.
+	_ = conn.SetReadDeadline(time.Now().Add(pingInterval + pongWait))
+
+	conn.SetPongHandler(func(string) error {
+		// Client responded — reset the read deadline.
+		return conn.SetReadDeadline(time.Now().Add(pingInterval + pongWait))
+	})
+
+	// Start a goroutine that sends pings at the configured interval.
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(pingInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				deadline := time.Now().Add(pongWait)
+				if err := conn.WriteControl(websocket.PingMessage, nil, deadline); err != nil {
+					return
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	return func() { close(done) }
 }
 
 // sendError sends an error message to a single connection.
