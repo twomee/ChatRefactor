@@ -102,6 +102,18 @@ func (m *mockRoomStore) IsMuted(ctx context.Context, roomID, userID int) (bool, 
 	return m.isMuted, m.err
 }
 
+func (m *mockRoomStore) GetAllIncludingInactive(ctx context.Context) ([]model.Room, error) {
+	return m.rooms, m.err
+}
+
+func (m *mockRoomStore) SetAllActive(ctx context.Context, active bool) (int, error) {
+	return len(m.rooms), m.err
+}
+
+func (m *mockRoomStore) DeleteAllData(ctx context.Context) error {
+	return m.err
+}
+
 // ---- Mock auth client ----
 
 type mockAuthClient struct {

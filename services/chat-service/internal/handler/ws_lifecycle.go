@@ -31,18 +31,34 @@ func (h *WSHandler) handleJoin(ctx context.Context, conn *websocket.Conn, roomID
 	}
 	h.manager.BroadcastRoom(roomID, joinBroadcast)
 
+	// Produce join event to Kafka for downstream consumers (analytics, audit).
+	h.produceEvent(ctx, "user_joined", roomID, userID, username)
+
 	// Send message history to the newly joined connection.
 	h.sendHistory(conn, roomID, token)
 }
 
 // handleDisconnect cleans up the connection, handles admin succession,
-// and broadcasts the user_left event.
+// clears the user's mute status, and broadcasts the user_left event.
+// For kicked users, the user_left broadcast is skipped (handleKick already sent it).
 func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, roomID, userID int, username string) {
 	h.manager.DisconnectRoom(roomID, conn)
 	_ = conn.Close()
 
+	// If this user was kicked, skip the user_left broadcast — it was already
+	// sent by handleKick. Also skip admin succession (kicked users aren't admins).
+	if h.wasKicked(roomID, userID) {
+		return
+	}
+
 	// Handle admin succession before broadcasting leave.
 	h.handleAdminSuccession(ctx, roomID, userID, username)
+
+	// Clear mute on leave — user should not remain muted after disconnecting.
+	isMuted, _ := h.store.IsMuted(ctx, roomID, userID)
+	if isMuted {
+		_ = h.store.UnmuteUser(ctx, roomID, userID)
+	}
 
 	// Get updated room state for leave broadcast.
 	remainingUsers := h.manager.GetUsernamesInRoom(roomID)
@@ -58,6 +74,9 @@ func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, 
 		"room_id":  roomID,
 	}
 	h.manager.BroadcastRoom(roomID, leaveBroadcast)
+
+	// Produce leave event to Kafka for downstream consumers.
+	h.produceEvent(ctx, "user_left", roomID, userID, username)
 }
 
 // handleAdminSuccession handles admin departure and succession logic.
@@ -187,6 +206,21 @@ func (h *WSHandler) getAdminUsernames(ctx context.Context, roomID int) []string 
 		}
 	}
 	return names
+}
+
+// produceEvent fires an event to the chat.events Kafka topic (fire-and-forget).
+func (h *WSHandler) produceEvent(ctx context.Context, eventType string, roomID, userID int, username string) {
+	event := map[string]interface{}{
+		"event_type": eventType,
+		"room_id":    roomID,
+		"user_id":    userID,
+		"username":   username,
+		"timestamp":  time.Now().UTC().Format(time.RFC3339),
+	}
+	payload, _ := json.Marshal(event)
+	if err := h.delivery.DeliverEvent(ctx, eventType, payload); err != nil {
+		h.logger.Debug("event_deliver_failed", zap.String("event", eventType), zap.Error(err))
+	}
 }
 
 // getMutedUsernames returns a list of muted usernames for a room.

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/sony/gobreaker/v2"
 	"go.uber.org/zap"
 )
 
@@ -20,22 +21,60 @@ type UserResponse struct {
 }
 
 // AuthClient calls the Auth Service for user lookups.
+// Wraps HTTP calls in a circuit breaker to prevent cascading failures
+// when the auth service is down.
 type AuthClient struct {
 	baseURL    string
 	httpClient *http.Client
 	logger     *zap.Logger
+	breaker    *gobreaker.CircuitBreaker[*http.Response]
 }
 
 // NewAuthClient creates an HTTP client for the Auth Service with a
-// sensible timeout so a slow downstream doesn't block WebSocket handlers.
+// sensible timeout and circuit breaker so a slow/down downstream
+// doesn't block WebSocket handlers.
 func NewAuthClient(baseURL string, logger *zap.Logger) *AuthClient {
+	cb := gobreaker.NewCircuitBreaker[*http.Response](gobreaker.Settings{
+		Name:        "auth_service",
+		MaxRequests: 3,                // allow 3 probing requests in half-open state
+		Interval:    30 * time.Second, // reset failure counts every 30s
+		Timeout:     10 * time.Second, // stay open for 10s before probing
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			return counts.ConsecutiveFailures > 5
+		},
+		OnStateChange: func(name string, from, to gobreaker.State) {
+			logger.Warn("circuit_breaker_state_change",
+				zap.String("service", name),
+				zap.String("from", from.String()),
+				zap.String("to", to.String()),
+			)
+		},
+	})
+
 	return &AuthClient{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
-		logger: logger,
+		logger:  logger,
+		breaker: cb,
 	}
+}
+
+// doRequest executes an HTTP request through the circuit breaker.
+func (c *AuthClient) doRequest(req *http.Request) (*http.Response, error) {
+	return c.breaker.Execute(func() (*http.Response, error) {
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		// Treat 5xx as failures for the circuit breaker.
+		if resp.StatusCode >= 500 {
+			resp.Body.Close()
+			return nil, fmt.Errorf("auth service returned %d", resp.StatusCode)
+		}
+		return resp, nil
+	})
 }
 
 // GetUserByUsername looks up a user by username via the Auth Service.
@@ -47,7 +86,7 @@ func (c *AuthClient) GetUserByUsername(ctx context.Context, username string) (*U
 		return nil, fmt.Errorf("auth client request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		c.logger.Warn("auth_service_unreachable", zap.Error(err))
 		return nil, fmt.Errorf("auth service unreachable: %w", err)
@@ -56,9 +95,6 @@ func (c *AuthClient) GetUserByUsername(ctx context.Context, username string) (*U
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil // user not found
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("auth service returned status %d", resp.StatusCode)
 	}
 
 	var user UserResponse
@@ -77,7 +113,7 @@ func (c *AuthClient) GetUserByID(ctx context.Context, userID int) (*UserResponse
 		return nil, fmt.Errorf("auth client request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		c.logger.Warn("auth_service_unreachable", zap.Error(err))
 		return nil, fmt.Errorf("auth service unreachable: %w", err)
@@ -86,9 +122,6 @@ func (c *AuthClient) GetUserByID(ctx context.Context, userID int) (*UserResponse
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("auth service returned status %d", resp.StatusCode)
 	}
 
 	var user UserResponse

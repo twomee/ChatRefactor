@@ -51,6 +51,9 @@ func (h *WSHandler) handleKick(ctx context.Context, conn *websocket.Conn, roomID
 	}
 	h.manager.SendToUserInRoom(roomID, targetID, kickedMsg)
 
+	// Mark user as kicked so handleDisconnect skips the duplicate "user_left" broadcast.
+	h.markKicked(roomID, targetID)
+
 	// Small delay so the kicked message is delivered before close.
 	time.Sleep(50 * time.Millisecond)
 
@@ -81,6 +84,9 @@ func (h *WSHandler) handleKick(ctx context.Context, conn *websocket.Conn, roomID
 		"room_id":  roomID,
 	}
 	h.manager.BroadcastRoom(roomID, updateMsg)
+
+	// Produce kicked event to Kafka.
+	h.produceEvent(ctx, "user_kicked", roomID, targetID, target)
 }
 
 // handleMute processes an admin mute command.
@@ -139,6 +145,9 @@ func (h *WSHandler) handleMute(ctx context.Context, conn *websocket.Conn, roomID
 		"room_id":  roomID,
 	}
 	h.manager.BroadcastRoom(roomID, mutedMsg)
+
+	// Produce muted event to Kafka.
+	h.produceEvent(ctx, "user_muted", roomID, targetID, target)
 }
 
 // handleUnmute processes an admin unmute command.
@@ -183,6 +192,9 @@ func (h *WSHandler) handleUnmute(ctx context.Context, conn *websocket.Conn, room
 		"room_id":  roomID,
 	}
 	h.manager.BroadcastRoom(roomID, unmutedMsg)
+
+	// Produce unmuted event to Kafka.
+	h.produceEvent(ctx, "user_unmuted", roomID, targetID, target)
 }
 
 // handlePromote processes an admin promote command.
@@ -241,4 +253,7 @@ func (h *WSHandler) handlePromote(ctx context.Context, conn *websocket.Conn, roo
 		"room_id":  roomID,
 	}
 	h.manager.BroadcastRoom(roomID, promoteMsg)
+
+	// Produce promoted event to Kafka.
+	h.produceEvent(ctx, "user_promoted", roomID, targetID, target)
 }
