@@ -58,13 +58,12 @@ def client(db):
     def _override_get_db():
         yield db
 
-    # Patch Kafka and Alembic so lifespan doesn't try to connect
+    # Patch Kafka so lifespan doesn't try to connect
     with (
         patch("app.main.init_producer", new_callable=AsyncMock),
         patch("app.main.close_producer", new_callable=AsyncMock),
         patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.start", new_callable=AsyncMock),
         patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.stop", new_callable=AsyncMock),
-        patch("app.main.alembic_command"),
     ):
         from app.main import app
 
