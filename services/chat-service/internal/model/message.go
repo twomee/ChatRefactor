@@ -24,7 +24,8 @@ type PrivateMessage struct {
 }
 
 // SendPMRequest is the REST payload for sending a PM.
+// The frontend sends {"to": "...", "text": "..."}.
 type SendPMRequest struct {
-	ToUsername string `json:"to_username" binding:"required"`
-	Content    string `json:"content" binding:"required,min=1,max=4096"`
+	ToUsername string `json:"to" binding:"required"`
+	Content    string `json:"text" binding:"required,min=1,max=4096"`
 }

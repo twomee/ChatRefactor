@@ -6,6 +6,7 @@ import "context"
 // Handlers depend on this interface so the auth client can be mocked in tests.
 type UserLookup interface {
 	GetUserByUsername(ctx context.Context, username string) (*UserResponse, error)
+	GetUserByID(ctx context.Context, userID int) (*UserResponse, error)
 	Ping(ctx context.Context) error
 }
 
