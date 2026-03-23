@@ -1,6 +1,9 @@
 // Package main is the entry point for the chat-service.
 // It loads config, connects to infrastructure (DB, Redis, Kafka),
 // registers Gin routes, and starts the HTTP server.
+//
+// Database migrations are handled by the init container (see
+// docker-compose and the migrate job), not at application startup.
 package main
 
 import (
@@ -101,7 +104,7 @@ func main() {
 
 	// --- Handlers ---
 	healthH := handler.NewHealthHandler(dbPool, rdb, kafkaProducer, brokers)
-	roomH := handler.NewRoomHandler(roomStore, wsManager, logger)
+	roomH := handler.NewRoomHandler(roomStore, wsManager, authClient, logger)
 	wsH := handler.NewWSHandler(wsManager, roomStore, deliveryStrategy, cfg.SecretKey, logger)
 	lobbyH := handler.NewLobbyHandler(wsManager, cfg.SecretKey, logger)
 	pmH := handler.NewPMHandler(wsManager, authClient, deliveryStrategy, logger)

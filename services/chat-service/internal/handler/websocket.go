@@ -2,12 +2,10 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -15,7 +13,6 @@ import (
 
 	"github.com/twomee/chatbox/chat-service/internal/delivery"
 	"github.com/twomee/chatbox/chat-service/internal/middleware"
-	"github.com/twomee/chatbox/chat-service/internal/model"
 	"github.com/twomee/chatbox/chat-service/internal/store"
 	"github.com/twomee/chatbox/chat-service/internal/ws"
 )
@@ -29,6 +26,19 @@ const (
 	// maxContentLength is the maximum chat message content length in characters.
 	maxContentLength = 4096
 )
+
+// IncomingMessage is the generic envelope parsed from the WebSocket client.
+// The "type" field determines which fields are relevant:
+//
+//   - "message":         uses Text
+//   - "kick","mute","unmute","promote": uses Target (username)
+//   - "private_message": uses To and Text
+type IncomingMessage struct {
+	Type   string `json:"type"`
+	Text   string `json:"text"`
+	Target string `json:"target"`
+	To     string `json:"to"`
+}
 
 // newUpgrader creates a WebSocket upgrader with origin checking.
 // In production, only the configured allowed origins are accepted.
@@ -69,11 +79,13 @@ func checkOrigin(r *http.Request) bool {
 
 // WSHandler handles WebSocket upgrades for room chat.
 type WSHandler struct {
-	manager   *ws.Manager
-	store     store.RoomRepository
-	delivery  delivery.Strategy
-	secretKey string
-	logger    *zap.Logger
+	manager       *ws.Manager
+	store         store.RoomRepository
+	delivery      delivery.Strategy
+	secretKey     string
+	logger        *zap.Logger
+	limiter       *rateLimiter
+	messageSvcURL string
 }
 
 // NewWSHandler creates a WebSocket handler.
@@ -84,12 +96,18 @@ func NewWSHandler(
 	secretKey string,
 	logger *zap.Logger,
 ) *WSHandler {
+	msgURL := os.Getenv("MESSAGE_SERVICE_URL")
+	if msgURL == "" {
+		msgURL = "http://message-service:8004"
+	}
 	return &WSHandler{
-		manager:   manager,
-		store:     store,
-		delivery:  delivery,
-		secretKey: secretKey,
-		logger:    logger,
+		manager:       manager,
+		store:         store,
+		delivery:      delivery,
+		secretKey:     secretKey,
+		logger:        logger,
+		limiter:       newRateLimiter(),
+		messageSvcURL: msgURL,
 	}
 }
 
@@ -130,9 +148,6 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 		return
 	}
 
-	// Check if user is muted.
-	muted, _ := h.store.IsMuted(c.Request.Context(), roomID, userID)
-
 	// Upgrade to WebSocket.
 	up := newUpgrader()
 	conn, err := up.Upgrade(c.Writer, c.Request, nil)
@@ -147,84 +162,31 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 	user := ws.UserInfo{UserID: userID, Username: username}
 	h.manager.ConnectRoom(roomID, conn, user)
 
-	// Broadcast join event.
-	joinMsg := model.ChatMessage{
-		Type:      "join",
-		RoomID:    roomID,
-		UserID:    userID,
-		Username:  username,
-		Content:   username + " joined the room",
-		Timestamp: time.Now().UTC(),
+	// If this is the first user in the room, make them admin.
+	ctx := context.Background()
+	isAdmin, _ := h.store.IsAdmin(ctx, roomID, userID)
+	if !isAdmin {
+		users := h.manager.GetUsersInRoom(roomID)
+		if len(users) == 1 {
+			_, _ = h.store.AddAdmin(ctx, roomID, userID)
+		}
 	}
-	h.manager.BroadcastRoom(roomID, joinMsg)
 
-	// Blocking read loop — runs until the client disconnects.
-	h.readLoop(conn, roomID, userID, username, muted)
+	// Handle join: broadcast, send history.
+	h.handleJoin(ctx, conn, roomID, userID, username, token)
+
+	// Blocking read loop -- runs until the client disconnects.
+	h.readLoop(conn, roomID, userID, username)
 
 	// Cleanup on disconnect.
-	h.manager.DisconnectRoom(roomID, conn)
-	_ = conn.Close()
-
-	leaveMsg := model.ChatMessage{
-		Type:      "leave",
-		RoomID:    roomID,
-		UserID:    userID,
-		Username:  username,
-		Content:   username + " left the room",
-		Timestamp: time.Now().UTC(),
-	}
-	h.manager.BroadcastRoom(roomID, leaveMsg)
+	h.handleDisconnect(ctx, conn, roomID, userID, username)
 }
 
-// readLoop reads messages from the client and broadcasts them.
-func (h *WSHandler) readLoop(conn *websocket.Conn, roomID, userID int, username string, muted bool) {
-	for {
-		_, raw, err := conn.ReadMessage()
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-				h.logger.Warn("ws_read_error", zap.Error(err))
-			}
-			return
-		}
-
-		// Parse the incoming message.
-		var incoming struct {
-			Content string `json:"content"`
-		}
-		if err := json.Unmarshal(raw, &incoming); err != nil || incoming.Content == "" {
-			continue // skip malformed messages
-		}
-
-		// Enforce maximum content length to prevent abuse.
-		if len(incoming.Content) > maxContentLength {
-			errMsg := gin.H{"type": "error", "content": "Message too long"}
-			_ = conn.WriteJSON(errMsg)
-			continue
-		}
-
-		if muted {
-			// Muted users cannot broadcast — send an error back to them only.
-			errMsg := gin.H{"type": "error", "content": "You are muted in this room"}
-			_ = conn.WriteJSON(errMsg)
-			continue
-		}
-
-		msg := model.ChatMessage{
-			Type:      "message",
-			RoomID:    roomID,
-			UserID:    userID,
-			Username:  username,
-			Content:   incoming.Content,
-			Timestamp: time.Now().UTC(),
-		}
-
-		// Broadcast to all connections in the room.
-		h.manager.BroadcastRoom(roomID, msg)
-
-		// Produce to Kafka for persistence.
-		payload, _ := json.Marshal(msg)
-		if err := h.delivery.DeliverChat(context.Background(), roomID, payload); err != nil {
-			h.logger.Warn("kafka_chat_deliver_failed", zap.Error(err))
-		}
+// sendError sends an error message to a single connection.
+func (h *WSHandler) sendError(conn *websocket.Conn, detail string) {
+	msg := map[string]interface{}{
+		"type":   "error",
+		"detail": detail,
 	}
+	_ = h.manager.SendToConn(conn, msg)
 }

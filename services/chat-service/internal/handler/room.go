@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 
+	"github.com/twomee/chatbox/chat-service/internal/client"
 	"github.com/twomee/chatbox/chat-service/internal/middleware"
 	"github.com/twomee/chatbox/chat-service/internal/model"
 	"github.com/twomee/chatbox/chat-service/internal/store"
@@ -17,14 +18,15 @@ import (
 
 // RoomHandler groups all room-related HTTP handlers.
 type RoomHandler struct {
-	store   store.RoomRepository
-	manager *ws.Manager
-	logger  *zap.Logger
+	store      store.RoomRepository
+	manager    *ws.Manager
+	authClient client.UserLookup
+	logger     *zap.Logger
 }
 
 // NewRoomHandler creates a RoomHandler.
-func NewRoomHandler(s store.RoomRepository, m *ws.Manager, logger *zap.Logger) *RoomHandler {
-	return &RoomHandler{store: s, manager: m, logger: logger}
+func NewRoomHandler(s store.RoomRepository, m *ws.Manager, authClient client.UserLookup, logger *zap.Logger) *RoomHandler {
+	return &RoomHandler{store: s, manager: m, authClient: authClient, logger: logger}
 }
 
 // ListRooms returns all rooms.
@@ -42,9 +44,22 @@ func (h *RoomHandler) ListRooms(c *gin.Context) {
 	c.JSON(http.StatusOK, rooms)
 }
 
-// CreateRoom creates a new room.
+// CreateRoom creates a new room. Only global admins may create rooms.
 // POST /rooms
 func (h *RoomHandler) CreateRoom(c *gin.Context) {
+	// Verify the caller is a global admin via the auth service.
+	callerID, _ := c.Get(middleware.CtxUserID)
+	caller, err := h.authClient.GetUserByID(c.Request.Context(), callerID.(int))
+	if err != nil {
+		h.logger.Error("create_room_admin_check_failed", zap.Error(err))
+		c.JSON(http.StatusBadGateway, gin.H{"detail": "failed to verify admin status"})
+		return
+	}
+	if caller == nil || !caller.IsGlobalAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"detail": "admin access required"})
+		return
+	}
+
 	var req model.CreateRoomRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
