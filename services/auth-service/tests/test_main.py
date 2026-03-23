@@ -1,10 +1,12 @@
 # tests/test_main.py — Tests for app/main.py (lifespan, health, ready, exception handler)
 """
 Tests for:
-- Lifespan startup/shutdown (Alembic migrations, admin seeding, Kafka init/close)
+- Lifespan startup/shutdown (admin seeding, Kafka init/close)
 - /health endpoint
 - /ready endpoint branches (DB ok/fail, Redis ok/fail, Kafka ok/degraded)
 - Global exception handler
+
+Note: Database migrations are handled by the db-init container, not on startup.
 """
 from unittest.mock import MagicMock, AsyncMock, patch
 
@@ -26,14 +28,13 @@ class TestLifespan:
     """Tests for the lifespan context manager (startup/shutdown)."""
 
     @pytest.mark.asyncio
-    async def test_lifespan_runs_migrations_and_seeds_admin(self):
-        """Verify lifespan calls Alembic upgrade and seeds an admin user."""
+    async def test_lifespan_seeds_admin_and_starts_kafka(self):
+        """Verify lifespan seeds admin user and starts Kafka producer."""
         from app.main import lifespan
 
         mock_app = MagicMock()
 
-        with patch("app.main.alembic_command") as mock_alembic, \
-             patch("app.main.Session") as mock_session_cls, \
+        with patch("app.main.Session") as mock_session_cls, \
              patch("app.main.user_dal") as mock_dal, \
              patch("app.main.init_producer", new_callable=AsyncMock) as mock_init, \
              patch("app.main.close_producer", new_callable=AsyncMock) as mock_close, \
@@ -45,42 +46,12 @@ class TestLifespan:
             mock_db = MagicMock()
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
-            mock_dal.get_by_username.return_value = None  # admin doesn't exist yet
-
-            async with lifespan(mock_app):
-                # Startup assertions
-                mock_alembic.upgrade.assert_called_once()
-                mock_init.assert_awaited_once()
-
-            # Shutdown assertions
-            mock_close.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_lifespan_handles_migration_failure(self):
-        """When Alembic migration fails, startup should continue (warning logged)."""
-        from app.main import lifespan
-
-        mock_app = MagicMock()
-
-        with patch("app.main.alembic_command") as mock_alembic, \
-             patch("app.main.Session") as mock_session_cls, \
-             patch("app.main.user_dal") as mock_dal, \
-             patch("app.main.init_producer", new_callable=AsyncMock), \
-             patch("app.main.close_producer", new_callable=AsyncMock), \
-             patch("app.main.ADMIN_USERNAME", "admin"), \
-             patch("app.main.ADMIN_PASSWORD", "changeme"), \
-             patch("app.main.APP_ENV", "dev"), \
-             patch("app.main.SECRET_KEY", "test-secret"):
-
-            mock_alembic.upgrade.side_effect = Exception("migration error")
-            mock_db = MagicMock()
-            mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
-            mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
             mock_dal.get_by_username.return_value = None
 
-            # Should not raise even though migration failed
             async with lifespan(mock_app):
-                pass
+                mock_init.assert_awaited_once()
+
+            mock_close.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_lifespan_handles_admin_seed_failure(self):
@@ -89,8 +60,7 @@ class TestLifespan:
 
         mock_app = MagicMock()
 
-        with patch("app.main.alembic_command"), \
-             patch("app.main.Session") as mock_session_cls, \
+        with patch("app.main.Session") as mock_session_cls, \
              patch("app.main.init_producer", new_callable=AsyncMock), \
              patch("app.main.close_producer", new_callable=AsyncMock), \
              patch("app.main.ADMIN_USERNAME", "admin"), \
@@ -116,8 +86,7 @@ class TestLifespan:
         mock_user = MagicMock()
         mock_user.is_global_admin = False
 
-        with patch("app.main.alembic_command"), \
-             patch("app.main.Session") as mock_session_cls, \
+        with patch("app.main.Session") as mock_session_cls, \
              patch("app.main.user_dal") as mock_dal, \
              patch("app.main.init_producer", new_callable=AsyncMock), \
              patch("app.main.close_producer", new_callable=AsyncMock), \
@@ -142,8 +111,7 @@ class TestLifespan:
 
         mock_app = MagicMock()
 
-        with patch("app.main.alembic_command"), \
-             patch("app.main.Session") as mock_session_cls, \
+        with patch("app.main.Session") as mock_session_cls, \
              patch("app.main.user_dal") as mock_dal, \
              patch("app.main.init_producer", new_callable=AsyncMock), \
              patch("app.main.close_producer", new_callable=AsyncMock), \
@@ -170,8 +138,7 @@ class TestLifespan:
 
         mock_app = MagicMock()
 
-        with patch("app.main.alembic_command"), \
-             patch("app.main.Session") as mock_session_cls, \
+        with patch("app.main.Session") as mock_session_cls, \
              patch("app.main.user_dal") as mock_dal, \
              patch("app.main.init_producer", new_callable=AsyncMock), \
              patch("app.main.close_producer", new_callable=AsyncMock), \
@@ -200,8 +167,7 @@ class TestLifespan:
 
         mock_app = MagicMock()
 
-        with patch("app.main.alembic_command"), \
-             patch("app.main.Session") as mock_session_cls, \
+        with patch("app.main.Session") as mock_session_cls, \
              patch("app.main.user_dal") as mock_dal, \
              patch("app.main.init_producer", new_callable=AsyncMock), \
              patch("app.main.close_producer", new_callable=AsyncMock), \

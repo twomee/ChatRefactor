@@ -1,8 +1,10 @@
 # app/main.py — FastAPI application entry point for the Auth Service
 """
 Lifespan:
-  Startup: run Alembic migrations, seed admin user, start Kafka producer.
+  Startup: seed admin user, start Kafka producer.
   Shutdown: stop Kafka producer.
+
+Database schema is created by the db-init container (not on startup).
 
 Includes:
   - Auth router (register, login, logout, ping, internal user lookups)
@@ -13,8 +15,6 @@ Includes:
 
 from contextlib import asynccontextmanager
 
-from alembic import command as alembic_command
-from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -62,19 +62,6 @@ async def lifespan(app: FastAPI):
             "INSECURE_ADMIN_PASSWORD",
             msg="ADMIN_PASSWORD is 'changeme'! Set a strong password via environment variable.",
         )
-
-    # Run Alembic migrations to ensure schema is up to date
-    try:
-        import os
-
-        alembic_ini = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "alembic.ini"
-        )
-        alembic_cfg = AlembicConfig(alembic_ini)
-        alembic_command.upgrade(alembic_cfg, "head")
-        logger.info("alembic_migrations_applied")
-    except Exception as e:
-        logger.warning("alembic_migration_skipped", error=str(e))
 
     # Seed admin user
     try:
