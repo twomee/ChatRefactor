@@ -37,6 +37,9 @@ plugins:
 
 # ---------------------------------------------------------------------------
 # Services & Routes
+# All routes use strip_path: false so the upstream service receives the
+# full original path (e.g., /auth/register, /rooms/1/users).
+# Service URLs point to the base host:port only — no path component.
 # ---------------------------------------------------------------------------
 services:
   # -- Auth Service ---------------------------------------------------------
@@ -48,9 +51,9 @@ services:
           - /auth
         strip_path: false
 
-  # -- Auth register (stricter rate limit) ----------------------------------
+  # -- Auth register (stricter rate limit: 5/min) --------------------------
   - name: auth-register
-    url: http://auth-service:8001/auth/register
+    url: http://auth-service:8001
     routes:
       - name: auth-register-route
         paths:
@@ -66,9 +69,9 @@ services:
           fault_tolerant: true
           hide_client_headers: false
 
-  # -- Auth login (stricter rate limit) -------------------------------------
+  # -- Auth login (stricter rate limit: 10/min) ----------------------------
   - name: auth-login
-    url: http://auth-service:8001/auth/login
+    url: http://auth-service:8001
     routes:
       - name: auth-login-route
         paths:
@@ -110,8 +113,6 @@ services:
         strip_path: false
 
   # -- Chat Service (WebSocket) ---------------------------------------------
-  # Kong proxies WebSocket over HTTP — the Upgrade: websocket header triggers
-  # protocol switching. No special ws/wss protocol declaration needed.
   - name: chat-service-ws
     url: http://chat-service:8003
     routes:
