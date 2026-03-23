@@ -102,7 +102,7 @@ describe("format.util", () => {
       expect(() => validateExtension(".txt")).not.toThrow();
       expect(() => validateExtension(".pdf")).not.toThrow();
       expect(() => validateExtension(".png")).not.toThrow();
-      expect(() => validateExtension(".json")).not.toThrow();
+      expect(() => validateExtension(".zip")).not.toThrow();
     });
 
     it("should reject disallowed extensions", () => {
@@ -110,6 +110,14 @@ describe("format.util", () => {
       expect(() => validateExtension(".bat")).toThrow(FileValidationError);
       expect(() => validateExtension(".sh")).toThrow(FileValidationError);
       expect(() => validateExtension(".dll")).toThrow(FileValidationError);
+    });
+
+    it("should reject previously-allowed executable extensions", () => {
+      expect(() => validateExtension(".py")).toThrow(FileValidationError);
+      expect(() => validateExtension(".js")).toThrow(FileValidationError);
+      expect(() => validateExtension(".html")).toThrow(FileValidationError);
+      expect(() => validateExtension(".json")).toThrow(FileValidationError);
+      expect(() => validateExtension(".bin")).toThrow(FileValidationError);
     });
 
     it("should reject empty extension", () => {

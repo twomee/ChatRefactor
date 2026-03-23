@@ -1,6 +1,5 @@
 // src/services/fileApi.js — File API calls
 import http from './http';
-import { API_BASE } from '../config/constants';
 
 export function uploadFile(roomId, file, onProgress) {
   const form = new FormData();
@@ -15,7 +14,21 @@ export function listRoomFiles(roomId) {
   return http.get(`/files/room/${roomId}`);
 }
 
-export function getDownloadUrl(fileId) {
-  const token = sessionStorage.getItem('token');
-  return `${API_BASE}/files/download/${fileId}?token=${token}`;
+/**
+ * Download a file via Authorization header (not URL query param).
+ * Creates a temporary blob URL and triggers the browser save dialog.
+ * This avoids leaking the JWT in browser history and server logs.
+ */
+export async function downloadFile(fileId, filename) {
+  const response = await http.get(`/files/download/${fileId}`, {
+    responseType: 'blob',
+  });
+  const url = URL.createObjectURL(response.data);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'download';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

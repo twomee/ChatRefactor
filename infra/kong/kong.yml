@@ -8,7 +8,8 @@ plugins:
   - name: cors
     config:
       origins:
-        - "*"
+        - "http://localhost:3000"
+        - "http://localhost:5173"
       methods:
         - GET
         - POST
@@ -28,6 +29,16 @@ plugins:
         headers:
           - "X-Request-ID:$(uuid)"
 
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-Content-Type-Options: nosniff"
+          - "X-Frame-Options: DENY"
+          - "Referrer-Policy: strict-origin-when-cross-origin"
+          - "X-XSS-Protection: 1; mode=block"
+          - "Permissions-Policy: camera=(), microphone=(), geolocation=()"
+
   - name: rate-limiting
     config:
       minute: 100
@@ -42,7 +53,24 @@ plugins:
 # All routes use strip_path: false so the upstream receives the full path.
 # ---------------------------------------------------------------------------
 services:
-  # -- Auth Service ---------------------------------------------------------
+  # -- Auth Service (internal endpoints blocked) ------------------------------
+  # These endpoints are for inter-service communication only. Kong blocks them
+  # so they can't be reached externally; services call auth-service directly
+  # over the Docker network (http://auth-service:8001).
+  - name: auth-internal-block
+    url: http://auth-service:8001
+    routes:
+      - name: auth-internal-users-route
+        paths:
+          - /auth/users
+        strip_path: false
+    plugins:
+      - name: request-termination
+        config:
+          status_code: 403
+          message: "Forbidden"
+
+  # -- Auth Service (public endpoints) ----------------------------------------
   - name: auth-service
     url: http://auth-service:8001
     routes:
@@ -95,6 +123,13 @@ services:
         paths:
           - /rooms
         strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
 
   - name: chat-service-pm
     url: http://chat-service:8003
@@ -124,7 +159,7 @@ services:
           - http
           - https
 
-  # -- Message Service ------------------------------------------------------
+  # -- Message Service (stricter rate limit: 30/min for history scraping) ----
   - name: message-service
     url: http://message-service:8004
     routes:
@@ -132,8 +167,15 @@ services:
         paths:
           - /messages
         strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
 
-  # -- File Service ---------------------------------------------------------
+  # -- File Service (stricter rate limit: 20/min) --------------------------
   - name: file-service
     url: http://file-service:8005
     routes:
@@ -141,3 +183,10 @@ services:
         paths:
           - /files
         strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 20
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false

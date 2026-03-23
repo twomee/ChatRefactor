@@ -8,7 +8,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: chatbox
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatbox_pass}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       POSTGRES_DB: chatbox
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -21,8 +21,9 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -58,7 +59,7 @@ services:
     volumes:
       - ./infra/docker/init:/init:ro
     environment:
-      - PGPASSWORD=${POSTGRES_PASSWORD:-chatbox_pass}
+      - PGPASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - PGUSER=chatbox
       - PGHOST=postgres
     depends_on:
@@ -83,7 +84,7 @@ services:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
       KONG_PROXY_LISTEN: 0.0.0.0:8000
-      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_ADMIN_LISTEN: "off"
       KONG_LOG_LEVEL: info
     volumes:
       - ./infra/kong/kong.yml:/etc/kong/kong.yml:ro
@@ -112,14 +113,14 @@ services:
       context: ./services/auth-service
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:-chatbox_pass}@postgres:5432/chatbox_auth
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/chatbox_auth
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/0
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - SECRET_KEY=${SECRET_KEY:-change-this-in-production-use-openssl-rand-hex-32}
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-ido}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in .env}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:?ADMIN_USERNAME must be set in .env}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in .env}
       - APP_ENV=${APP_ENV:-prod}
-      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
     depends_on:
       db-init:
         condition: service_completed_successfully
@@ -139,10 +140,10 @@ services:
       context: ./services/chat-service
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:-chatbox_pass}@postgres:5432/chatbox_chat
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/chatbox_chat
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}@redis:6379/0
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - SECRET_KEY=${SECRET_KEY:-change-this-in-production-use-openssl-rand-hex-32}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in .env}
       - AUTH_SERVICE_URL=http://auth-service:8001
       - MESSAGE_SERVICE_URL=http://message-service:8004
       - APP_ENV=${APP_ENV:-prod}
@@ -165,9 +166,9 @@ services:
       context: ./services/message-service
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:-chatbox_pass}@postgres:5432/chatbox_messages
+      - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/chatbox_messages
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - SECRET_KEY=${SECRET_KEY:-change-this-in-production-use-openssl-rand-hex-32}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in .env}
       - AUTH_SERVICE_URL=http://auth-service:8001
       - APP_ENV=${APP_ENV:-prod}
     depends_on:
@@ -187,9 +188,9 @@ services:
       context: ./services/file-service
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:-chatbox_pass}@postgres:5432/chatbox_files
+      - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/chatbox_files
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - SECRET_KEY=${SECRET_KEY:-change-this-in-production-use-openssl-rand-hex-32}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in .env}
       - APP_ENV=${APP_ENV:-prod}
     volumes:
       - uploads:/app/uploads

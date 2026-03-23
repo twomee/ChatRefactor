@@ -57,6 +57,75 @@ export function validateExtension(extension: string): void {
 }
 
 /**
+ * Map of file extensions to their expected MIME type prefixes.
+ * Used by validateMimeType to verify the file's magic bytes match the claimed extension.
+ * Text-based formats (.txt, .csv, .md, .log, .svg) have no reliable magic bytes
+ * and are skipped during validation.
+ */
+const EXTENSION_MIME_MAP: Record<string, string[]> = {
+  ".pdf": ["application/pdf"],
+  ".png": ["image/png"],
+  ".jpg": ["image/jpeg"],
+  ".jpeg": ["image/jpeg"],
+  ".gif": ["image/gif"],
+  ".webp": ["image/webp"],
+  ".mp4": ["video/mp4"],
+  ".mp3": ["audio/mpeg"],
+  ".wav": ["audio/wav", "audio/x-wav"],
+  ".ogg": ["audio/ogg", "video/ogg", "application/ogg"],
+  ".doc": ["application/msword", "application/x-cfb"],
+  ".docx": ["application/zip", "application/vnd.openxmlformats"],
+  ".xls": ["application/vnd.ms-excel", "application/x-cfb"],
+  ".xlsx": ["application/zip", "application/vnd.openxmlformats"],
+  ".ppt": ["application/vnd.ms-powerpoint", "application/x-cfb"],
+  ".pptx": ["application/zip", "application/vnd.openxmlformats"],
+  ".zip": ["application/zip"],
+  ".gz": ["application/gzip"],
+  ".7z": ["application/x-7z-compressed"],
+  ".rar": ["application/x-rar-compressed", "application/vnd.rar"],
+  ".tar": ["application/x-tar"],
+};
+
+/**
+ * Validate that the file's magic bytes match the claimed extension.
+ * Uses the `file-type` package to detect MIME type from the buffer.
+ *
+ * Text-based extensions (.txt, .csv, .md, .log, .svg) are skipped because
+ * they have no reliable magic bytes — `file-type` returns undefined for them.
+ */
+export async function validateMimeType(
+  buffer: Buffer,
+  extension: string
+): Promise<void> {
+  const expectedMimes = EXTENSION_MIME_MAP[extension];
+  if (!expectedMimes) {
+    // Text-based format with no magic bytes — skip validation
+    return;
+  }
+
+  const { fileTypeFromBuffer } = await import("file-type");
+  const detected = await fileTypeFromBuffer(buffer);
+
+  if (!detected) {
+    throw new FileValidationError(
+      `File content does not match claimed type '${extension}'`,
+      400
+    );
+  }
+
+  const matches = expectedMimes.some(
+    (mime) => detected.mime === mime || detected.mime.startsWith(mime.split("/")[0] + "/")
+  );
+
+  if (!matches) {
+    throw new FileValidationError(
+      `File content (${detected.mime}) does not match claimed type '${extension}'`,
+      400
+    );
+  }
+}
+
+/**
  * Validate that the file size does not exceed the maximum.
  */
 export function validateFileSize(sizeBytes: number): void {

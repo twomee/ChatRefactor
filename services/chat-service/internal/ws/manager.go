@@ -89,6 +89,21 @@ func (m *Manager) SendToConn(conn *websocket.Conn, msg interface{}) error {
 	return m.safeWrite(conn, data)
 }
 
+// UserConnectionCount returns the total number of active connections for a user
+// across all rooms and lobby. Used to enforce per-user connection limits.
+func (m *Manager) UserConnectionCount(userID int) int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	count := len(m.userConns[userID])
+	// Also count lobby connections for this user
+	for _, info := range m.lobbyConns {
+		if info.UserID == userID {
+			count++
+		}
+	}
+	return count
+}
+
 // RoomCount returns the number of active rooms with connections.
 func (m *Manager) RoomCount() int {
 	m.mu.RLock()

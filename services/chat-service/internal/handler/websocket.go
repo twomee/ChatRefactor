@@ -27,6 +27,11 @@ const (
 
 	// maxContentLength is the maximum chat message content length in characters.
 	maxContentLength = 4096
+
+	// maxConnectionsPerUser limits the total number of WebSocket connections
+	// a single user can have open simultaneously (across all rooms + lobby).
+	// Prevents resource exhaustion from a single authenticated user.
+	maxConnectionsPerUser = 5
 )
 
 // IncomingMessage is the generic envelope parsed from the WebSocket client.
@@ -160,6 +165,12 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 	// Check for duplicate user in room before upgrading.
 	if h.manager.IsUserInRoom(roomID, userID) {
 		c.JSON(http.StatusConflict, gin.H{"detail": "user already in room"})
+		return
+	}
+
+	// Enforce per-user connection limit to prevent resource exhaustion.
+	if h.manager.UserConnectionCount(userID) >= maxConnectionsPerUser {
+		c.JSON(http.StatusTooManyRequests, gin.H{"detail": "too many connections"})
 		return
 	}
 

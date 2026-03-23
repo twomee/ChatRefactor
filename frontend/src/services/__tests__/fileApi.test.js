@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { uploadFile, listRoomFiles, getDownloadUrl } from '../fileApi';
+import { uploadFile, listRoomFiles, downloadFile } from '../fileApi';
 import http from '../http';
 
 vi.mock('../http', () => ({
@@ -7,10 +7,6 @@ vi.mock('../http', () => ({
     post: vi.fn(),
     get: vi.fn(),
   },
-}));
-
-vi.mock('../../config/constants', () => ({
-  API_BASE: 'http://localhost:8000',
 }));
 
 describe('fileApi', () => {
@@ -46,16 +42,36 @@ describe('fileApi', () => {
     });
   });
 
-  describe('getDownloadUrl', () => {
-    it('returns URL with file ID and token from sessionStorage', () => {
-      sessionStorage.setItem('token', 'my-jwt');
-      const url = getDownloadUrl('file-42');
-      expect(url).toBe('http://localhost:8000/files/download/file-42?token=my-jwt');
-    });
+  describe('downloadFile', () => {
+    it('fetches file as blob via Authorization header and triggers download', async () => {
+      const blob = new Blob(['file-content'], { type: 'application/octet-stream' });
+      http.get.mockResolvedValue({ data: blob });
 
-    it('returns URL with null token when no token stored', () => {
-      const url = getDownloadUrl('file-42');
-      expect(url).toBe('http://localhost:8000/files/download/file-42?token=null');
+      // Mock DOM APIs
+      const createObjectURL = vi.fn(() => 'blob:http://localhost/fake');
+      const revokeObjectURL = vi.fn();
+      global.URL.createObjectURL = createObjectURL;
+      global.URL.revokeObjectURL = revokeObjectURL;
+
+      const clickSpy = vi.fn();
+      const appendSpy = vi.fn();
+      const removeSpy = vi.fn();
+      vi.spyOn(document, 'createElement').mockReturnValue({
+        href: '',
+        download: '',
+        click: clickSpy,
+      });
+      vi.spyOn(document.body, 'appendChild').mockImplementation(appendSpy);
+      vi.spyOn(document.body, 'removeChild').mockImplementation(removeSpy);
+
+      await downloadFile(42, 'report.pdf');
+
+      expect(http.get).toHaveBeenCalledWith('/files/download/42', {
+        responseType: 'blob',
+      });
+      expect(createObjectURL).toHaveBeenCalledWith(blob);
+      expect(clickSpy).toHaveBeenCalled();
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:http://localhost/fake');
     });
   });
 });

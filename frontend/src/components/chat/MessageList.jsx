@@ -1,7 +1,7 @@
 // src/components/MessageList.jsx
 import { useEffect, useRef, useCallback } from 'react';
 import { formatSize } from '../../utils/formatting';
-import { getDownloadUrl } from '../../services/fileApi';
+import { downloadFile } from '../../services/fileApi';
 
 function getInitials(name) {
   if (!name) return '?';
@@ -49,9 +49,8 @@ export default function MessageList({ messages, onScrollToBottom }) {
                 <span className="msg-author">{msg.from}</span>
                 <div>
                   <a
-                    href={getDownloadUrl(msg.fileId)}
-                    target="_blank"
-                    rel="noreferrer"
+                    href="#"
+                    onClick={(e) => { e.preventDefault(); downloadFile(msg.fileId, msg.text); }}
                     className="msg-file-link"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
