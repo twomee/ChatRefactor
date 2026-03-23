@@ -5,14 +5,14 @@ on:
     branches: [main, microservices]
     paths:
       - "docker-compose.yml"
-      - "kong/**"
-      - "docker/**"
+      - "infra/kong/**"
+      - "infra/docker/**"
   pull_request:
     branches: [main, microservices]
     paths:
       - "docker-compose.yml"
-      - "kong/**"
-      - "docker/**"
+      - "infra/kong/**"
+      - "infra/docker/**"
 
 concurrency:
   group: ci-microservices-${{ github.ref }}
@@ -28,7 +28,7 @@ jobs:
       - name: Validate Kong config syntax
         run: |
           docker run --rm \
-            -v "$PWD/kong/kong.yml:/etc/kong/kong.yml:ro" \
+            -v "$PWD/infra/kong/kong.yml:/etc/kong/kong.yml:ro" \
             -e KONG_DATABASE=off \
             -e KONG_DECLARATIVE_CONFIG=/etc/kong/kong.yml \
             kong:3.6 kong config parse /etc/kong/kong.yml
