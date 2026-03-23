@@ -4,7 +4,7 @@
 
 After building 4 microservices (Auth, Chat & Room, Message, File) from the cHATBOX monolith, this checklist ensures **complete feature parity**. Every feature, operation, edge case, and degradation scenario from the monolith must be verified in the microservices stack running behind Kong gateway.
 
-**Last verified**: 2026-03-23 — 166/174 checks passed (8 deferred: future Kafka consumers, circuit breaker, Redis pub/sub)
+**Last verified**: 2026-03-23 — 171/174 checks passed (3 deferred: sync DB fallback, Redis pub/sub)
 
 ---
 
@@ -123,7 +123,7 @@ After building 4 microservices (Auth, Chat & Room, Message, File) from the cHATB
 - [x] Auth via `?token=`
 - [x] Receives PM delivery
 - [x] Receives `room_list_updated`
-- [ ] Receives `file_shared` notifications *(deferred: requires Kafka consumer in chat-service for file.events topic)*
+- [x] Receives `file_shared` notifications
 
 ### Broadcast Message Types
 - [x] `user_join` — with users, admins, muted arrays
@@ -132,7 +132,7 @@ After building 4 microservices (Auth, Chat & Room, Message, File) from the cHATB
 - [x] `system` — text, room_id
 - [x] `history` — messages array on join
 - [x] `room_list_updated` — rooms array
-- [ ] `file_shared` — file_id, filename, size, from, room_id *(deferred: requires Kafka consumer in chat-service)*
+- [x] `file_shared` — file_id, filename, size, from, room_id
 - [x] `chat_closed` — detail message
 - [x] `muted` / `unmuted` — username, room_id
 - [x] `new_admin` — username, room_id
@@ -226,13 +226,13 @@ After building 4 microservices (Auth, Chat & Room, Message, File) from the cHATB
 - [x] Chat → Auth: user lookup (PM, promote, mute)
 - [x] Chat → Message: fetch history on room join
 - [x] Message → Auth: username resolution for PM persistence
-- [ ] Circuit breaker: handles downstream service failures gracefully *(deferred: requires library integration e.g. sony/gobreaker)*
+- [x] Circuit breaker: handles downstream service failures gracefully (sony/gobreaker v2)
 
 ### Kafka (asynchronous)
 - [x] Chat → `chat.messages` → Message Service
 - [x] Chat → `chat.private` → Message Service
-- [ ] Chat → `chat.events` → (future)
-- [ ] File → `file.events` → Chat Service (broadcast) *(deferred: requires Kafka consumer in Go chat-service)*
+- [x] Chat → `chat.events` → (join, leave, kick, mute, unmute, promote)
+- [x] File → `file.events` → Chat Service (broadcast to room + lobby)
 - [x] Auth → `auth.events` → (producers active, consumers future)
 - [x] Message → `chat.dlq` → (monitoring)
 
@@ -353,12 +353,12 @@ After building 4 microservices (Auth, Chat & Room, Message, File) from the cHATB
 |----------|-------|---------|-----------|
 | Auth | 22 | 22 | 0 |
 | Rooms | 8 | 8 | 0 |
-| WebSocket | 44 | 40 | 4 (sync DB fallback, Redis pub/sub, file_shared notifications) |
+| WebSocket | 44 | 42 | 2 (sync DB fallback, Redis pub/sub) |
 | Messages | 14 | 14 | 0 |
 | Files | 16 | 16 | 0 |
 | Admin | 8 | 8 | 0 |
 | Degradation | 7 | 6 | 1 (sync DB fallback) |
-| Inter-Service | 10 | 7 | 3 (circuit breaker, chat.events, file.events consumer) |
+| Inter-Service | 10 | 10 | 0 |
 | Kong | 7 | 7 | 0 |
 | Health | 4 | 4 | 0 |
 | Startup | 6 | 6 | 0 |
@@ -368,17 +368,12 @@ After building 4 microservices (Auth, Chat & Room, Message, File) from the cHATB
 | CI/CD | 7 | 7 | 0 |
 | Docker | 5 | 5 | 0 |
 | E2E Journeys | 7 | 7 | 0 |
-| **Total** | **174** | **166** | **8** |
+| **Total** | **174** | **171** | **3** |
 
-### Deferred Items (8)
+### Deferred Items (3)
 
 These items require larger architectural changes and are tracked for future implementation:
 
 1. **Sync DB fallback when Kafka down** — SyncDelivery logs but does not persist to DB. Low priority since Kafka is reliable infrastructure.
-2. **Redis pub/sub for broadcasts** — Future feature for horizontal scaling. Currently single-instance.
-3. **file_shared lobby notifications** — Requires adding a Kafka consumer to the Go chat-service to read `file.events`.
-4. **file_shared broadcast type** — Same dependency as above.
-5. **Circuit breaker** — Requires library integration (e.g., sony/gobreaker). Currently HTTP timeouts provide basic resilience.
-6. **Chat → chat.events** — Event topic exists, producers not yet wired for join/leave/admin events.
-7. **File → file.events → Chat Service** — File service produces events, chat service needs a consumer.
-8. **Sync DB fallback (degradation)** — Same as #1.
+2. **Redis pub/sub for broadcasts** — Future feature for horizontal scaling. Currently single-instance with in-memory broadcast.
+3. **Sync DB fallback (degradation)** — Same as #1.

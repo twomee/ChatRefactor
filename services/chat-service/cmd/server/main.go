@@ -102,6 +102,32 @@ func main() {
 	wsManager := ws.NewManager(logger)
 	authClient := client.NewAuthClient(cfg.AuthServiceURL, logger)
 
+	// --- Kafka consumers ---
+	// file.events consumer: broadcasts file_shared notifications to lobby.
+	var fileEventsConsumer *kafka.Consumer
+	if len(brokers) > 0 && brokers[0] != "" {
+		fileEventsConsumer = kafka.NewConsumer(brokers, "file.events", "chat-file-events",
+			func(_ context.Context, value map[string]interface{}) error {
+				// Broadcast file_shared to the lobby and to the room.
+				msg := map[string]interface{}{
+					"type":      "file_shared",
+					"file_id":   value["file_id"],
+					"filename":  value["filename"],
+					"size":      value["size"],
+					"from":      value["from"],
+					"room_id":   value["room_id"],
+					"timestamp": value["timestamp"],
+				}
+				wsManager.BroadcastLobby(msg)
+				if roomID, ok := value["room_id"].(float64); ok {
+					wsManager.BroadcastRoom(int(roomID), msg)
+				}
+				return nil
+			}, logger)
+		fileEventsConsumer.Start(ctx)
+		logger.Info("file_events_consumer_started")
+	}
+
 	// --- Handlers ---
 	healthH := handler.NewHealthHandler(dbPool, rdb, kafkaProducer, brokers)
 	roomH := handler.NewRoomHandler(roomStore, wsManager, authClient, logger)
@@ -170,6 +196,11 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	logger.Info("shutting_down")
+
+	// Stop Kafka consumers first so no new events arrive.
+	if fileEventsConsumer != nil {
+		fileEventsConsumer.Stop()
+	}
 
 	// Gracefully close all WebSocket connections with code 1001 (GoingAway).
 	wsManager.CloseAll()
