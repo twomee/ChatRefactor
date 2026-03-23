@@ -28,6 +28,7 @@ import random
 import string
 import time
 import uuid
+from datetime import datetime, timedelta
 
 import websocket as ws_sync
 from locust import HttpUser, User, between, events, task
@@ -68,9 +69,9 @@ def _login(client, username: str, password: str) -> str | None:
         return _token_cache[username]
 
     resp = client.post(
-        "/api/auth/login",
+        "/auth/login",
         json={"username": username, "password": password},
-        name="/api/auth/login",
+        name="/auth/login",
     )
     if resp.status_code == 200:
         token = resp.json().get("access_token")
@@ -86,9 +87,9 @@ def _register_and_login(client) -> tuple[str, str, str] | None:
     password = USER_PASSWORD
 
     resp = client.post(
-        "/api/auth/register",
+        "/auth/register",
         json={"username": username, "password": password},
-        name="/api/auth/register",
+        name="/auth/register",
     )
     if resp.status_code not in (200, 201, 409):
         return None
@@ -135,13 +136,13 @@ class AuthUser(HttpUser):
 
     @task(5)
     def login(self):
-        """POST /api/auth/login — measure JWT issuance latency."""
+        """POST /auth/login — measure JWT issuance latency."""
         if not self._username:
             return
         resp = self.client.post(
-            "/api/auth/login",
+            "/auth/login",
             json={"username": self._username, "password": self._password},
-            name="/api/auth/login",
+            name="/auth/login",
         )
         if resp.status_code == 200:
             token = resp.json().get("access_token")
@@ -151,34 +152,34 @@ class AuthUser(HttpUser):
 
     @task(1)
     def register(self):
-        """POST /api/auth/register — measure registration throughput."""
+        """POST /auth/register — measure registration throughput."""
         username = f"{USER_PREFIX}_{_random_suffix()}"
         self.client.post(
-            "/api/auth/register",
+            "/auth/register",
             json={"username": username, "password": USER_PASSWORD},
-            name="/api/auth/register",
+            name="/auth/register",
         )
 
     @task(3)
     def validate_token(self):
-        """GET /api/auth/me — validate JWT and return user info."""
+        """POST /auth/ping — validate JWT via presence ping."""
         if not self._token:
             return
-        self.client.get(
-            "/api/auth/me",
+        self.client.post(
+            "/auth/ping",
             headers=self._headers,
-            name="/api/auth/me",
+            name="/auth/ping",
         )
 
     @task(1)
     def logout_and_relogin(self):
-        """POST /api/auth/logout then re-login — tests token blacklisting."""
+        """POST /auth/logout then re-login — tests token blacklisting."""
         if not self._token:
             return
         self.client.post(
-            "/api/auth/logout",
+            "/auth/logout",
             headers=self._headers,
-            name="/api/auth/logout",
+            name="/auth/logout",
         )
         # Re-login to get a fresh token
         self.login()
@@ -224,13 +225,13 @@ class ChatUser(User):
         try:
             # Register
             requests.post(
-                f"{base}/api/auth/register",
+                f"{base}/auth/register",
                 json={"username": username, "password": password},
                 timeout=10,
             )
             # Login
             resp = requests.post(
-                f"{base}/api/auth/login",
+                f"{base}/auth/login",
                 json={"username": username, "password": password},
                 timeout=10,
             )
@@ -251,7 +252,7 @@ class ChatUser(User):
             "WS_GATEWAY_URL",
             (self.host or "http://localhost").replace("http", "ws"),
         )
-        ws_url = f"{ws_base}/ws/chat/{self._room_id}?token={self._token}"
+        ws_url = f"{ws_base}/ws/{self._room_id}?token={self._token}"
         start = time.time()
 
         try:
@@ -435,17 +436,16 @@ class FileUser(HttpUser):
 
     @task(3)
     def upload_small_file(self):
-        """POST /api/files/upload — upload a small text file."""
+        """POST /files/upload — upload a small text file."""
         if not self._token:
             return
 
         filename = f"lt_small_{_random_suffix()}.txt"
         resp = self.client.post(
-            "/api/files/upload",
+            f"/files/upload?room_id={self._room_id}",
             headers=self._headers,
             files={"file": (filename, self._small_file, "text/plain")},
-            data={"room_id": str(self._room_id)},
-            name="/api/files/upload (small)",
+            name="/files/upload (small)",
         )
         if resp.status_code in (200, 201):
             file_id = resp.json().get("id") or resp.json().get("file_id")
@@ -454,17 +454,16 @@ class FileUser(HttpUser):
 
     @task(1)
     def upload_medium_file(self):
-        """POST /api/files/upload — upload a 512KB binary file."""
+        """POST /files/upload — upload a 512KB binary file."""
         if not self._token:
             return
 
         filename = f"lt_medium_{_random_suffix()}.bin"
         resp = self.client.post(
-            "/api/files/upload",
+            f"/files/upload?room_id={self._room_id}",
             headers=self._headers,
             files={"file": (filename, self._medium_file, "application/octet-stream")},
-            data={"room_id": str(self._room_id)},
-            name="/api/files/upload (medium)",
+            name="/files/upload (medium)",
         )
         if resp.status_code in (200, 201):
             file_id = resp.json().get("id") or resp.json().get("file_id")
@@ -473,26 +472,26 @@ class FileUser(HttpUser):
 
     @task(4)
     def list_files(self):
-        """GET /api/files/ — list files in a room."""
+        """GET /files/room/{room_id} — list files in a room."""
         if not self._token:
             return
         self.client.get(
-            f"/api/files/?room_id={self._room_id}",
+            f"/files/room/{self._room_id}",
             headers=self._headers,
-            name="/api/files/ (list)",
+            name="/files/room/[id]",
         )
 
     @task(2)
     def download_file(self):
-        """GET /api/files/{id}/download — download a previously uploaded file."""
+        """GET /files/download/{id} — download a previously uploaded file."""
         if not self._token or not self._uploaded_file_ids:
             return
 
         file_id = random.choice(self._uploaded_file_ids)
         self.client.get(
-            f"/api/files/{file_id}/download",
+            f"/files/download/{file_id}",
             headers=self._headers,
-            name="/api/files/[id]/download",
+            name="/files/download/[id]",
         )
 
 
@@ -531,63 +530,56 @@ class MessageUser(HttpUser):
 
         self._room_ids = [1, 2, 3]
 
-    @task(5)
+    @task(6)
     def get_room_messages(self):
-        """GET /api/messages/rooms/{id} — fetch recent message history."""
+        """GET /messages/rooms/{id}/history — fetch recent message history."""
         if not self._token:
             return
 
         room_id = random.choice(self._room_ids)
         self.client.get(
-            f"/api/messages/rooms/{room_id}?limit=50",
+            f"/messages/rooms/{room_id}/history?limit=50",
             headers=self._headers,
-            name="/api/messages/rooms/[id]",
+            name="/messages/rooms/[id]/history",
         )
 
     @task(3)
     def get_messages_since(self):
-        """GET /api/messages/rooms/{id}?since=... — message replay from timestamp."""
+        """GET /messages/rooms/{id}?since=... — message replay from timestamp."""
         if not self._token:
             return
 
         room_id = random.choice(self._room_ids)
-        # Request messages from the last hour
-        since_ts = int(time.time()) - 3600
+        since_ts = (datetime.utcnow() - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
         self.client.get(
-            f"/api/messages/rooms/{room_id}?since={since_ts}&limit=100",
+            f"/messages/rooms/{room_id}?since={since_ts}&limit=100",
             headers=self._headers,
-            name="/api/messages/rooms/[id]?since=",
+            name="/messages/rooms/[id]?since=",
         )
 
     @task(2)
-    def get_messages_paginated(self):
-        """GET /api/messages/rooms/{id}?offset=...&limit=... — paginated history."""
+    def get_messages_limited(self):
+        """GET /messages/rooms/{id}/history?limit=... — history with varied limit."""
         if not self._token:
             return
 
         room_id = random.choice(self._room_ids)
-        offset = random.randint(0, 200)
+        limit = random.choice([20, 50, 100])
         self.client.get(
-            f"/api/messages/rooms/{room_id}?offset={offset}&limit=20",
+            f"/messages/rooms/{room_id}/history?limit={limit}",
             headers=self._headers,
-            name="/api/messages/rooms/[id]?paginated",
+            name="/messages/rooms/[id]/history?limit=",
         )
 
     @task(1)
-    def get_private_messages(self):
-        """GET /api/messages/private — fetch private message history."""
+    def get_messages_recent(self):
+        """GET /messages/rooms/{id}/history?limit=10 — lightweight recent messages."""
         if not self._token:
             return
-        self.client.get(
-            "/api/messages/private?limit=20",
-            headers=self._headers,
-            name="/api/messages/private",
-        )
 
-    @task(1)
-    def health_check(self):
-        """GET /api/messages/health — message-service health probe."""
+        room_id = random.choice(self._room_ids)
         self.client.get(
-            "/api/messages/health",
-            name="/api/messages/health",
+            f"/messages/rooms/{room_id}/history?limit=10",
+            headers=self._headers,
+            name="/messages/rooms/[id]/history (light)",
         )

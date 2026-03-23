@@ -13,7 +13,7 @@ Key things tested:
   - Connection stability over time
 
 Usage:
-  locust -f scenarios/websocket_chat.py --host ws://localhost:8000 \
+  locust -f scenarios/websocket_chat.py --host ws://localhost \
     --headless --users 100 --spawn-rate 10 --run-time 10m
 """
 
