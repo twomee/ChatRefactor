@@ -1,8 +1,10 @@
 # app/main.py — Message Service entrypoint
 #
 # Lifespan:
-#   Startup: run Alembic migrations, start Kafka consumer + producer.
+#   Startup: start Kafka consumer + producer.
 #   Shutdown: stop Kafka consumer + producer.
+#
+# Migrations run separately via db-migrate init container (not on startup).
 #
 # Includes:
 #   - Messages router (replay and history endpoints)
@@ -11,8 +13,6 @@
 #   - Global exception handler with structured logging
 from contextlib import asynccontextmanager
 
-from alembic import command as alembic_command
-from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -52,21 +52,6 @@ async def lifespan(app):
                 "default_secret_key",
                 msg="Using default SECRET_KEY (acceptable for dev only)",
             )
-
-    # Run Alembic migrations — use subprocess to avoid blocking the async event loop
-    import subprocess
-
-    try:
-        result = subprocess.run(
-            ["python3", "-m", "alembic", "upgrade", "head"],
-            capture_output=True, text=True, timeout=30,
-        )
-        if result.returncode == 0:
-            logger.info("alembic_migrations_applied")
-        else:
-            logger.warning("alembic_migration_failed", stderr=result.stderr[:200])
-    except Exception as e:
-        logger.warning("alembic_migration_skipped", error=str(e))
 
     # Start Kafka producer (for DLQ)
     await init_producer()

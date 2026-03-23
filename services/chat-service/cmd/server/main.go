@@ -106,11 +106,6 @@ func main() {
 			logger.Fatal("db_ping_failed", zap.Error(err))
 		}
 		logger.Info("database_connected")
-
-		// Run SQL migrations and seed default rooms.
-		if err := runMigrations(ctx, dbPool, logger); err != nil {
-			logger.Fatal("migration_failed", zap.Error(err))
-		}
 	} else {
 		logger.Warn("database_not_configured")
 	}

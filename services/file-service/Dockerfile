@@ -57,5 +57,5 @@ EXPOSE 8005
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:8005/health || exit 1
 
-# Start the service: run Prisma migrations then start node
-CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null || npx prisma db push --skip-generate 2>/dev/null || echo 'Migration skipped'; node dist/index.js"]
+# Start the service
+CMD ["node", "dist/index.js"]
