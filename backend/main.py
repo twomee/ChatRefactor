@@ -2,7 +2,6 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -11,7 +10,6 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from alembic import command as alembic_command
 from core.config import ADMIN_PASSWORD, ADMIN_USERNAME, APP_ENV, CORS_ORIGINS, SECRET_KEY
 from core.database import engine
 from core.logging import get_logger, setup_logging
@@ -48,11 +46,6 @@ async def lifespan(app):
             "INSECURE_ADMIN_PASSWORD",
             msg="⚠️  ADMIN_PASSWORD is 'changeme'! Set a strong password via environment variable before deploying.",
         )
-
-    # Run Alembic migrations to ensure schema is up to date
-    alembic_cfg = AlembicConfig("alembic.ini")
-    alembic_command.upgrade(alembic_cfg, "head")
-    logger.info("alembic_migrations_applied")
 
     # Seed default rooms and admin user
     with Session(engine) as db:

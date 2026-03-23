@@ -49,6 +49,18 @@ services:
       retries: 5
       start_period: 30s
 
+  backend-init:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:-chatbox_pass}@postgres:5432/chatbox
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   backend:
     build:
       context: ./backend
@@ -65,8 +77,8 @@ services:
     volumes:
       - uploads:/app/uploads
     depends_on:
-      postgres:
-        condition: service_healthy
+      backend-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       kafka:
