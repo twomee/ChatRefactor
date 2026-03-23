@@ -992,17 +992,26 @@ func TestWSHandlerRoomWSUpgradeAndMessage(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// Read join message.
+	// Read user_join broadcast.
 	var joinMsg map[string]interface{}
 	if err := conn.ReadJSON(&joinMsg); err != nil {
 		t.Fatalf("read join: %v", err)
 	}
-	if joinMsg["type"] != "join" {
-		t.Errorf("expected join message, got %v", joinMsg["type"])
+	if joinMsg["type"] != "user_join" {
+		t.Errorf("expected user_join message, got %v", joinMsg["type"])
 	}
 
-	// Send a chat message.
-	msg := map[string]string{"content": "hello world"}
+	// Read history message (may be empty).
+	var historyMsg map[string]interface{}
+	if err := conn.ReadJSON(&historyMsg); err != nil {
+		t.Fatalf("read history: %v", err)
+	}
+	if historyMsg["type"] != "history" {
+		t.Errorf("expected history type, got %v", historyMsg["type"])
+	}
+
+	// Send a chat message using the new format.
+	msg := map[string]string{"type": "message", "text": "hello world"}
 	if err := conn.WriteJSON(msg); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -1015,8 +1024,11 @@ func TestWSHandlerRoomWSUpgradeAndMessage(t *testing.T) {
 	if chatMsg["type"] != "message" {
 		t.Errorf("expected message type, got %v", chatMsg["type"])
 	}
-	if chatMsg["content"] != "hello world" {
-		t.Errorf("expected 'hello world', got %v", chatMsg["content"])
+	if chatMsg["text"] != "hello world" {
+		t.Errorf("expected 'hello world', got %v", chatMsg["text"])
+	}
+	if chatMsg["from"] != "alice" {
+		t.Errorf("expected from 'alice', got %v", chatMsg["from"])
 	}
 
 	// Give the server-side goroutine time to complete the delivery call
@@ -1055,12 +1067,16 @@ func TestWSHandlerMutedUserCannotSend(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// Read join message.
+	// Read user_join broadcast.
 	var joinMsg map[string]interface{}
 	conn.ReadJSON(&joinMsg)
 
-	// Send a message from muted user.
-	conn.WriteJSON(map[string]string{"content": "hello"})
+	// Read history message.
+	var historyMsg map[string]interface{}
+	conn.ReadJSON(&historyMsg)
+
+	// Send a message from muted user using new format.
+	conn.WriteJSON(map[string]string{"type": "message", "text": "hello"})
 
 	// Read the error response.
 	var errMsg map[string]interface{}
@@ -1069,6 +1085,9 @@ func TestWSHandlerMutedUserCannotSend(t *testing.T) {
 	}
 	if errMsg["type"] != "error" {
 		t.Errorf("expected error type, got %v", errMsg["type"])
+	}
+	if errMsg["detail"] != "You are muted in this room" {
+		t.Errorf("expected mute error detail, got %v", errMsg["detail"])
 	}
 
 	// Delivery should NOT have been called.

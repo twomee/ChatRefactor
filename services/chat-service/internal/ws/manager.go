@@ -38,6 +38,10 @@ type Manager struct {
 	// support concurrent writes, so every write to a connection must be
 	// serialized through its mutex.
 	connMu map[*websocket.Conn]*sync.Mutex
+	// roomJoinOrder tracks the order in which users joined a room (by userID).
+	// Used for admin succession — when an admin leaves, the next user in join
+	// order is promoted.
+	roomJoinOrder map[int][]int
 
 	logger *zap.Logger
 }
@@ -45,12 +49,13 @@ type Manager struct {
 // NewManager creates an initialised connection manager.
 func NewManager(logger *zap.Logger) *Manager {
 	return &Manager{
-		rooms:      make(map[int]map[*websocket.Conn]bool),
-		connUser:   make(map[*websocket.Conn]UserInfo),
-		userConns:  make(map[int]map[*websocket.Conn]bool),
-		lobbyConns: make(map[*websocket.Conn]UserInfo),
-		connMu:     make(map[*websocket.Conn]*sync.Mutex),
-		logger:     logger,
+		rooms:         make(map[int]map[*websocket.Conn]bool),
+		connUser:      make(map[*websocket.Conn]UserInfo),
+		userConns:     make(map[int]map[*websocket.Conn]bool),
+		lobbyConns:    make(map[*websocket.Conn]UserInfo),
+		connMu:        make(map[*websocket.Conn]*sync.Mutex),
+		roomJoinOrder: make(map[int][]int),
+		logger:        logger,
 	}
 }
 
@@ -89,6 +94,19 @@ func (m *Manager) ConnectRoom(roomID int, conn *websocket.Conn, user UserInfo) {
 	}
 	m.userConns[user.UserID][conn] = true
 
+	// Track join order for admin succession. Only add if user not already
+	// in the join order list (avoids duplicates from multiple tabs).
+	found := false
+	for _, uid := range m.roomJoinOrder[roomID] {
+		if uid == user.UserID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		m.roomJoinOrder[roomID] = append(m.roomJoinOrder[roomID], user.UserID)
+	}
+
 	m.logger.Info("ws_room_connect",
 		zap.Int("room_id", roomID),
 		zap.Int("user_id", user.UserID),
@@ -107,9 +125,6 @@ func (m *Manager) DisconnectRoom(roomID int, conn *websocket.Conn) {
 	}
 
 	delete(m.rooms[roomID], conn)
-	if len(m.rooms[roomID]) == 0 {
-		delete(m.rooms, roomID)
-	}
 
 	delete(m.connUser, conn)
 	delete(m.connMu, conn)
@@ -117,6 +132,31 @@ func (m *Manager) DisconnectRoom(roomID int, conn *websocket.Conn) {
 	delete(m.userConns[user.UserID], conn)
 	if len(m.userConns[user.UserID]) == 0 {
 		delete(m.userConns, user.UserID)
+	}
+
+	// Check if the user has any remaining connections in this room.
+	hasOtherConns := false
+	for c := range m.rooms[roomID] {
+		if u, ok2 := m.connUser[c]; ok2 && u.UserID == user.UserID {
+			hasOtherConns = true
+			break
+		}
+	}
+
+	// Remove from join order if no more connections in this room.
+	if !hasOtherConns {
+		order := m.roomJoinOrder[roomID]
+		for i, uid := range order {
+			if uid == user.UserID {
+				m.roomJoinOrder[roomID] = append(order[:i], order[i+1:]...)
+				break
+			}
+		}
+	}
+
+	if len(m.rooms[roomID]) == 0 {
+		delete(m.rooms, roomID)
+		delete(m.roomJoinOrder, roomID)
 	}
 
 	m.logger.Info("ws_room_disconnect",
@@ -168,6 +208,15 @@ func (m *Manager) BroadcastRoom(roomID int, msg interface{}) {
 	}
 }
 
+// SendToConn sends a raw JSON-encodable message to a single connection.
+func (m *Manager) SendToConn(conn *websocket.Conn, msg interface{}) error {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return m.safeWrite(conn, data)
+}
+
 // GetUsersInRoom returns the set of user IDs currently connected to a room.
 func (m *Manager) GetUsersInRoom(roomID int) []int {
 	m.mu.RLock()
@@ -184,6 +233,167 @@ func (m *Manager) GetUsersInRoom(roomID int) []int {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+// GetUsernamesInRoom returns the set of unique usernames in a room.
+func (m *Manager) GetUsernamesInRoom(roomID int) []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	seen := make(map[string]bool)
+	for conn := range m.rooms[roomID] {
+		if u, ok := m.connUser[conn]; ok {
+			seen[u.Username] = true
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	return names
+}
+
+// FindUserIDByUsername looks up a user ID by username among connections in a room.
+// Returns (userID, true) if found, (0, false) otherwise.
+func (m *Manager) FindUserIDByUsername(roomID int, username string) (int, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for conn := range m.rooms[roomID] {
+		if u, ok := m.connUser[conn]; ok && u.Username == username {
+			return u.UserID, true
+		}
+	}
+	return 0, false
+}
+
+// IsUserInRoom checks whether a user (by ID) has any connections in the room.
+func (m *Manager) IsUserInRoom(roomID, userID int) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for conn := range m.rooms[roomID] {
+		if u, ok := m.connUser[conn]; ok && u.UserID == userID {
+			return true
+		}
+	}
+	return false
+}
+
+// CloseUserConnsInRoom closes all connections for a specific user in a room
+// and removes them from tracking. Used for kick operations. Returns the
+// connections that were closed so the caller can handle any post-close logic.
+func (m *Manager) CloseUserConnsInRoom(roomID, userID int) {
+	m.mu.Lock()
+
+	var toClose []*websocket.Conn
+	for conn := range m.rooms[roomID] {
+		if u, ok := m.connUser[conn]; ok && u.UserID == userID {
+			toClose = append(toClose, conn)
+		}
+	}
+
+	for _, conn := range toClose {
+		delete(m.rooms[roomID], conn)
+		delete(m.connUser, conn)
+		delete(m.connMu, conn)
+		delete(m.userConns[userID], conn)
+	}
+	if len(m.userConns[userID]) == 0 {
+		delete(m.userConns, userID)
+	}
+
+	// Remove from join order.
+	order := m.roomJoinOrder[roomID]
+	for i, uid := range order {
+		if uid == userID {
+			m.roomJoinOrder[roomID] = append(order[:i], order[i+1:]...)
+			break
+		}
+	}
+
+	if len(m.rooms[roomID]) == 0 {
+		delete(m.rooms, roomID)
+		delete(m.roomJoinOrder, roomID)
+	}
+
+	m.mu.Unlock()
+
+	// Close connections outside the lock to avoid deadlocks.
+	for _, conn := range toClose {
+		_ = conn.Close()
+	}
+}
+
+// SendToUserInRoom sends a message to all of a user's connections in a specific room.
+func (m *Manager) SendToUserInRoom(roomID, userID int, msg interface{}) {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		m.logger.Error("send_to_user_marshal_error", zap.Error(err))
+		return
+	}
+
+	m.mu.RLock()
+	var targets []*websocket.Conn
+	for conn := range m.rooms[roomID] {
+		if u, ok := m.connUser[conn]; ok && u.UserID == userID {
+			targets = append(targets, conn)
+		}
+	}
+	m.mu.RUnlock()
+
+	for _, c := range targets {
+		_ = m.safeWrite(c, data)
+	}
+}
+
+// GetNextUserInRoom returns the next user in join order for a room,
+// excluding a given user ID (typically the departing admin).
+// Returns (userID, username, true) if found, (0, "", false) otherwise.
+func (m *Manager) GetNextUserInRoom(roomID, excludeUserID int) (int, string, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, uid := range m.roomJoinOrder[roomID] {
+		if uid == excludeUserID {
+			continue
+		}
+		// Find the username for this user from their connections.
+		for conn := range m.rooms[roomID] {
+			if u, ok := m.connUser[conn]; ok && u.UserID == uid {
+				return uid, u.Username, true
+			}
+		}
+	}
+	return 0, "", false
+}
+
+// CloseAllInRoom closes all connections in a room. Used when a room is deactivated.
+func (m *Manager) CloseAllInRoom(roomID int) {
+	m.mu.Lock()
+
+	var toClose []*websocket.Conn
+	for conn := range m.rooms[roomID] {
+		toClose = append(toClose, conn)
+		user, ok := m.connUser[conn]
+		if ok {
+			delete(m.connUser, conn)
+			delete(m.connMu, conn)
+			delete(m.userConns[user.UserID], conn)
+			if len(m.userConns[user.UserID]) == 0 {
+				delete(m.userConns, user.UserID)
+			}
+		}
+	}
+
+	delete(m.rooms, roomID)
+	delete(m.roomJoinOrder, roomID)
+
+	m.mu.Unlock()
+
+	for _, conn := range toClose {
+		_ = conn.Close()
+	}
 }
 
 // ---------- Lobby connections ----------
