@@ -38,6 +38,9 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Run TypeScript build check
+        run: npx tsc --noEmit
+
   test:
     name: File Service Tests
     runs-on: ubuntu-latest
