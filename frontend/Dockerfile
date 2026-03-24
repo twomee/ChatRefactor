@@ -1,6 +1,10 @@
 # Stage 1: Build the React app
 FROM node:20-alpine AS builder
 WORKDIR /app
+ARG VITE_API_BASE=http://localhost
+ARG VITE_WS_BASE=ws://localhost
+ENV VITE_API_BASE=$VITE_API_BASE
+ENV VITE_WS_BASE=$VITE_WS_BASE
 COPY package.json package-lock.json* ./
 RUN npm ci
 COPY . .

@@ -34,7 +34,7 @@ func TestGetAllSuccess(t *testing.T) {
 		AddRow(1, "general", true, time.Now()).
 		AddRow(2, "random", true, time.Now())
 
-	mock.ExpectQuery("SELECT id, name, is_active, created_at FROM rooms ORDER BY created_at").
+	mock.ExpectQuery("SELECT id, name, is_active, created_at FROM rooms WHERE is_active = true ORDER BY created_at").
 		WillReturnRows(rows)
 
 	rooms, err := s.GetAll(context.Background())
@@ -58,7 +58,7 @@ func TestGetAllEmpty(t *testing.T) {
 	s := NewRoomStoreWithPool(mock)
 
 	rows := pgxmock.NewRows([]string{"id", "name", "is_active", "created_at"})
-	mock.ExpectQuery("SELECT id, name, is_active, created_at FROM rooms ORDER BY created_at").
+	mock.ExpectQuery("SELECT id, name, is_active, created_at FROM rooms WHERE is_active = true ORDER BY created_at").
 		WillReturnRows(rows)
 
 	rooms, err := s.GetAll(context.Background())
@@ -78,7 +78,7 @@ func TestGetAllError(t *testing.T) {
 	defer mock.Close()
 	s := NewRoomStoreWithPool(mock)
 
-	mock.ExpectQuery("SELECT id, name, is_active, created_at FROM rooms ORDER BY created_at").
+	mock.ExpectQuery("SELECT id, name, is_active, created_at FROM rooms WHERE is_active = true ORDER BY created_at").
 		WillReturnError(pgx.ErrNoRows)
 
 	_, err := s.GetAll(context.Background())

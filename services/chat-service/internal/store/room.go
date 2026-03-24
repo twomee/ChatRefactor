@@ -38,10 +38,10 @@ func NewRoomStoreWithPool(pool PgxPool) *RoomStore {
 
 // ---------- Room CRUD ----------
 
-// GetAll returns every room ordered by creation time.
+// GetAll returns every active room ordered by creation time.
 func (s *RoomStore) GetAll(ctx context.Context) ([]model.Room, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, name, is_active, created_at FROM rooms ORDER BY created_at`)
+		`SELECT id, name, is_active, created_at FROM rooms WHERE is_active = true ORDER BY created_at`)
 	if err != nil {
 		return nil, fmt.Errorf("room GetAll: %w", err)
 	}
