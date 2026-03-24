@@ -43,6 +43,7 @@ jobs:
         run: docker compose config --quiet
         env:
           POSTGRES_PASSWORD: ci_test_password
+          REDIS_PASSWORD: ci_test_redis_password
           SECRET_KEY: ci-test-secret-key
           ADMIN_USERNAME: testadmin
           ADMIN_PASSWORD: testpassword
@@ -51,6 +52,7 @@ jobs:
         run: docker compose config --services
         env:
           POSTGRES_PASSWORD: ci_test_password
+          REDIS_PASSWORD: ci_test_redis_password
           SECRET_KEY: ci-test-secret-key
           ADMIN_USERNAME: testadmin
           ADMIN_PASSWORD: testpassword

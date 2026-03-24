@@ -1,9 +1,28 @@
 # app/core/logging.py — Structured logging setup using structlog
 import logging
+import re
 
 import structlog
 
 from app.core.config import APP_ENV
+
+# Keys whose values should be fully redacted in log output.
+_REDACT_KEYS = {"password", "token", "secret", "secret_key", "authorization"}
+
+# Pattern to detect Bearer tokens in string values.
+_BEARER_PATTERN = re.compile(r"(Bearer\s+)\S+", re.IGNORECASE)
+
+
+def _redact_sensitive_data(_logger, _method, event_dict):
+    """Structlog processor that redacts sensitive fields from log events."""
+    for key in list(event_dict.keys()):
+        if key.lower() in _REDACT_KEYS:
+            event_dict[key] = "[REDACTED]"
+        elif isinstance(event_dict[key], str) and _BEARER_PATTERN.search(
+            event_dict[key]
+        ):
+            event_dict[key] = _BEARER_PATTERN.sub(r"\1[REDACTED]", event_dict[key])
+    return event_dict
 
 
 def setup_logging():
@@ -14,6 +33,7 @@ def setup_logging():
         structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
+        _redact_sensitive_data,
     ]
 
     if APP_ENV == "dev":

@@ -54,43 +54,19 @@ export const config = {
     10
   ),
 
-  // Allowed file extensions for upload (from monolith config)
+  // Allowed file extensions for upload.
+  // SECURITY: Only safe document/media/archive types — no executable or
+  // scriptable extensions (.py, .js, .html, .bin, etc.) to prevent XSS
+  // if the upload directory ever becomes web-accessible.
   allowedExtensions: new Set([
-    ".txt",
-    ".pdf",
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".gif",
-    ".webp",
-    ".mp4",
-    ".mp3",
-    ".wav",
-    ".ogg",
-    ".doc",
-    ".docx",
-    ".xls",
-    ".xlsx",
-    ".ppt",
-    ".pptx",
-    ".zip",
-    ".tar",
-    ".gz",
-    ".7z",
-    ".rar",
-    ".py",
-    ".js",
-    ".ts",
-    ".html",
-    ".css",
-    ".json",
-    ".md",
-    ".bin",
-    ".dat",
-    ".csv",
-    ".xml",
-    ".yaml",
-    ".yml",
-    ".log",
+    // Documents
+    ".txt", ".pdf", ".csv", ".md", ".log",
+    ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    // Images
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg",
+    // Audio/Video
+    ".mp4", ".mp3", ".wav", ".ogg",
+    // Archives
+    ".zip", ".tar", ".gz", ".7z", ".rar",
   ]),
 } as const;

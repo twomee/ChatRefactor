@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as adminApi from '../services/adminApi';
 import { createRoom } from '../services/roomApi';
-import { listRoomFiles, getDownloadUrl } from '../services/fileApi';
+import { listRoomFiles, downloadFile } from '../services/fileApi';
 import { formatSize } from '../utils/formatting';
 
 export default function AdminPage() {
@@ -247,7 +247,7 @@ export default function AdminPage() {
                                 <td>{formatSize(f.file_size)}</td>
                                 <td>{new Date(f.uploaded_at).toLocaleString()}</td>
                                 <td>
-                                  <a href={getDownloadUrl(f.id)} target="_blank" rel="noreferrer">
+                                  <a href="#" onClick={(e) => { e.preventDefault(); downloadFile(f.id, f.original_name); }}>
                                     Download
                                   </a>
                                 </td>

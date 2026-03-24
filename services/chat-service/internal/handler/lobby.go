@@ -53,6 +53,10 @@ func (h *LobbyHandler) HandleLobbyWS(c *gin.Context) {
 	// Set read size limit to prevent memory exhaustion.
 	conn.SetReadLimit(maxMessageSize)
 
+	// Start ping/pong heartbeat to detect dead connections.
+	cancelPing := configurePingPong(conn, h.manager)
+	defer cancelPing()
+
 	user := ws.UserInfo{UserID: userID, Username: username}
 	h.manager.ConnectLobby(conn, user)
 

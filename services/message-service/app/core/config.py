@@ -27,18 +27,10 @@ def _require_env(key: str) -> str:
     return ""
 
 
-SECRET_KEY = os.getenv("SECRET_KEY", "change-this-in-production")
+SECRET_KEY = _require_env("SECRET_KEY")
 ALGORITHM = "HS256"
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql://chatbox:chatbox_pass@localhost:5432/chatbox_messages"
-)
-if APP_ENV == "prod" and not os.getenv("DATABASE_URL"):
-    print(
-        "FATAL: Required environment variable 'DATABASE_URL' is not set.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+DATABASE_URL = _require_env("DATABASE_URL")
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:29092")
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8001")

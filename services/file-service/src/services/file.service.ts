@@ -22,6 +22,7 @@ import {
   sanitizeFilename,
   validateExtension,
   validateFileSize,
+  validateMimeType,
   FileValidationError,
 } from "../utils/format.util.js";
 import { produceFileUploadedEvent } from "../kafka/events.js";
@@ -51,6 +52,9 @@ export async function uploadFile(
 
   // 3. Validate file size
   validateFileSize(fileBuffer.length);
+
+  // 3b. Validate MIME type matches claimed extension (magic byte check)
+  await validateMimeType(fileBuffer, extension);
 
   // 4. Generate unique stored filename with UUID prefix
   const storedName = `${uuidv4().replace(/-/g, "")}_${cleanName}`;

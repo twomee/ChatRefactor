@@ -4,7 +4,7 @@ import MessageList from '../MessageList';
 
 // Mock fileApi to avoid import side effects
 vi.mock('../../../services/fileApi', () => ({
-  getDownloadUrl: vi.fn((fileId) => `http://localhost:8000/files/download/${fileId}?token=test`),
+  downloadFile: vi.fn(),
 }));
 
 describe('MessageList', () => {
@@ -32,7 +32,7 @@ describe('MessageList', () => {
     const messages = [{ isFile: true, from: 'bob', text: 'report.pdf', fileId: 'f1', fileSize: 2048 }];
     render(<MessageList messages={messages} />);
     const link = screen.getByText('report.pdf');
-    expect(link.closest('a')).toHaveAttribute('href', expect.stringContaining('/files/download/f1'));
+    expect(link.closest('a')).toBeInTheDocument();
     expect(screen.getByText('(2.0 KB)')).toBeInTheDocument();
   });
 

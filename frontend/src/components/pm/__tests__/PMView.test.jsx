@@ -5,7 +5,7 @@ import PMView from '../PMView';
 
 // Mock fileApi used by MessageList
 vi.mock('../../../services/fileApi', () => ({
-  getDownloadUrl: vi.fn((id) => `http://localhost:8000/files/download/${id}`),
+  downloadFile: vi.fn(),
 }));
 
 describe('PMView', () => {
