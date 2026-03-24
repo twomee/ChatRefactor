@@ -165,9 +165,10 @@ Each fix below is tracked with the commit/change that resolved it.
 - **Files changed:** `infra/kong/kong.yml`
 - **Status:** [x] Done
 - **Notes:**
-  - Added `auth-internal-block` service with `request-termination` plugin returning 403 for `/auth/users` path
-  - Kong matches longest prefix first, so `/auth/users/*` hits the block route while `/auth/register`, `/auth/login`, `/auth/logout`, `/auth/ping` still pass through the general `/auth` route
-  - Services still reach `/auth/users/*` directly via Docker network (bypassing Kong)
+  - **Approach: allow-list** — removed the catch-all `/auth` route entirely. Only explicit public endpoints have Kong routes: `/auth/register`, `/auth/login`, `/auth/logout`, `/auth/ping`
+  - Internal endpoints (`/auth/users/{id}`, `/auth/users/by-username/{name}`) have NO Kong route, so they return 404 from Kong if hit externally — they simply don't exist from the outside
+  - Services still reach internal endpoints directly via Docker network (`http://auth-service:8001`), bypassing Kong
+  - This follows the security principle of least privilege: only expose what's needed, rather than exposing everything and blocking what's dangerous
 
 ### Step 3: Fix message-service SECRET_KEY
 - **Files changed:** `services/message-service/app/core/config.py`

@@ -53,33 +53,15 @@ plugins:
 # All routes use strip_path: false so the upstream receives the full path.
 # ---------------------------------------------------------------------------
 services:
-  # -- Auth Service (internal endpoints blocked) ------------------------------
-  # These endpoints are for inter-service communication only. Kong blocks them
-  # so they can't be reached externally; services call auth-service directly
-  # over the Docker network (http://auth-service:8001).
-  - name: auth-internal-block
-    url: http://auth-service:8001
-    routes:
-      - name: auth-internal-users-route
-        paths:
-          - /auth/users
-        strip_path: false
-    plugins:
-      - name: request-termination
-        config:
-          status_code: 403
-          message: "Forbidden"
+  # -- Auth Service ----------------------------------------------------------
+  # SECURITY: Only public endpoints are exposed through Kong (allow-list).
+  # Internal endpoints (/auth/users/*) have NO Kong route, so they're
+  # unreachable from outside. Services call them directly over the Docker
+  # network (http://auth-service:8001), bypassing Kong.
+  #
+  # Public endpoints: /auth/register, /auth/login, /auth/logout, /auth/ping
 
-  # -- Auth Service (public endpoints) ----------------------------------------
-  - name: auth-service
-    url: http://auth-service:8001
-    routes:
-      - name: auth-routes
-        paths:
-          - /auth
-        strip_path: false
-
-  # -- Auth register (stricter rate limit: 5/min) --------------------------
+  # Auth register (stricter rate limit: 5/min)
   - name: auth-register
     url: http://auth-service:8001
     routes:
@@ -97,7 +79,7 @@ services:
           fault_tolerant: true
           hide_client_headers: false
 
-  # -- Auth login (stricter rate limit: 10/min) ----------------------------
+  # Auth login (stricter rate limit: 10/min)
   - name: auth-login
     url: http://auth-service:8001
     routes:
@@ -114,6 +96,27 @@ services:
           policy: local
           fault_tolerant: true
           hide_client_headers: false
+
+  # Auth logout + ping (standard rate limit)
+  - name: auth-logout
+    url: http://auth-service:8001
+    routes:
+      - name: auth-logout-route
+        paths:
+          - /auth/logout
+        strip_path: false
+        methods:
+          - POST
+
+  - name: auth-ping
+    url: http://auth-service:8001
+    routes:
+      - name: auth-ping-route
+        paths:
+          - /auth/ping
+        strip_path: false
+        methods:
+          - POST
 
   # -- Chat Service (REST) --------------------------------------------------
   - name: chat-service-rooms
