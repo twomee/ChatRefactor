@@ -18,7 +18,9 @@ def _redact_sensitive_data(_logger, _method, event_dict):
     for key in list(event_dict.keys()):
         if key.lower() in _REDACT_KEYS:
             event_dict[key] = "[REDACTED]"
-        elif isinstance(event_dict[key], str) and _BEARER_PATTERN.search(event_dict[key]):
+        elif isinstance(event_dict[key], str) and _BEARER_PATTERN.search(
+            event_dict[key]
+        ):
             event_dict[key] = _BEARER_PATTERN.sub(r"\1[REDACTED]", event_dict[key])
     return event_dict
 

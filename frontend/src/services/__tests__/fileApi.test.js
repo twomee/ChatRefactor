@@ -50,8 +50,8 @@ describe('fileApi', () => {
       // Mock DOM APIs
       const createObjectURL = vi.fn(() => 'blob:http://localhost/fake');
       const revokeObjectURL = vi.fn();
-      global.URL.createObjectURL = createObjectURL;
-      global.URL.revokeObjectURL = revokeObjectURL;
+      globalThis.URL.createObjectURL = createObjectURL;
+      globalThis.URL.revokeObjectURL = revokeObjectURL;
 
       const clickSpy = vi.fn();
       const appendSpy = vi.fn();
