@@ -4,6 +4,20 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  server: {
+    proxy: {
+      '/auth': 'http://localhost:8001',
+      '/rooms': 'http://localhost:8003',
+      '/ws': {
+        target: 'http://localhost:8003',
+        ws: true,
+      },
+      '/pm': 'http://localhost:8003',
+      '/admin': 'http://localhost:8003',
+      '/messages': 'http://localhost:8004',
+      '/files': 'http://localhost:8005',
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',

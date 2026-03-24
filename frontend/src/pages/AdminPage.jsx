@@ -242,12 +242,12 @@ export default function AdminPage() {
                           <tbody>
                             {(roomFiles[room.id] || []).map(f => (
                               <tr key={f.id}>
-                                <td>{f.original_name}</td>
-                                <td>{f.sender}</td>
-                                <td>{formatSize(f.file_size)}</td>
-                                <td>{new Date(f.uploaded_at).toLocaleString()}</td>
+                                <td>{f.originalName}</td>
+                                <td>{f.senderName}</td>
+                                <td>{formatSize(f.fileSize)}</td>
+                                <td>{new Date(f.uploadedAt).toLocaleString()}</td>
                                 <td>
-                                  <a href="#" onClick={(e) => { e.preventDefault(); downloadFile(f.id, f.original_name); }}>
+                                  <a href="#" onClick={(e) => { e.preventDefault(); downloadFile(f.id, f.originalName); }}>
                                     Download
                                   </a>
                                 </td>

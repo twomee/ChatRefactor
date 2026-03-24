@@ -85,6 +85,7 @@ export async function uploadFile(
       storedPath: destPath,
       fileSize: fileBuffer.length,
       senderId,
+      senderName: senderUsername,
       roomId,
     },
   });
@@ -182,6 +183,7 @@ export async function listRoomFiles(roomId: number): Promise<FileMetadataRespons
     originalName: f.originalName,
     fileSize: f.fileSize,
     senderId: f.senderId,
+    senderName: f.senderName ?? `User #${f.senderId}`,
     roomId: f.roomId,
     uploadedAt: f.uploadedAt.toISOString(),
   }));

@@ -116,12 +116,9 @@ func NewWSHandler(
 	store store.RoomRepository,
 	delivery delivery.Strategy,
 	secretKey string,
+	messageServiceURL string,
 	logger *zap.Logger,
 ) *WSHandler {
-	msgURL := os.Getenv("MESSAGE_SERVICE_URL")
-	if msgURL == "" {
-		msgURL = "http://message-service:8004"
-	}
 	return &WSHandler{
 		manager:       manager,
 		store:         store,
@@ -129,7 +126,7 @@ func NewWSHandler(
 		secretKey:     secretKey,
 		logger:        logger,
 		limiter:       newRateLimiter(),
-		messageSvcURL: msgURL,
+		messageSvcURL: messageServiceURL,
 		kickedUsers:   make(map[string]bool),
 	}
 }

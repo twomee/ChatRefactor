@@ -145,6 +145,7 @@ class MessagePersistenceConsumer:
 
         msg_id = value.get("msg_id")
         sender_id = value.get("sender_id")
+        sender_name = value.get("username")
         room_id = value.get("room_id")
         text = value.get("text", "")
         ts_str = value.get("timestamp")
@@ -158,12 +159,13 @@ class MessagePersistenceConsumer:
 
         sent_at = None
         if ts_str:
-            sent_at = datetime.fromisoformat(ts_str)
+            sent_at = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
 
         inserted = message_dal.create_idempotent(
             db,
             message_id=msg_id,
             sender_id=sender_id,
+            sender_name=sender_name,
             room_id=room_id,
             content=text,
             is_private=False,
@@ -198,7 +200,7 @@ class MessagePersistenceConsumer:
 
         sent_at = None
         if ts_str:
-            sent_at = datetime.fromisoformat(ts_str)
+            sent_at = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
 
         # Resolve usernames to user IDs via Auth Service REST API
         sender = await get_user_by_username(sender_name)

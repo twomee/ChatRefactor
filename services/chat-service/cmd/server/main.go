@@ -108,7 +108,9 @@ func main() {
 	if len(brokers) > 0 && brokers[0] != "" {
 		fileEventsConsumer = kafka.NewConsumer(brokers, "file.events", "chat-file-events",
 			func(_ context.Context, value map[string]interface{}) error {
-				// Broadcast file_shared to the lobby and to the room.
+				// Broadcast file_shared to the room only.
+				// (Lobby is not notified to avoid duplicates — room users
+				// are connected to both lobby and room WebSockets.)
 				msg := map[string]interface{}{
 					"type":      "file_shared",
 					"file_id":   value["file_id"],
@@ -118,7 +120,6 @@ func main() {
 					"room_id":   value["room_id"],
 					"timestamp": value["timestamp"],
 				}
-				wsManager.BroadcastLobby(msg)
 				if roomID, ok := value["room_id"].(float64); ok {
 					wsManager.BroadcastRoom(int(roomID), msg)
 				}
@@ -131,7 +132,7 @@ func main() {
 	// --- Handlers ---
 	healthH := handler.NewHealthHandler(dbPool, rdb, kafkaProducer, brokers)
 	roomH := handler.NewRoomHandler(roomStore, wsManager, authClient, logger)
-	wsH := handler.NewWSHandler(wsManager, roomStore, deliveryStrategy, cfg.SecretKey, logger)
+	wsH := handler.NewWSHandler(wsManager, roomStore, deliveryStrategy, cfg.SecretKey, cfg.MessageServiceURL, logger)
 	lobbyH := handler.NewLobbyHandler(wsManager, cfg.SecretKey, logger)
 	pmH := handler.NewPMHandler(wsManager, authClient, deliveryStrategy, logger)
 	adminH := handler.NewAdminHandler(roomStore, wsManager, authClient, logger)
@@ -199,7 +200,9 @@ func main() {
 	<-quit
 	logger.Info("shutting_down")
 
-	// Stop Kafka consumers first so no new events arrive.
+	// Cancel context first so consumer goroutines detect clean shutdown,
+	// then stop consumers to close their readers and wait for completion.
+	cancel()
 	if fileEventsConsumer != nil {
 		fileEventsConsumer.Stop()
 	}

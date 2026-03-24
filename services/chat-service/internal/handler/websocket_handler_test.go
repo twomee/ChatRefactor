@@ -19,7 +19,7 @@ import (
 func TestWSHandlerRejectsWithoutToken(t *testing.T) {
 	logger := newLogger()
 	manager := ws.NewManager(logger)
-	wsH := NewWSHandler(manager, nil, nil, testSecret, logger)
+	wsH := NewWSHandler(manager, nil, nil, testSecret, "http://localhost:8004", logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
@@ -36,7 +36,7 @@ func TestWSHandlerRejectsWithoutToken(t *testing.T) {
 func TestWSHandlerRejectsInvalidToken(t *testing.T) {
 	logger := newLogger()
 	manager := ws.NewManager(logger)
-	wsH := NewWSHandler(manager, nil, nil, testSecret, logger)
+	wsH := NewWSHandler(manager, nil, nil, testSecret, "http://localhost:8004", logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
@@ -53,7 +53,7 @@ func TestWSHandlerRejectsInvalidToken(t *testing.T) {
 func TestWSHandlerRejectsInvalidRoomID(t *testing.T) {
 	logger := newLogger()
 	manager := ws.NewManager(logger)
-	wsH := NewWSHandler(manager, nil, nil, testSecret, logger)
+	wsH := NewWSHandler(manager, nil, nil, testSecret, "http://localhost:8004", logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
@@ -72,7 +72,7 @@ func TestWSHandlerRoomNotFound(t *testing.T) {
 	logger := newLogger()
 	manager := ws.NewManager(logger)
 	store := &mockRoomStore{err: fmt.Errorf("not found")}
-	wsH := NewWSHandler(manager, store, nil, testSecret, logger)
+	wsH := NewWSHandler(manager, store, nil, testSecret, "http://localhost:8004", logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
@@ -93,7 +93,7 @@ func TestWSHandlerInactiveRoom(t *testing.T) {
 	store := &mockRoomStore{
 		room: &model.Room{ID: 1, Name: "test", IsActive: false},
 	}
-	wsH := NewWSHandler(manager, store, nil, testSecret, logger)
+	wsH := NewWSHandler(manager, store, nil, testSecret, "http://localhost:8004", logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
@@ -115,7 +115,7 @@ func TestWSHandlerRoomWSUpgradeAndMessage(t *testing.T) {
 	store := &mockRoomStore{
 		room: &model.Room{ID: 1, Name: "test", IsActive: true},
 	}
-	wsH := NewWSHandler(manager, store, del, testSecret, logger)
+	wsH := NewWSHandler(manager, store, del, testSecret, "http://localhost:8004", logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
@@ -190,7 +190,7 @@ func TestWSHandlerMutedUserCannotSend(t *testing.T) {
 		room:    &model.Room{ID: 1, Name: "test", IsActive: true},
 		isMuted: true,
 	}
-	wsH := NewWSHandler(manager, store, del, testSecret, logger)
+	wsH := NewWSHandler(manager, store, del, testSecret, "http://localhost:8004", logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)

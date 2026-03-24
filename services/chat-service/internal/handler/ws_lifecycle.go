@@ -167,15 +167,32 @@ func (h *WSHandler) sendHistory(conn *websocket.Conn, roomID int, token string) 
 		return
 	}
 
-	var messages []interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&messages); err != nil {
-		// Try decoding as an object with a "messages" key.
-		messages = []interface{}{}
+	var rawMessages []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&rawMessages); err != nil {
+		rawMessages = []map[string]interface{}{}
+	}
+
+	// Transform field names from message-service format (sender_id, content)
+	// to frontend format (from, text) so MessageList can render them.
+	transformed := make([]map[string]interface{}, 0, len(rawMessages))
+	for _, m := range rawMessages {
+		msg := map[string]interface{}{
+			"type": "message",
+			"from": m["sender_name"],
+			"text": m["content"],
+		}
+		if ts, ok := m["sent_at"]; ok {
+			msg["timestamp"] = ts
+		}
+		if mid, ok := m["message_id"]; ok {
+			msg["msg_id"] = mid
+		}
+		transformed = append(transformed, msg)
 	}
 
 	historyMsg := map[string]interface{}{
 		"type":     "history",
-		"messages": messages,
+		"messages": transformed,
 		"room_id":  roomID,
 	}
 	_ = h.manager.SendToConn(conn, historyMsg)

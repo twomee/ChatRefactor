@@ -28,7 +28,7 @@ export default function ChatPage() {
   const { pmState, pmDispatch } = usePM();
   const navigate = useNavigate();
 
-  const { joinRoom, exitRoom, exitAllRooms, sendMessage, connectionStatus } = useChatConnection();
+  const { joinRoom, exitRoom, exitAllRooms, disconnectAll, sendMessage, connectionStatus } = useChatConnection();
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -96,7 +96,8 @@ export default function ChatPage() {
   }
 
   async function handleLogout() {
-    exitAllRooms();
+    // Close WebSocket connections but keep localStorage so rooms restore on re-login.
+    disconnectAll();
     try { await authApi.logout(); } catch { /* best-effort logout */ }
     logout();
     navigate('/login');

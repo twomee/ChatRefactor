@@ -79,8 +79,19 @@ func (h *PMHandler) SendPM(c *gin.Context) {
 		Timestamp:  time.Now().UTC(),
 	}
 
+	// Build WebSocket message matching the format the frontend expects.
+	wsMsg := map[string]interface{}{
+		"type":      "private_message",
+		"from":      senderName.(string),
+		"to":        recipient.Username,
+		"text":      req.Content,
+		"timestamp": pm.Timestamp.Format(time.RFC3339),
+	}
+
 	// Try live delivery via lobby WebSocket.
-	delivered := h.manager.SendPersonal(recipient.ID, pm)
+	// No self-echo needed — the frontend adds the message to local state
+	// immediately after the REST call succeeds (ChatPage.jsx).
+	delivered := h.manager.SendPersonal(recipient.ID, wsMsg)
 
 	// Always produce to Kafka for persistence regardless of live delivery.
 	payload, _ := json.Marshal(pm)

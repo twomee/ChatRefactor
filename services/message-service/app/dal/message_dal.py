@@ -15,6 +15,7 @@ def create_idempotent(
     is_private: bool = False,
     recipient_id: int | None = None,
     sent_at: datetime | None = None,
+    sender_name: str | None = None,
 ) -> bool:
     """Insert a message only if message_id doesn't already exist. Returns True if inserted."""
     existing = db.query(Message).filter(Message.message_id == message_id).first()
@@ -24,6 +25,7 @@ def create_idempotent(
     msg = Message(
         message_id=message_id,
         sender_id=sender_id,
+        sender_name=sender_name,
         room_id=room_id,
         content=content,
         is_private=is_private,

@@ -16,6 +16,7 @@ model File {
   storedPath   String   @map("stored_path") @db.VarChar(512)
   fileSize     Int      @map("file_size")
   senderId     Int      @map("sender_id")
+  senderName   String?  @map("sender_name") @db.VarChar(64)
   roomId       Int      @map("room_id")
   uploadedAt   DateTime @default(now()) @map("uploaded_at")
 

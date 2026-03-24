@@ -20,6 +20,7 @@ class Message(Base):
         String(36), unique=True, nullable=True, index=True
     )  # UUID for idempotent writes
     sender_id = Column(Integer, nullable=False)  # no FK — users in different DB
+    sender_name = Column(String(64), nullable=True)  # denormalized for history display
     room_id = Column(
         Integer, nullable=True
     )  # null = private message, no FK — rooms in different DB
