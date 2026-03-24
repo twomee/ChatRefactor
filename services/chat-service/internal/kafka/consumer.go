@@ -14,9 +14,17 @@ import (
 // EventHandler processes a deserialized Kafka event.
 type EventHandler func(ctx context.Context, value map[string]interface{}) error
 
+// MessageReader is the interface for reading Kafka messages. This allows
+// the Consumer to be tested with a mock reader.
+type MessageReader interface {
+	ReadMessage(ctx context.Context) (kafkago.Message, error)
+	Close() error
+	Config() kafkago.ReaderConfig
+}
+
 // Consumer reads from a Kafka topic and dispatches events to a handler.
 type Consumer struct {
-	reader  *kafkago.Reader
+	reader  MessageReader
 	handler EventHandler
 	logger  *zap.Logger
 	done    chan struct{}
@@ -33,6 +41,17 @@ func NewConsumer(brokers []string, topic, groupID string, handler EventHandler, 
 		CommitInterval: time.Second,
 		StartOffset:    kafkago.LastOffset,
 	})
+	return &Consumer{
+		reader:  reader,
+		handler: handler,
+		logger:  logger,
+		done:    make(chan struct{}),
+	}
+}
+
+// NewConsumerWithReader creates a Consumer with a custom reader, useful for
+// testing with mock readers.
+func NewConsumerWithReader(reader MessageReader, handler EventHandler, logger *zap.Logger) *Consumer {
 	return &Consumer{
 		reader:  reader,
 		handler: handler,
