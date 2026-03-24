@@ -5,7 +5,6 @@
 // - Kafka event failure handling (fire-and-forget error catch)
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import path from "node:path";
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 const { mockPrismaFile, mockQueryRaw } = vi.hoisted(() => ({
@@ -130,7 +129,7 @@ describe("services/file.service", () => {
     });
 
     it("should reject disallowed file extensions", async () => {
-      const { uploadFile, FileValidationError } = await import("../../src/services/file.service.js");
+      const { uploadFile } = await import("../../src/services/file.service.js");
 
       await expect(
         uploadFile(Buffer.from("data"), "script.sh", 1, "alice", 1)

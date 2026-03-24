@@ -19,8 +19,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir --upgrade -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy application code (selective — excludes tests, coverage, cache)
+COPY alembic.ini .
+COPY alembic/ alembic/
+COPY app/ app/
 
 # Switch to non-root user
 USER appuser

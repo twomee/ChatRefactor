@@ -38,6 +38,9 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Run TypeScript build check
+        run: npx tsc --noEmit
+
   test:
     name: File Service Tests
     runs-on: ubuntu-latest
@@ -56,13 +59,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
+      - name: Run tests with coverage
         env:
           APP_ENV: test
           SECRET_KEY: test-secret-key-for-ci-only
           DATABASE_URL: postgresql://test:test@localhost:5432/test
           KAFKA_BOOTSTRAP_SERVERS: localhost:9092
-        run: npm test
+        run: npm run test:coverage
 
   docker-build:
     name: File Service Docker Build
