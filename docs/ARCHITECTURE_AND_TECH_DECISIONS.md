@@ -47,7 +47,7 @@ cHATBOX separates four concerns that often get tangled in chat apps:
 
 | Concern | What handles it | Why separate? |
 |---------|----------------|---------------|
-| **Real-time delivery** | Chat service (Go) + Redis pub/sub | Must be fast (sub-100ms). No disk I/O. Go handles thousands of concurrent WebSockets efficiently. |
+| **Real-time delivery** | Chat service (Go) + in-memory broadcast (Redis pub/sub planned for horizontal scaling) | Must be fast (sub-100ms). No disk I/O. Go handles thousands of concurrent WebSockets efficiently. |
 | **Durable storage** | Kafka → Message service (Python) → PostgreSQL | Can be async. Needs reliability, not speed. CQRS pattern — writes via Kafka, reads via REST. |
 | **API routing + auth** | Kong API Gateway | Single entry point, JWT validation, rate limiting, request logging across all services. |
 | **Static serving** | Nginx (frontend container) | Serves the React SPA build. SPA routing via `try_files`. |
@@ -74,8 +74,8 @@ This separation means a slow database query doesn't block message delivery, a We
 
 - **ACID transactions** — When a user sends a message, we need the insert to either fully succeed or fully fail. No partial writes.
 - **Foreign keys** — The database enforces that a message can't reference a non-existent user or room. This catches bugs that would silently corrupt data in schema-less stores.
-- **`ON CONFLICT DO NOTHING`** — Used for Kafka idempotent writes in the message-service. When the same `message_id` arrives twice (Kafka at-least-once delivery), PostgreSQL skips the duplicate instead of crashing.
-- **Connection pooling** (per service, e.g., `pool_size=10, max_overflow=20`) — Each service maintains its own pool of reusable connections, isolated from other services.
+- **Uniqueness constraints** — Used for Kafka idempotent writes in the message-service. The `message_id` column has a `unique=True` constraint, so when the same message arrives twice (Kafka at-least-once delivery), the application checks for duplicates and skips the insert.
+- **Connection pooling** (per service) — Each service maintains its own pool of reusable connections, isolated from other services (e.g., auth-service: `pool_size=10, max_overflow=20`).
 - **`pool_pre_ping=True`** — Tests each connection before using it. Prevents "connection closed" errors after database restarts.
 
 ---
@@ -84,11 +84,13 @@ This separation means a slow database query doesn't block message delivery, a We
 
 **What it does here:** Three jobs, each leveraging a different Redis capability.
 
-#### Job 1: WebSocket Message Relay (Pub/Sub)
+#### Job 1 (Planned): WebSocket Message Relay (Pub/Sub)
 
-**The problem:** When running multiple chat-service instances (or scaling horizontally), each instance has its own set of WebSocket connections. If User A's WebSocket is on Instance 1 and User B's is on Instance 2, Instance 1 can't directly send to User B.
+> **Current state:** The chat-service currently uses an **in-memory connection manager** (`sync.RWMutex`) for broadcasting messages to WebSocket connections. Redis pub/sub is the planned solution for when the service scales to multiple instances. See `services/chat-service/internal/ws/manager.go` for the current implementation.
 
-**The solution:** Redis pub/sub acts as a message bus between chat-service instances.
+**The problem (when scaling horizontally):** When running multiple chat-service instances, each instance has its own set of WebSocket connections. If User A's WebSocket is on Instance 1 and User B's is on Instance 2, Instance 1 can't directly send to User B.
+
+**The planned solution:** Redis pub/sub will act as a message bus between chat-service instances.
 
 ```
 User A sends message
@@ -100,7 +102,7 @@ User A sends message
 
 **Why Redis for pub/sub (not Kafka)?** Redis pub/sub is fire-and-forget with zero latency overhead. Messages are delivered instantly to subscribers and then gone. We don't need durability here — if a message is missed because an instance crashed, the user will see it when they reconnect (loaded from the message-service database). Kafka's pub/sub adds unnecessary overhead (disk writes, consumer group coordination) for something that should be instant and ephemeral.
 
-**Channels we use:**
+**Channels (planned):**
 - `room:<room_id>` — Room chat messages
 - `lobby` — Global updates (room created, room closed, user count changes)
 - `user:<username>` — Targeted messages (PMs, kick notifications)
@@ -138,13 +140,13 @@ Without Kafka, every chat message must be synchronously written to PostgreSQL be
 **With Kafka:**
 ```
 1. User sends message via WebSocket to chat-service (Go)
-2. Chat-service publishes to Kafka topic chat.messages (async, ~1ms)
-3. Chat-service broadcasts via Redis pub/sub (instant delivery to all users)
+2. Chat-service broadcasts via in-memory manager (instant delivery to all users in the room)
+3. Chat-service publishes to Kafka topic chat.messages (async, ~1ms)
 4. Message-service's Kafka consumer picks up the message (background)
 5. Message-service persists to its PostgreSQL database (async, no user waiting)
 ```
 
-The user sees the message instantly (step 3). The database write happens whenever it happens (step 5). Even if the message-service database is down for 5 minutes, messages are buffered in Kafka and will be persisted when it comes back.
+The user sees the message instantly (step 2). The database write happens whenever it happens (step 5). Even if the message-service database is down for 5 minutes, messages are buffered in Kafka and will be persisted when it comes back.
 
 **Why Kafka over alternatives:**
 
@@ -157,14 +159,14 @@ The user sees the message instantly (step 3). The database write happens wheneve
 
 **Key Kafka features we rely on:**
 
-- **Consumer groups** (`message-persistence`) — If we scale to multiple message-service instances, Kafka distributes partitions across them automatically.
+- **Consumer groups** (`chat-persistence`) — If we scale to multiple message-service instances, Kafka distributes partitions across them automatically.
 - **At-least-once delivery** — Kafka guarantees every message will be consumed at least once. Combined with `ON CONFLICT DO NOTHING` in PostgreSQL, we get exactly-once semantics.
 - **Dead Letter Queue** (`chat.dlq`) — Messages that fail 3 times go to a separate topic for investigation instead of being lost.
 - **LZ4 compression** — Reduces network and disk usage with minimal CPU overhead.
 - **KRaft mode** — Runs without ZooKeeper, simplifying our deployment to a single Kafka container.
 - **Configurable retention** — 7 days for messages, 3 days for events, 30 days for DLQ. Old data is automatically cleaned up.
 
-**Graceful degradation:** If Kafka is down, the chat-service falls back to synchronous delivery. Users don't notice — messages still get delivered in real-time via Redis. Persistence resumes when Kafka and the message-service reconnect.
+**Graceful degradation:** If Kafka is down, the chat-service uses the `SyncDelivery` fallback (Strategy pattern). Users don't notice — messages still get delivered in real-time via the in-memory WebSocket broadcast. However, messages sent during the outage won't be persisted to history. Persistence resumes when Kafka and the message-service reconnect.
 
 ---
 
@@ -550,52 +552,257 @@ The structured version can be parsed by log aggregation tools (Datadog, ELK, Lok
 
 ## 5. Data Flow: How It All Connects
 
-### Sending a Chat Message (Microservices Architecture)
+> **What is message persistence?** When a user sends a chat message, it appears instantly in all connected browsers via WebSocket broadcast. But this is ephemeral — if the browser refreshes or a new user joins, those messages are gone. "Message persistence" means saving those ephemeral messages to a durable database (PostgreSQL) so they can be loaded later as conversation history. The message-service handles this by consuming messages from Kafka and writing them to its database. This is why the message-service exists separately from the chat-service — it converts ephemeral real-time events into durable history.
+
+### 5.1 Sending a Room Message
 
 ```
-Browser       Kong        Chat Service     Redis        Kafka        Message Service   PostgreSQL
-  |            |               |             |            |               |               |
-  |--WS msg-->|---upgrade---->|              |            |               |               |
-  |            |               |--publish--->|            |               |               |
-  |            |               |--produce--->|            |               |               |
-  |            |               |             |            |               |               |
-  |            |               |  Redis pub  |            |               |               |
-  |<--all users|<--broadcast--|<--sub--------|            |               |               |
-  |            |               |             |            |               |               |
-  |            |               |             |   Consumer |               |               |
-  |            |               |             |   picks up |               |               |
-  |            |               |             |      |---->|---INSERT----->|               |
-  |            |               |             |            |   (async)     |               |
+Browser       Kong        Chat Service     Kafka        Message Service   PostgreSQL
+  |            |               |             |               |               |
+  |--WS msg-->|---forward---->|              |               |               |
+  |            |               |--broadcast->|               |               |
+  |            |               | (in-memory) |               |               |
+  |<--all users|<-------------|              |               |               |
+  |            |               |--produce--->|               |               |
+  |            |               |             |--consume----->|               |
+  |            |               |             |               |---INSERT----->|
+  |            |               |             |               |   (async)     |
 ```
 
-In the microservices architecture, the chat-service (Go) handles WebSocket connections and real-time delivery via Redis pub/sub. The message-service (Python) consumes from Kafka and persists to its own database asynchronously.
+The chat-service (Go) handles WebSocket connections and real-time delivery via an **in-memory connection manager** (not Redis pub/sub — see [Redis Job 1](#job-1-planned-websocket-message-relay-pubsub) for the planned horizontal scaling solution). The message-service (Python) consumes from Kafka and persists to its own PostgreSQL database asynchronously.
 
-### When Kafka Is Down (Graceful Degradation)
-
-```
-Browser       Kong        Chat Service     Redis        PostgreSQL
-  |            |               |             |               |
-  |--WS msg-->|---upgrade---->|              |               |
-  |            |               |--publish--->|               |
-  |            |               |--sync write-|-------------->|
-  |            |               |             |               |
-  |<--all users|<--broadcast--|<--sub--------|               |
-```
-
-The user experience is identical. The chat-service falls back to synchronous delivery when Kafka is unavailable.
-
-### When Redis Is Down (Local-Only Delivery)
+### 5.2 Sending a Private Message
 
 ```
-Browser       Kong        Chat Service     PostgreSQL
+Browser       Kong        Chat Service     Kafka        Message Service   PostgreSQL
+  |            |               |             |               |               |
+  |--WS PM--->|---forward---->|              |               |               |
+  |            |               |--deliver--->|               |               |
+  |            |               | (to user's  |               |               |
+  |            |               |  connections)|              |               |
+  |<-recipient-|<-------------|              |               |               |
+  |            |               |--produce--->|               |               |
+  |            |               |  chat.private|              |               |
+  |            |               |             |--consume----->|               |
+  |            |               |             |  (resolves    |               |
+  |            |               |             |  username →   |               |
+  |            |               |             |  user_id via  |               |
+  |            |               |             |  auth-service)|               |
+  |            |               |             |               |---INSERT----->|
+```
+
+Private messages are delivered only to the recipient's WebSocket connections (all their open tabs). The message-service resolves usernames to user IDs by calling the auth-service internally before persisting.
+
+### 5.3 User Registration (auth-service)
+
+```
+Browser       Kong        Auth Service     Kafka          PostgreSQL
+  |            |               |              |               |
+  |--POST---->|---/auth/------>|              |               |
+  | register  | register      |              |               |
+  |            |               |--hash pwd--->|               |
+  |            |               | (Argon2id)   |               |
+  |            |               |--INSERT user-|-------------->|
+  |            |               |              |               |
+  |            |               |--produce---->|               |
+  |            |               | user_registered              |
+  |            |               |   (auth.events)              |
+  |<--201 OK--|<--------------|              |               |
+```
+
+### 5.4 User Login (auth-service)
+
+```
+Browser       Kong        Auth Service     Kafka          PostgreSQL
+  |            |               |              |               |
+  |--POST---->|---/auth/------>|              |               |
+  | login     | login         |              |               |
+  |            |               |--SELECT user-|-------------->|
+  |            |               |--verify pwd--|               |
+  |            |               | (Argon2id)   |               |
+  |            |               |--sign JWT--->|               |
+  |            |               | (user_id +   |               |
+  |            |               |  username)   |               |
+  |            |               |--produce---->|               |
+  |            |               | user_logged_in               |
+  |<--JWT-----|<--------------|              |               |
+```
+
+### 5.5 User Logout (auth-service)
+
+```
+Browser       Kong        Auth Service     Redis
+  |            |               |             |
+  |--POST---->|---/auth/------>|              |
+  | logout    | logout        |              |
+  |            |               |--SET-------->|
+  |            |               | blacklist:   |
+  |            |               | <token> "1"  |
+  |            |               | EX 86400     |
+  |<--200 OK--|<--------------|              |
+```
+
+The token is added to the Redis blacklist with a TTL matching the token's remaining lifetime. After the TTL expires, both the Redis entry and the JWT itself are expired — no cleanup needed.
+
+### 5.6 File Upload (file-service)
+
+```
+Browser       Kong        File Service     PostgreSQL   Kafka        Chat Service
+  |            |               |               |          |               |
+  |--POST---->|---/files/----->|               |          |               |
+  | multipart | upload        |               |          |               |
+  |            |               |--validate--->|          |               |
+  |            |               | (type, MIME, |          |               |
+  |            |               |  size)       |          |               |
+  |            |               |--save to disk|          |               |
+  |            |               | ./uploads/   |          |               |
+  |            |               |--INSERT----->|          |               |
+  |            |               | metadata     |          |               |
+  |            |               |--produce---->|          |               |
+  |            |               | file_uploaded |          |               |
+  |            |               |              | file.events|              |
+  |            |               |              |          |--consume----->|
+  |            |               |              |          | broadcast     |
+  |            |               |              |          | to lobby+room |
+  |<--file ID-|<--------------|              |          |               |
+```
+
+File binary data is saved to the local filesystem (`./uploads/` with UUID-prefixed filenames). File metadata (name, size, sender, room) is saved to PostgreSQL via Prisma. The Kafka event notifies the chat-service to broadcast a "file shared" notification to the lobby and room. In production, file storage would move to object storage (S3, MinIO).
+
+### 5.7 File Download (file-service)
+
+```
+Browser       Kong        File Service     PostgreSQL   Disk
+  |            |               |               |          |
+  |--GET----->|---/files/----->|               |          |
+  | download  | download/:id  |               |          |
+  |            |               |--SELECT------>|          |
+  |            |               | metadata      |          |
+  |            |               |--stream file--|--------->|
+  |            |               | (no buffering)|         |
+  |<--file----|<--------------|               |          |
+```
+
+Files are streamed directly from disk to the client without loading the entire file into memory — Node.js streams handle this naturally.
+
+### 5.8 Loading Room History (message-service)
+
+```
+Browser       Kong        Message Service   PostgreSQL
   |            |               |               |
-  |--WS msg-->|---upgrade---->|                |
-  |            |               |--local bcast  |
-  |<--same-ws-|<--broadcast---|                |
-  |            |               |--INSERT------>|
+  |--GET----->|---/messages--->|               |
+  | /rooms/5  | /rooms/5/     |               |
+  | /history  | history?      |               |
+  |            | limit=50     |               |
+  |            |               |--SELECT------>|
+  |            |               | last 50 msgs  |
+  |            |               | ORDER BY      |
+  |            |               | sent_at DESC  |
+  |<--JSON----|<---messages---|               |
 ```
 
-Users connected to other instances won't receive the message until they reconnect. This is acceptable as a degraded mode — Redis downtime should be rare and short.
+The frontend calls this endpoint when a user joins a room to load conversation history. A separate replay endpoint (`GET /messages/rooms/{room_id}?since=<timestamp>`) is used when a user reconnects after a disconnect to catch up on missed messages.
+
+### 5.9 Internal Architecture Map
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                        INTERNAL ARCHITECTURE MAP                            │
+│                    (Everything runs inside Docker network)                   │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────┐     ┌───────────────────────────────────────────────────────┐  │
+│  │ Browser │────>│  Kong API Gateway (port 80)                          │  │
+│  └─────────┘     │  - JWT validation on protected routes                │  │
+│       ▲          │  - Rate limiting (uses Redis for shared counters)     │  │
+│       │          │  - Request logging, CORS, security headers           │  │
+│       │          └──┬─────────┬──────────┬──────────┬────────────────────┘  │
+│       │             │         │          │          │                        │
+│       │         /auth/*    /ws/*    /messages/*  /files/*                    │
+│       │             │         │          │          │                        │
+│       │             ▼         ▼          ▼          ▼                        │
+│       │     ┌────────────┐ ┌──────────┐ ┌─────────┐ ┌──────────┐           │
+│       │     │ auth-svc   │ │ chat-svc │ │ msg-svc │ │ file-svc │           │
+│       │     │ Python     │ │ Go       │ │ Python  │ │ Node.js  │           │
+│       │     │ :8001      │ │ :8003    │ │ :8004   │ │ :8005    │           │
+│       │     └──┬───┬─────┘ └┬──┬──┬──┘ └┬──┬──┬──┘ └┬──┬──┬──┘           │
+│       │        │   │        │  │  │      │  │  │      │  │  │              │
+│       │        │   │        │  │  │      │  │  │      │  │  │              │
+│  ┌────┴────────┼───┼────────┼──┼──┼──────┼──┼──┼──────┼──┼──┼───────┐      │
+│  │   SERVICE-TO-SERVICE REST (direct Docker network, NOT via Kong)   │      │
+│  │                                                                   │      │
+│  │  chat-svc ──GET /auth/users/{id}──────────> auth-svc             │      │
+│  │  msg-svc ──GET /auth/users/by-username/{name}──> auth-svc        │      │
+│  │            ⚡ circuit breaker (5 fails → 30s cooldown)            │      │
+│  │  file-svc ──local JWT verify (shared SECRET_KEY)──> NO call      │      │
+│  │                                                                   │      │
+│  │  Note: /auth/users/* has NO Kong route — unreachable externally  │      │
+│  └───────────────────────────────────────────────────────────────────┘      │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────┐      │
+│  │   REDIS (port 6379)                                               │      │
+│  │                                                                   │      │
+│  │  auth-svc ──SET blacklist:<token> "1" EX 86400──> Token blacklist│      │
+│  │  auth-svc ──GET blacklist:<token>──> Check on every auth request │      │
+│  │  Kong ──rate limiting counters──> Shared across all instances     │      │
+│  │  chat-svc ──(planned) pub/sub channels──> NOT YET IMPLEMENTED    │      │
+│  └───────────────────────────────────────────────────────────────────┘      │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────┐      │
+│  │   KAFKA (port 9092, KRaft mode — no ZooKeeper)                    │      │
+│  │                                                                   │      │
+│  │  Producers:                        Consumers:              Then:  │      │
+│  │  chat-svc ──chat.messages────────> msg-svc ──INSERT──> PostgreSQL│      │
+│  │  chat-svc ──chat.private─────────> msg-svc ──INSERT──> PostgreSQL│      │
+│  │             (group: chat-persistence)   (idempotent: ON CONFLICT SKIP)│      │
+│  │  chat-svc ──chat.events──────────> (future consumers)            │      │
+│  │  file-svc ──file.events──────────> chat-svc ──broadcast──> lobby │      │
+│  │  auth-svc ──auth.events──────────> (future consumers)            │      │
+│  │  msg-svc ──chat.dlq──────────────> (investigation, 30-day TTL)   │      │
+│  └───────────────────────────────────────────────────────────────────┘      │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────┐      │
+│  │   POSTGRESQL (port 5432, single instance, 4 databases)            │      │
+│  │                                                                   │      │
+│  │  auth-svc ──> chatbox_auth     (users table)                     │      │
+│  │  chat-svc ──> chatbox_chat     (rooms, muted_users, room_state)  │      │
+│  │  msg-svc  ──> chatbox_messages (messages, private_messages)      │      │
+│  │  file-svc ──> chatbox_files    (files — Prisma managed)          │      │
+│  │                                                                   │      │
+│  │  auth-svc: pool_size=10, max_overflow=20 (bulkhead pattern)     │      │
+│  │  msg-svc: SQLAlchemy defaults. file-svc: Prisma-managed pool   │      │
+│  │  No cross-database JOINs — data shared only via APIs             │      │
+│  └───────────────────────────────────────────────────────────────────┘      │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────┐      │
+│  │   FILESYSTEM                                                      │      │
+│  │                                                                   │      │
+│  │  file-svc ──> ./uploads/ (UUID-prefixed filenames)               │      │
+│  │  (In production: replace with S3/MinIO object storage)           │      │
+│  └───────────────────────────────────────────────────────────────────┘      │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────┐      │
+│  │   NGINX (port 3000, inside frontend container)                    │      │
+│  │                                                                   │      │
+│  │  Serves React SPA build (JS, CSS, images)                        │      │
+│  │  SPA routing: try_files $uri /index.html                         │      │
+│  │  Gzip compression, security headers                              │      │
+│  │  NOT used for API routing (that's Kong's job)                    │      │
+│  └───────────────────────────────────────────────────────────────────┘      │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 5.10 Graceful Degradation
+
+**Graceful Degradation** means the system continues to work in a reduced capacity when a component fails, rather than crashing entirely.
+
+| Component Down | What Breaks | What Still Works |
+|---------------|-------------|-----------------|
+| **Kafka** | Messages NOT saved to history. Users who join later won't see messages sent during outage. | Real-time WebSocket broadcast still works. Users currently in the room see messages normally. |
+| **Redis** | Token revocation fails (production: logout returns 503). Rate limits fall back to per-instance local counters. | All other functionality works. JWT validation is stateless (doesn't need Redis). |
+| **PostgreSQL** | New data can't be persisted. Room creation fails. | Messages already in Kafka are buffered until DB recovers. |
+| **Auth-service** | New logins fail. Username lookups fail (message-service circuit breaker opens). | Existing JWT tokens remain valid. WebSocket connections stay open. |
+| **Message-service** | History API unavailable. Messages buffer in Kafka (7-day retention). | Real-time chat works. Kafka retains messages until service recovers. |
 
 ---
 
@@ -648,9 +855,49 @@ We split the monolith into four services based on **bounded contexts** — each 
 | Service | Language | Port | Responsibility | Why This Boundary? |
 |---------|----------|------|---------------|-------------------|
 | **auth-service** | Python (FastAPI) | 8001 | Registration, login, logout, JWT issuance, token blacklist | Auth is cross-cutting — every other service depends on it but it changes independently. Argon2 hashing is CPU-intensive and benefits from isolated scaling. |
-| **chat-service** | Go | 8003 | WebSocket connections, real-time message delivery, Redis pub/sub, room management | Real-time chat needs thousands of concurrent connections. Go's goroutines handle this with minimal memory (4KB per goroutine vs ~8MB per Python thread). |
+| **chat-service** | Go | 8003 | WebSocket connections, real-time message delivery, in-memory broadcast (Redis pub/sub planned for horizontal scaling), room management | Real-time chat needs thousands of concurrent connections. Go's goroutines handle this with minimal memory (4KB per goroutine vs ~8MB per Python thread). |
 | **message-service** | Python (FastAPI) | 8004 | Message persistence, history queries, replay API, Kafka consumer | Read-heavy workload (users loading history) that benefits from its own database with read replicas. Kafka consumer runs independently of the HTTP API. |
 | **file-service** | Node.js (TypeScript) | 8005 | File upload, download, metadata, virus scanning hooks | I/O-bound workload. Node.js streams files without buffering entire content in memory. TypeScript gives type safety for a service that handles binary data and metadata. |
+
+### Service Responsibilities (Detailed)
+
+#### auth-service (Python/FastAPI, port 8001)
+
+- **Registration:** Validates input (username uniqueness, password strength), hashes password with Argon2id, creates user record in `chatbox_auth` database, produces `user_registered` event to Kafka (`auth.events` topic)
+- **Login:** Verifies credentials against Argon2 hash, issues JWT token containing `user_id`, `username`, and expiration timestamp. Produces `user_logged_in` event to Kafka
+- **Logout:** Adds token to Redis blacklist with TTL matching the token's remaining lifetime (`SET blacklist:<token> "1" EX 86400`). Produces `user_logged_out` event to Kafka
+- **Token blacklist check:** On every authenticated request, checks Redis if the token was revoked. In production, if Redis is down → rejects the request with 503 (fail-closed for security). In development → allows the request (fail-open for convenience)
+- **Internal user lookup:** Provides `GET /auth/users/{user_id}` and `GET /auth/users/by-username/{username}` endpoints. These are NOT exposed through Kong — only other services can call them directly over the Docker network. Used by:
+  - **message-service** — to resolve usernames to user IDs when persisting private messages from Kafka
+  - **chat-service** — to validate that a user exists before room operations
+
+#### chat-service (Go, port 8003)
+
+- **WebSocket management:** Accepts WebSocket connections via Kong (`/ws` route with upgrade), maintains all active connections in an in-memory manager (`sync.RWMutex`), handles one goroutine per connection for reading and one for writing
+- **Room operations:** Create room, close room, join room, leave room. All room state stored in its own PostgreSQL database (`chatbox_chat`). Includes admin succession logic when room creator leaves
+- **Real-time broadcast:** When a message arrives via WebSocket, broadcasts to all connections in the same room via the in-memory manager (not via Redis pub/sub — see [Redis Job 1](#job-1-planned-websocket-message-relay-pubsub) for the planned horizontal scaling solution)
+- **Admin operations:** Kick user from room, mute/unmute user, promote user to admin
+- **Rate limiting:** Sliding window rate limiter — 30 messages per 10 seconds per user per room, enforced in-memory
+- **Kafka production:** Produces messages, private messages, and events to Kafka topics (`chat.messages`, `chat.private`, `chat.events`). Fire-and-forget — if Kafka is down, real-time delivery still works but messages won't be persisted to history
+- **Kafka consumption:** Consumes `file.events` from file-service (consumer group: `chat-file-events`) and broadcasts file-shared notifications to lobby and rooms
+- **Graceful degradation:** Uses the Strategy pattern for delivery — `KafkaDelivery` in normal mode, `SyncDelivery` (no-op fallback) when Kafka is unavailable. WebSocket broadcast always works regardless of Kafka state. See `services/chat-service/internal/delivery/` for the implementation
+
+#### message-service (Python/FastAPI, port 8004)
+
+- **Message persistence (Kafka consumer):** Runs a background Kafka consumer (consumer group: `chat-persistence`) that reads from `chat.messages` and `chat.private` topics. Persists each message to PostgreSQL (`chatbox_messages` database) with idempotent writes (`ON CONFLICT DO NOTHING` on `message_id` UUID). This is why messages appear in history — without this service, messages would be ephemeral (visible only in real-time, lost on page refresh)
+- **Room history API:** `GET /messages/rooms/{room_id}/history?limit=50` — returns the last 50 messages for a room, ordered oldest-first. Called by the frontend when a user joins a room to load conversation history
+- **Message replay API:** `GET /messages/rooms/{room_id}?since=<ISO_timestamp>&limit=100` — returns messages sent after a specific timestamp. Used when a user reconnects after a disconnect to catch up on missed messages
+- **Private message history:** Similar to room history but filtered by sender/recipient pair
+- **Dead letter queue:** Messages that fail persistence after 3 retries are routed to `chat.dlq` topic (30-day retention) for investigation instead of being lost
+- **Circuit breaker:** Service-to-service calls to auth-service (for username → user_id resolution in private messages) are protected by a circuit breaker. After 5 consecutive failures → circuit opens for 30 seconds → prevents cascading failure if auth-service is down. See `services/message-service/app/infrastructure/auth_client.py`
+
+#### file-service (Node.js/TypeScript, port 8005)
+
+- **File upload:** Accepts multipart file uploads via Multer middleware. Validates file type (50+ allowed extensions), MIME type (magic byte verification to prevent spoofing), and size (max 150MB). Stores file on local filesystem (`./uploads/`) with UUID prefix to prevent name collisions (`${UUID}_${sanitized_filename}`)
+- **File metadata storage:** Saves metadata (original name, stored path, file size, sender ID, room ID, upload timestamp) to PostgreSQL (`chatbox_files` database) via Prisma ORM
+- **File download:** Streams file from disk to client without buffering entire file in memory (Node.js streams). Sets safe `Content-Disposition` headers (RFC 5987 encoding) to prevent XSS
+- **Kafka production:** Produces `file_uploaded` events to `file.events` topic after successful upload. Contains file_id, filename, size, uploader username, and room_id. Chat-service consumes these events to broadcast "file shared" notifications to the lobby and room. Kafka failure does NOT fail the upload — the file is saved, just the real-time notification doesn't reach the lobby
+- **Where data lives:** File binary data → local filesystem (`./uploads/`). File metadata → PostgreSQL (`chatbox_files`). In production, file storage would move to object storage (S3, MinIO) but the architecture supports this via path abstraction
 
 ### Polyglot Stack: Why Different Languages?
 
@@ -732,23 +979,22 @@ auth-service  --produce-->  Kafka [auth.events]    --consume-->  (future consume
 
 The microservices architecture employs these patterns:
 
-| # | Pattern | Where It's Used | Why |
-|---|---------|----------------|-----|
-| 1 | **Database per Service** | Each service has its own PostgreSQL schema | Loose coupling — services can change their schema without coordinating |
-| 2 | **API Gateway** | Kong in front of all services | Single entry point, cross-cutting concerns (auth, rate limiting, logging) |
-| 3 | **Event-Driven Architecture** | Kafka for async communication | Temporal decoupling — services don't need to be online simultaneously |
-| 4 | **CQRS (Command Query Responsibility Segregation)** | chat-service writes, message-service reads | Optimized read and write paths with different data models |
-| 5 | **Saga Pattern** | User deletion across services | Coordinated multi-service operations via Kafka events |
-| 6 | **Circuit Breaker** | Service-to-service REST calls | Prevents cascade failures when a downstream service is down |
-| 7 | **Strangler Fig** | Migration from monolith to microservices | Incremental extraction — monolith still runs alongside services |
-| 8 | **Sidecar/Ambassador** | Kong routes and authenticates | Offloads cross-cutting concerns from business services |
-| 9 | **Correlation ID** | X-Correlation-ID header propagated across services | Trace a single user request across all four services in logs |
-| 10 | **Dead Letter Queue** | Kafka chat.dlq topic | Failed messages are preserved for investigation, not lost |
-| 11 | **Health Check API** | /health and /ready per service | Kubernetes-style probes for orchestration and load balancing |
-| 12 | **Consumer Group** | Kafka consumer groups per service | Multiple instances of a service share the workload |
-| 13 | **Idempotent Consumer** | ON CONFLICT DO NOTHING in message persistence | Kafka at-least-once delivery + DB uniqueness = exactly-once semantics |
-| 14 | **Bulkhead** | Separate connection pools per service | A connection leak in one service doesn't exhaust connections for others |
-| 15 | **Externalized Configuration** | Environment variables per service | Same container image runs in dev/staging/prod with different config |
+| # | Pattern | What It Does | Where It's Used | Why |
+|---|---------|-------------|----------------|-----|
+| 1 | **Database per Service** | Each service owns its own database. No service can read/write another service's database directly — only through APIs. Prevents schema changes in one service from breaking others. | Each service has its own PostgreSQL database (`chatbox_auth`, `chatbox_chat`, `chatbox_messages`, `chatbox_files`) | Loose coupling — services can change their schema without coordinating |
+| 2 | **API Gateway** | A single entry point that sits in front of all services. Handles cross-cutting concerns (auth, rate limiting, logging, routing) so services don't duplicate this logic. | Kong routes all external requests on port 80 | Single entry point, consistent auth/rate-limiting across all services |
+| 3 | **Event-Driven Architecture** | Services communicate by producing and consuming events (messages) through a broker. Producers don't know who consumes their events. Enables temporal decoupling — services don't need to be online simultaneously. | Kafka for async communication between all services | Services can evolve independently, no tight coupling |
+| 4 | **CQRS (Command Query Responsibility Segregation)** | Separates the write model from the read model. The service that accepts data (commands) is different from the service that serves queries. Allows each side to be optimized independently. | Chat-service writes messages to Kafka, message-service consumes from Kafka and serves history via REST | Chat-service optimized for speed (Go), message-service optimized for queries (Python + SQLAlchemy) |
+| 5 | **Saga Pattern** | Coordinates a multi-service transaction through a sequence of events. If one step fails, compensating events are published to undo previous steps. Used instead of distributed transactions (2PC). | User deletion: auth-service publishes `user_deleted` → other services clean up their data | No distributed transactions needed across services |
+| 6 | **Circuit Breaker** | Tracks failures in service-to-service calls. After N consecutive failures, "opens" the circuit and immediately returns errors for a cooldown period instead of sending doomed requests. After cooldown, allows one probe request to test recovery. | Message-service → auth-service REST calls (5 failures → 30s cooldown). See `services/message-service/app/infrastructure/auth_client.py` | Prevents cascading failures when auth-service is down |
+| 7 | **Strangler Fig** | Incrementally migrates from a legacy system by routing traffic to the new system piece by piece, until the old system can be removed. Named after strangler fig trees that grow around and eventually replace their host tree. | Migration from Python monolith (`v1/backend/`) to microservices | Incremental migration — no big-bang rewrite |
+| 8 | **Correlation ID** | A unique identifier (UUID) injected at the API gateway and propagated through every service in the request chain. Every log line includes this ID, making it possible to trace a single user request across all services. | Kong injects `X-Request-ID` → all services propagate it in logs via structlog (Python) or Gin context (Go) | Distributed debugging across 4 services |
+| 9 | **Dead Letter Queue** | A separate queue/topic where messages that failed processing after multiple retries are stored for later investigation. Prevents poison messages (malformed, too large, schema mismatch) from blocking the main processing pipeline. | Kafka `chat.dlq` topic — messages that fail 3 times. 30-day retention for investigation | Failed messages preserved, not lost |
+| 10 | **Health Check API** | Each service exposes endpoints that report whether it's alive (`/health`) and ready to handle traffic (`/ready`). Used by orchestrators (Docker, Kubernetes) to automatically restart unhealthy services or remove them from load balancers. | `/health` and `/ready` endpoints per service. `/ready` checks DB, Redis, and Kafka connectivity | Automatic failure detection and recovery |
+| 11 | **Competing Consumers** | Multiple instances of a service consume from the same queue/topic, where the broker ensures each message is delivered to only ONE instance. Enables horizontal scaling of consumers without duplicating work. Implemented via Kafka consumer groups. | `chat-persistence` consumer group in message-service, `chat-file-events` group in chat-service | Scale message processing by adding more instances |
+| 12 | **Idempotent Consumer** | The consumer can safely process the same message multiple times without side effects. Achieved by using a unique message ID + database uniqueness constraint. Before inserting, the consumer checks if the `message_id` already exists — if so, it skips the insert. Necessary because Kafka guarantees at-least-once delivery (not exactly-once). | Message-service uses `message_id` UUID with a `unique=True` constraint in PostgreSQL | Kafka retries + DB uniqueness = exactly-once semantics |
+| 13 | **Bulkhead** | Isolates resources (connection pools, thread pools, memory) between components so that a failure or resource exhaustion in one doesn't affect others. Named after watertight compartments in ships that prevent one breach from sinking the vessel. | Separate PostgreSQL databases per service, each with its own connection pool (auth-service: `pool_size=10, max_overflow=20`; other services: framework defaults) | Connection leak in one service doesn't exhaust connections for others |
+| 14 | **Externalized Configuration** | All environment-specific values (DB URLs, API keys, ports, feature flags) are loaded from environment variables, never hardcoded. The same container image runs in dev/staging/prod with different config. Principle #3 of the Twelve-Factor App methodology. | `.env` files per service, `docker-compose` environment blocks | Same image, different environments |
 
 ### Data Architecture (Database per Service)
 
