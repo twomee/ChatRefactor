@@ -100,10 +100,14 @@ func (h *AdminHandler) CloseAllRooms(c *gin.Context) {
 		h.manager.CloseAllInRoom(room.ID)
 	}
 
-	// Notify lobby connections.
+	// Notify lobby connections with active rooms only (matching what ListRooms returns).
+	activeRooms, _ := h.store.GetAll(c.Request.Context())
+	if activeRooms == nil {
+		activeRooms = []model.Room{}
+	}
 	h.manager.BroadcastLobby(map[string]interface{}{
 		"type":  "room_list_updated",
-		"rooms": rooms,
+		"rooms": activeRooms,
 	})
 
 	c.JSON(http.StatusOK, gin.H{"detail": "all rooms closed", "affected": affected})
@@ -123,11 +127,14 @@ func (h *AdminHandler) OpenAllRooms(c *gin.Context) {
 		return
 	}
 
-	// Notify lobby connections.
-	rooms, _ := h.store.GetAllIncludingInactive(c.Request.Context())
+	// Notify lobby connections with active rooms only (matching what ListRooms returns).
+	activeRooms, _ := h.store.GetAll(c.Request.Context())
+	if activeRooms == nil {
+		activeRooms = []model.Room{}
+	}
 	h.manager.BroadcastLobby(map[string]interface{}{
 		"type":  "room_list_updated",
-		"rooms": rooms,
+		"rooms": activeRooms,
 	})
 
 	c.JSON(http.StatusOK, gin.H{"detail": "all rooms opened", "affected": affected})
@@ -220,11 +227,14 @@ func (h *AdminHandler) CloseRoom(c *gin.Context) {
 	h.manager.BroadcastRoom(roomID, closedMsg)
 	h.manager.CloseAllInRoom(roomID)
 
-	// Notify lobby connections.
-	allRooms, _ := h.store.GetAllIncludingInactive(c.Request.Context())
+	// Notify lobby connections with active rooms only.
+	activeRooms, _ := h.store.GetAll(c.Request.Context())
+	if activeRooms == nil {
+		activeRooms = []model.Room{}
+	}
 	h.manager.BroadcastLobby(map[string]interface{}{
 		"type":  "room_list_updated",
-		"rooms": allRooms,
+		"rooms": activeRooms,
 	})
 
 	c.JSON(http.StatusOK, gin.H{"detail": "room closed", "room_id": roomID})
@@ -249,11 +259,14 @@ func (h *AdminHandler) OpenRoom(c *gin.Context) {
 		return
 	}
 
-	// Notify lobby connections.
-	allRooms, _ := h.store.GetAllIncludingInactive(c.Request.Context())
+	// Notify lobby connections with active rooms only.
+	activeRooms, _ := h.store.GetAll(c.Request.Context())
+	if activeRooms == nil {
+		activeRooms = []model.Room{}
+	}
 	h.manager.BroadcastLobby(map[string]interface{}{
 		"type":  "room_list_updated",
-		"rooms": allRooms,
+		"rooms": activeRooms,
 	})
 
 	c.JSON(http.StatusOK, gin.H{"detail": "room opened", "room_id": roomID})

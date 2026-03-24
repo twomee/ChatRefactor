@@ -10,6 +10,7 @@ class MessageResponse(BaseModel):
     id: int
     message_id: str | None = None
     sender_id: int
+    sender_name: str | None = None
     room_id: int | None = None
     content: str
     is_private: bool

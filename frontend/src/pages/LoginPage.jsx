@@ -30,7 +30,12 @@ export default function LoginPage() {
         navigate('/chat');
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Something went wrong');
+      const detail = err.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setError(detail.map(e => e.msg).join(', '));
+      } else {
+        setError(detail || 'Something went wrong');
+      }
     }
   }
 

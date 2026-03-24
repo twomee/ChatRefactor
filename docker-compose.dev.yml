@@ -33,7 +33,7 @@ services:
       retries: 5
 
   kafka:
-    image: apache/kafka:latest
+    image: apache/kafka:3.8.1
     hostname: kafka
     ports:
       - "29092:29092"

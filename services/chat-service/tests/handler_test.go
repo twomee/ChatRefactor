@@ -213,7 +213,7 @@ func TestWSHandlerRejectsWithoutToken(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	manager := ws.NewManager(logger)
 
-	wsH := handler.NewWSHandler(manager, nil, nil, testSecret, logger)
+	wsH := handler.NewWSHandler(manager, nil, nil, testSecret, "http://localhost:8004", logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
@@ -233,7 +233,7 @@ func TestWSHandlerRejectsInvalidToken(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	manager := ws.NewManager(logger)
 
-	wsH := handler.NewWSHandler(manager, nil, nil, testSecret, logger)
+	wsH := handler.NewWSHandler(manager, nil, nil, testSecret, "http://localhost:8004", logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
