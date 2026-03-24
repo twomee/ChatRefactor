@@ -51,14 +51,9 @@ func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, 
 		return
 	}
 
-	// Handle admin succession before broadcasting leave.
-	h.handleAdminSuccession(ctx, roomID, userID, username)
-
-	// Clear mute on leave — user should not remain muted after disconnecting.
-	isMuted, _ := h.store.IsMuted(ctx, roomID, userID)
-	if isMuted {
-		_ = h.store.UnmuteUser(ctx, roomID, userID)
-	}
+	// NOTE: Admin status and mutes are NOT cleared on disconnect.
+	// This preserves admin status across refreshes and reconnections.
+	// Admin succession only happens on explicit kick (see handleKick).
 
 	// Get updated room state for leave broadcast.
 	remainingUsers := h.manager.GetUsernamesInRoom(roomID)
