@@ -1267,3 +1267,127 @@ func TestSendPMAuthServiceError(t *testing.T) {
 		t.Errorf("expected 502, got %d", w.Code)
 	}
 }
+
+// ---- Admin handler tests ----
+
+func TestListOnlineUsersSuccess(t *testing.T) {
+	store := &mockRoomStore{
+		rooms: []model.Room{
+			{ID: 1, Name: "general", IsActive: true},
+			{ID: 2, Name: "random", IsActive: true},
+		},
+	}
+	logger := newLogger()
+	mgr := ws.NewManager(logger)
+	authClient := &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}
+	h := NewAdminHandler(store, mgr, authClient, logger)
+
+	r := gin.New()
+	r.Use(middleware.JWTAuth(testSecret))
+	r.GET("/admin/users", h.ListOnlineUsers)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/users", nil)
+	req.Header.Set("Authorization", "Bearer "+makeToken(1, "alice"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	var body map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &body)
+	if body["all_online"] == nil {
+		t.Error("expected all_online field")
+	}
+	if body["per_room"] == nil {
+		t.Error("expected per_room field")
+	}
+}
+
+func TestListOnlineUsersNonAdminRejected(t *testing.T) {
+	store := &mockRoomStore{}
+	logger := newLogger()
+	mgr := ws.NewManager(logger)
+	authClient := &mockAuthClient{user: &client.UserResponse{ID: 2, Username: "bob", IsGlobalAdmin: false}}
+	h := NewAdminHandler(store, mgr, authClient, logger)
+
+	r := gin.New()
+	r.Use(middleware.JWTAuth(testSecret))
+	r.GET("/admin/users", h.ListOnlineUsers)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/users", nil)
+	req.Header.Set("Authorization", "Bearer "+makeToken(2, "bob"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", w.Code)
+	}
+}
+
+func TestCloseRoomSuccess(t *testing.T) {
+	store := &mockRoomStore{
+		rooms: []model.Room{{ID: 1, Name: "general", IsActive: true}},
+	}
+	logger := newLogger()
+	mgr := ws.NewManager(logger)
+	authClient := &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}
+	h := NewAdminHandler(store, mgr, authClient, logger)
+
+	r := gin.New()
+	r.Use(middleware.JWTAuth(testSecret))
+	r.POST("/admin/rooms/:id/close", h.CloseRoom)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/rooms/1/close", nil)
+	req.Header.Set("Authorization", "Bearer "+makeToken(1, "alice"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestCloseRoomInvalidID(t *testing.T) {
+	store := &mockRoomStore{}
+	logger := newLogger()
+	mgr := ws.NewManager(logger)
+	authClient := &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}
+	h := NewAdminHandler(store, mgr, authClient, logger)
+
+	r := gin.New()
+	r.Use(middleware.JWTAuth(testSecret))
+	r.POST("/admin/rooms/:id/close", h.CloseRoom)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/rooms/abc/close", nil)
+	req.Header.Set("Authorization", "Bearer "+makeToken(1, "alice"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestOpenRoomSuccess(t *testing.T) {
+	store := &mockRoomStore{
+		rooms: []model.Room{{ID: 1, Name: "general", IsActive: false}},
+	}
+	logger := newLogger()
+	mgr := ws.NewManager(logger)
+	authClient := &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}
+	h := NewAdminHandler(store, mgr, authClient, logger)
+
+	r := gin.New()
+	r.Use(middleware.JWTAuth(testSecret))
+	r.POST("/admin/rooms/:id/open", h.OpenRoom)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/rooms/1/open", nil)
+	req.Header.Set("Authorization", "Bearer "+makeToken(1, "alice"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+}

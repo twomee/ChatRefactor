@@ -56,7 +56,7 @@ jobs:
         env:
           APP_ENV: test
           SECRET_KEY: test-secret-key-for-ci-only
-        run: go test ./... -v -count=1 -coverprofile=coverage.out -covermode=atomic
+        run: go test ./... -v -count=1 -coverprofile=coverage.out -covermode=atomic -coverpkg=./internal/...
 
       - name: Check coverage threshold
         run: |

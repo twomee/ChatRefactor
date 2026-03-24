@@ -137,12 +137,14 @@ func (h *WSHandler) handleMessage(ctx context.Context, conn *websocket.Conn, roo
 	h.manager.BroadcastRoom(roomID, broadcast)
 
 	// Produce to Kafka for persistence.
+	// Field names must match what message-service consumer expects:
+	// sender_id (not user_id), text (not content).
 	kafkaMsg := map[string]interface{}{
 		"type":      "message",
 		"room_id":   roomID,
-		"user_id":   userID,
+		"sender_id": userID,
 		"username":  username,
-		"content":   text,
+		"text":      text,
 		"msg_id":    msgID,
 		"timestamp": now.Format(time.RFC3339),
 	}

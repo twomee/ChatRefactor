@@ -1,7 +1,15 @@
 #!/bin/sh
 # migrate-db.sh — One-time database migration for all microservices.
-# Runs as a Docker init container. Idempotent (CREATE IF NOT EXISTS).
+# Runs as the db-init container. Idempotent (CREATE IF NOT EXISTS).
+# Expects PGUSER, PGHOST, PGPASSWORD env vars from docker-compose.
 set -e
+
+echo "=== Creating per-service databases ==="
+for db in chatbox_auth chatbox_chat chatbox_messages chatbox_files; do
+  echo "  Creating $db (if not exists)..."
+  psql -d chatbox -tc "SELECT 1 FROM pg_database WHERE datname = '$db'" | grep -q 1 \
+    || psql -d chatbox -c "CREATE DATABASE $db"
+done
 
 echo "=== Database migrations ==="
 
