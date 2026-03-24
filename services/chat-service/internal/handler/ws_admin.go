@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -61,15 +62,30 @@ func (h *WSHandler) handleKick(ctx context.Context, conn *websocket.Conn, roomID
 	h.manager.CloseUserConnsInRoom(roomID, targetID)
 
 	// Broadcast system message about the kick.
+	msgID := uuid.New().String()
+	now := time.Now().UTC().Format(time.RFC3339)
 	systemMsg := map[string]interface{}{
 		"type":      "message",
 		"from":      "system",
 		"text":      fmt.Sprintf("%s was kicked by %s", target, username),
 		"room_id":   roomID,
-		"msg_id":    uuid.New().String(),
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"msg_id":    msgID,
+		"timestamp": now,
 	}
 	h.manager.BroadcastRoom(roomID, systemMsg)
+
+	// Persist system message to Kafka.
+	kafkaMsg := map[string]interface{}{
+		"type":      "message",
+		"room_id":   roomID,
+		"sender_id": 0,
+		"username":  "system",
+		"text":      fmt.Sprintf("%s was kicked by %s", target, username),
+		"msg_id":    msgID,
+		"timestamp": now,
+	}
+	payload, _ := json.Marshal(kafkaMsg)
+	_ = h.delivery.DeliverChat(ctx, roomID, payload)
 
 	// Broadcast updated user list.
 	updatedUsers := h.manager.GetUsernamesInRoom(roomID)
