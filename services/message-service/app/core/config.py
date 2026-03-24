@@ -4,6 +4,7 @@
 # Uses chatbox_messages database — each service owns its own database in the
 # microservice architecture.
 import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -27,7 +28,9 @@ def _require_env(key: str) -> str:
     return ""
 
 
-SECRET_KEY = _require_env("SECRET_KEY")
+# In dev, generate a random key per process to avoid decoding tokens with an empty string.
+_raw_secret = _require_env("SECRET_KEY")
+SECRET_KEY = _raw_secret if _raw_secret else secrets.token_urlsafe(64)
 ALGORITHM = "HS256"
 
 DATABASE_URL = _require_env("DATABASE_URL")

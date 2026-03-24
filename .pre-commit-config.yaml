@@ -42,7 +42,7 @@ repos:
         name: eslint (frontend)
         entry: bash -c 'cd frontend && npx eslint --fix "$@"' --
         language: system
-        files: ^frontend/.*\.(js|jsx)$
+        files: ^frontend/.*\.(js|jsx|ts|tsx)$
         types: [file]
 
   # file-service — JavaScript linting
@@ -52,7 +52,7 @@ repos:
         name: eslint (file-service)
         entry: bash -c 'cd services/file-service && npx eslint --fix "$@"' --
         language: system
-        files: ^services/file-service/.*\.(js|jsx)$
+        files: ^services/file-service/.*\.(ts|js)$
         types: [file]
 
   # chat-service — Go linting
