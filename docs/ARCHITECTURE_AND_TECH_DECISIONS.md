@@ -160,11 +160,11 @@ The user sees the message instantly (step 2). The database write happens wheneve
 **Key Kafka features we rely on:**
 
 - **Consumer groups** (`chat-persistence`) — If we scale to multiple message-service instances, Kafka distributes partitions across them automatically.
-- **At-least-once delivery** — Kafka guarantees every message will be consumed at least once. Combined with `ON CONFLICT DO NOTHING` in PostgreSQL, we get exactly-once semantics.
+- **At-least-once delivery** — Kafka guarantees every message will be consumed at least once. Combined with the `message_id` uniqueness constraint + application-level duplicate check in message-service, we get exactly-once semantics.
 - **Dead Letter Queue** (`chat.dlq`) — Messages that fail 3 times go to a separate topic for investigation instead of being lost.
 - **LZ4 compression** — Reduces network and disk usage with minimal CPU overhead.
 - **KRaft mode** — Runs without ZooKeeper, simplifying our deployment to a single Kafka container.
-- **Configurable retention** — 7 days for messages, 3 days for events, 30 days for DLQ. Old data is automatically cleaned up.
+- **Configurable retention** — 7 days for messages, 3 days for events, 7 days for DLQ (cluster-wide `KAFKA_LOG_RETENTION_HOURS: 168`). Old data is automatically cleaned up.
 
 **Graceful degradation:** If Kafka is down, the chat-service uses the `SyncDelivery` fallback (Strategy pattern). Users don't notice — messages still get delivered in real-time via the in-memory WebSocket broadcast. However, messages sent during the outage won't be persisted to history. Persistence resumes when Kafka and the message-service reconnect.
 
@@ -754,11 +754,11 @@ The frontend calls this endpoint when a user joins a room to load conversation h
 │  │  Producers:                        Consumers:              Then:  │      │
 │  │  chat-svc ──chat.messages────────> msg-svc ──INSERT──> PostgreSQL│      │
 │  │  chat-svc ──chat.private─────────> msg-svc ──INSERT──> PostgreSQL│      │
-│  │             (group: chat-persistence)   (idempotent: ON CONFLICT SKIP)│      │
+│  │             (group: chat-persistence)   (idempotent: unique check+skip)│      │
 │  │  chat-svc ──chat.events──────────> (future consumers)            │      │
 │  │  file-svc ──file.events──────────> chat-svc ──broadcast──> lobby │      │
 │  │  auth-svc ──auth.events──────────> (future consumers)            │      │
-│  │  msg-svc ──chat.dlq──────────────> (investigation, 30-day TTL)   │      │
+│  │  msg-svc ──chat.dlq──────────────> (investigation, 7-day TTL)    │      │
 │  └───────────────────────────────────────────────────────────────────┘      │
 │                                                                              │
 │  ┌───────────────────────────────────────────────────────────────────┐      │
@@ -884,11 +884,11 @@ We split the monolith into four services based on **bounded contexts** — each 
 
 #### message-service (Python/FastAPI, port 8004)
 
-- **Message persistence (Kafka consumer):** Runs a background Kafka consumer (consumer group: `chat-persistence`) that reads from `chat.messages` and `chat.private` topics. Persists each message to PostgreSQL (`chatbox_messages` database) with idempotent writes (`ON CONFLICT DO NOTHING` on `message_id` UUID). This is why messages appear in history — without this service, messages would be ephemeral (visible only in real-time, lost on page refresh)
+- **Message persistence (Kafka consumer):** Runs a background Kafka consumer (consumer group: `chat-persistence`) that reads from `chat.messages` and `chat.private` topics. Persists each message to PostgreSQL (`chatbox_messages` database) with idempotent writes — the `message_id` column has a `unique=True` constraint, and the consumer checks for an existing record before inserting (skips duplicates instead of crashing). This is why messages appear in history — without this service, messages would be ephemeral (visible only in real-time, lost on page refresh)
 - **Room history API:** `GET /messages/rooms/{room_id}/history?limit=50` — returns the last 50 messages for a room, ordered oldest-first. Called by the frontend when a user joins a room to load conversation history
 - **Message replay API:** `GET /messages/rooms/{room_id}?since=<ISO_timestamp>&limit=100` — returns messages sent after a specific timestamp. Used when a user reconnects after a disconnect to catch up on missed messages
 - **Private message history:** Similar to room history but filtered by sender/recipient pair
-- **Dead letter queue:** Messages that fail persistence after 3 retries are routed to `chat.dlq` topic (30-day retention) for investigation instead of being lost
+- **Dead letter queue:** Messages that fail persistence after 3 retries are routed to `chat.dlq` topic (7-day retention, same as cluster default) for investigation instead of being lost
 - **Circuit breaker:** Service-to-service calls to auth-service (for username → user_id resolution in private messages) are protected by a circuit breaker. After 5 consecutive failures → circuit opens for 30 seconds → prevents cascading failure if auth-service is down. See `services/message-service/app/infrastructure/auth_client.py`
 
 #### file-service (Node.js/TypeScript, port 8005)
@@ -989,7 +989,7 @@ The microservices architecture employs these patterns:
 | 6 | **Circuit Breaker** | Tracks failures in service-to-service calls. After N consecutive failures, "opens" the circuit and immediately returns errors for a cooldown period instead of sending doomed requests. After cooldown, allows one probe request to test recovery. | Message-service → auth-service REST calls (5 failures → 30s cooldown). See `services/message-service/app/infrastructure/auth_client.py` | Prevents cascading failures when auth-service is down |
 | 7 | **Strangler Fig** | Incrementally migrates from a legacy system by routing traffic to the new system piece by piece, until the old system can be removed. Named after strangler fig trees that grow around and eventually replace their host tree. | Migration from Python monolith (`v1/backend/`) to microservices | Incremental migration — no big-bang rewrite |
 | 8 | **Correlation ID** | A unique identifier (UUID) injected at the API gateway and propagated through every service in the request chain. Every log line includes this ID, making it possible to trace a single user request across all services. | Kong injects `X-Request-ID` → all services propagate it in logs via structlog (Python) or Gin context (Go) | Distributed debugging across 4 services |
-| 9 | **Dead Letter Queue** | A separate queue/topic where messages that failed processing after multiple retries are stored for later investigation. Prevents poison messages (malformed, too large, schema mismatch) from blocking the main processing pipeline. | Kafka `chat.dlq` topic — messages that fail 3 times. 30-day retention for investigation | Failed messages preserved, not lost |
+| 9 | **Dead Letter Queue** | A separate queue/topic where messages that failed processing after multiple retries are stored for later investigation. Prevents poison messages (malformed, too large, schema mismatch) from blocking the main processing pipeline. | Kafka `chat.dlq` topic — messages that fail 3 times. 7-day retention (cluster default) for investigation | Failed messages preserved, not lost |
 | 10 | **Health Check API** | Each service exposes endpoints that report whether it's alive (`/health`) and ready to handle traffic (`/ready`). Used by orchestrators (Docker, Kubernetes) to automatically restart unhealthy services or remove them from load balancers. | `/health` and `/ready` endpoints per service. `/ready` checks DB, Redis, and Kafka connectivity | Automatic failure detection and recovery |
 | 11 | **Competing Consumers** | Multiple instances of a service consume from the same queue/topic, where the broker ensures each message is delivered to only ONE instance. Enables horizontal scaling of consumers without duplicating work. Implemented via Kafka consumer groups. | `chat-persistence` consumer group in message-service, `chat-file-events` group in chat-service | Scale message processing by adding more instances |
 | 12 | **Idempotent Consumer** | The consumer can safely process the same message multiple times without side effects. Achieved by using a unique message ID + database uniqueness constraint. Before inserting, the consumer checks if the `message_id` already exists — if so, it skips the insert. Necessary because Kafka guarantees at-least-once delivery (not exactly-once). | Message-service uses `message_id` UUID with a `unique=True` constraint in PostgreSQL | Kafka retries + DB uniqueness = exactly-once semantics |
