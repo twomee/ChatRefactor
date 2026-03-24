@@ -148,6 +148,47 @@ File Service (Node/Express), Kong API Gateway, React Frontend, and infrastructur
 
 ---
 
+## Production Readiness — Tech Debt
+
+The following items are architectural limitations of the current Docker Compose deployment. They are **not bugs** — they are boundaries that need to be addressed when graduating to production infrastructure.
+
+### P1. CORS origins hardcoded in Kong YAML
+- **Current:** Origins are hardcoded as `http://localhost:3000` and `http://localhost:5173` in `infra/kong/kong.yml`
+- **Why:** Kong declarative config (`_format_version: "3.0"`) does not support environment variable interpolation
+- **Production fix:** Template the YAML at deploy time using `envsubst` in the Docker entrypoint, or switch to Kong DB-backed mode where CORS is configurable via the admin API
+
+### P2. CSP allows `unsafe-inline` for styles
+- **Current:** `style-src 'self' 'unsafe-inline'` in nginx CSP header
+- **Why:** React apps commonly use inline styles. Removing `unsafe-inline` requires nonce-based CSP, where the server generates a unique nonce per request and injects it into both the HTML `<style>` tags and the CSP header
+- **Production fix:** Add a server-side rendering layer or a reverse proxy (e.g., nginx `sub_filter` + `set $csp_nonce`) that injects nonces. Not practical with static file serving.
+
+### P3. Redis authentication is plaintext
+- **Current:** `requirepass` sends password in plaintext over the Docker bridge network
+- **Why:** Docker Compose containers share an internal network not routable from outside, so plaintext is acceptable
+- **Production fix:** Use `rediss://` (TLS) connections. Redis 6+ ACLs for per-service users with minimal permissions. Managed Redis (ElastiCache, Memorystore) handles TLS automatically.
+
+### P4. Rate limiting is per-Kong-instance
+- **Current:** Kong rate-limiting uses `policy: local` — counters are in-memory per Kong process
+- **Why:** Single Kong instance in Docker Compose, so local counters are accurate
+- **Production fix:** Switch to `policy: redis` and point at a shared Redis instance so rate limit counters are shared across all Kong replicas behind a load balancer
+
+### P5. File download loads entire file into browser memory
+- **Current:** `downloadFile()` uses `responseType: 'blob'` which buffers the entire file before triggering download
+- **Why:** Blob download is the standard simple approach and works well for files under ~50MB (most chat attachments)
+- **Production fix:** For large files (50MB+), use the Streams API (`ReadableStream` + `WritableStream` via `StreamSaver.js`) to stream downloads without buffering. Or use short-lived signed URLs that don't contain the JWT.
+
+### P6. HSTS requires TLS termination
+- **Current:** `Strict-Transport-Security` header is set in nginx, but the app runs on HTTP in dev
+- **Why:** HSTS is ignored by browsers on HTTP connections — it only takes effect after the first HTTPS connection
+- **Production fix:** Add TLS termination at the load balancer (ALB, CloudFront) or in nginx (`ssl_certificate`). HSTS then instructs browsers to always use HTTPS for subsequent visits.
+
+### P7. Kafka has no authentication
+- **Current:** Kafka uses `PLAINTEXT` protocol with no SASL authentication
+- **Why:** SASL requires JAAS config files, broker-side mechanism setup, and client credential updates across all 4 services — significant config overhead for dev
+- **Production fix:** Enable SASL/SCRAM or SASL/PLAIN with TLS. Each service gets its own Kafka credentials. Managed Kafka (MSK, Confluent Cloud) simplifies this.
+
+---
+
 ## Remediation Log
 
 Each fix below is tracked with the commit/change that resolved it.
