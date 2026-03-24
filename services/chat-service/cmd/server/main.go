@@ -167,10 +167,12 @@ func main() {
 		auth.POST("/pm/send", pmH.SendPM)
 
 		// Admin dashboard endpoints (global admin only — verified per-handler).
-		auth.GET("/admin/users", roomH.GetRoomUsers) // existing endpoint
+		auth.GET("/admin/users", adminH.ListOnlineUsers)
 		auth.GET("/admin/rooms", adminH.ListAllRooms)
 		auth.POST("/admin/chat/close", adminH.CloseAllRooms)
 		auth.POST("/admin/chat/open", adminH.OpenAllRooms)
+		auth.POST("/admin/rooms/:id/close", adminH.CloseRoom)
+		auth.POST("/admin/rooms/:id/open", adminH.OpenRoom)
 		auth.DELETE("/admin/db", adminH.ResetDatabase)
 		auth.POST("/admin/promote", adminH.PromoteUserInAllRooms)
 	}

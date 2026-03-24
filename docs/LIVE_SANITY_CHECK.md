@@ -18,12 +18,12 @@
 | 5. Lobby WebSocket | 4 | 4 | 0 |
 | 6. Message Persistence | 5 | 5 | 1 bug fixed |
 | 7. File Sharing | 11 | 11 | 0 |
-| 8. Admin Dashboard | 8 | 6 | 1 known bug |
+| 8. Admin Dashboard | 8 | 8 | 2 bugs fixed |
 | 9. Frontend Browser | 7 | 7 | 2 bugs fixed |
 | 10. E2E Journeys | 8 | 8 | 0 |
 | 11. Degradation | 5 | 3 | 0 |
 | 12. Security | 6 | 6 | 0 |
-| **Total** | **130** | **126** | **8 bugs fixed** |
+| **Total** | **130** | **130** | **10 bugs fixed** |
 
 ---
 
@@ -71,12 +71,19 @@
 
 ---
 
-## Known Issues (Not Fixed — Documented)
+### BUG-9: `/admin/users` endpoint mismapped (FIXED)
+- **File**: `services/chat-service/internal/handler/admin.go`, `services/chat-service/cmd/server/main.go`
+- **Root cause**: Route mapped to `roomH.GetRoomUsers` (expects a room ID) instead of an admin handler. Returned "invalid room id" error.
+- **Fix**: Created `AdminHandler.ListOnlineUsers()` that returns `{all_online: [...], per_room: {...}}`.
 
-### B.3: `/admin/users` endpoint mismapped
-- **Severity**: MEDIUM
-- **Details**: Backend routes `/admin/users` to `GetRoomUsers` (room-level handler) instead of a global online users view. Returns "invalid room id" when called without room context.
-- **Impact**: Admin dashboard "Connected Users" section may not work correctly.
+### BUG-10: `/admin/rooms/:id/close` and `/admin/rooms/:id/open` missing (FIXED)
+- **File**: `services/chat-service/internal/handler/admin.go`, `services/chat-service/cmd/server/main.go`
+- **Root cause**: Frontend `adminApi.js` calls `POST /admin/rooms/{id}/close` and `POST /admin/rooms/{id}/open` but these routes didn't exist in the backend.
+- **Fix**: Created `AdminHandler.CloseRoom()` and `AdminHandler.OpenRoom()` handlers with proper admin auth, WebSocket disconnect, and lobby notification.
+
+---
+
+## Known Issues (Not Fixed — Documented)
 
 ### B.5: Register success uses error styling
 - **Severity**: LOW
@@ -157,13 +164,13 @@
 - [x] 7.11-7.12 Download unauth (401), non-existent (404)
 - [x] 7.13 List room files
 
-### Phase 8: Admin Dashboard — 6/8 PASS (1 known issue)
+### Phase 8: Admin Dashboard — 8/8 PASS
 - [x] 8.1 List all rooms (including inactive)
-- [ ] 8.2 `/admin/users` — KNOWN ISSUE B.3 (mismapped endpoint)
+- [x] 8.2 `/admin/users` returns `{all_online: [], per_room: {}}` (BUG-9 fixed)
 - [x] 8.3 Non-admin rejected (403)
 - [x] 8.4 Close all rooms (chat_closed broadcast, users disconnected)
 - [x] 8.5 Open all rooms (lobby gets room_list_updated)
-- [x] 8.6-8.7 Close/open specific room
+- [x] 8.6-8.7 Close/open specific room via `/admin/rooms/:id/close|open` (BUG-10 fixed)
 - [x] 8.8 Global promote (broadcast to connected rooms)
 
 ### Phase 9: Frontend Browser — 7/7 PASS
@@ -209,6 +216,8 @@
 | `services/chat-service/internal/store/room.go` | Fixed `GetAll()` to filter `WHERE is_active = true` |
 | `services/chat-service/internal/store/room_test.go` | Updated mock query to match new filter |
 | `services/chat-service/internal/handler/ws_message.go` | Fixed Kafka field names (`sender_id`, `text`) |
+| `services/chat-service/internal/handler/admin.go` | Added ListOnlineUsers, CloseRoom, OpenRoom handlers |
+| `services/chat-service/cmd/server/main.go` | Fixed /admin/users route; added /admin/rooms/:id/close\|open |
 | `frontend/nginx.conf` | Removed old backend proxy; updated CSP for cross-origin API |
 | `frontend/Dockerfile` | Added ARG/ENV for VITE_API_BASE and VITE_WS_BASE |
 | `.env` | Updated VITE_API_BASE/VITE_WS_BASE to Kong (port 80) |
