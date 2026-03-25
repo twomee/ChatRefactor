@@ -13,7 +13,16 @@ export default defineConfig({
         ws: true,
       },
       '/pm': 'http://localhost:8003',
-      '/admin': 'http://localhost:8003',
+      '/admin': {
+        target: 'http://localhost:8003',
+        // Don't proxy browser page navigation (SPA route /admin).
+        // Only proxy API calls (XHR/fetch) to the chat service.
+        bypass: (req) => {
+          if (req.headers.accept?.includes('text/html')) {
+            return '/index.html';
+          }
+        },
+      },
       '/messages': 'http://localhost:8004',
       '/files': 'http://localhost:8005',
     },

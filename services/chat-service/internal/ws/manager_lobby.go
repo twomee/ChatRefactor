@@ -69,6 +69,23 @@ func (m *Manager) BroadcastLobby(msg interface{}) {
 	}
 }
 
+// GetLobbyUsernames returns a deduplicated list of all users connected to the lobby.
+// This represents all logged-in users (regardless of room membership).
+func (m *Manager) GetLobbyUsernames() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	seen := make(map[string]bool)
+	for _, info := range m.lobbyConns {
+		seen[info.Username] = true
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	return names
+}
+
 // SendPersonal delivers a JSON message to all lobby connections belonging to a user.
 // Returns true if at least one delivery succeeded.
 func (m *Manager) SendPersonal(userID int, msg interface{}) bool {

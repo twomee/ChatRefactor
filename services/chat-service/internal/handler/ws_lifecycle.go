@@ -12,16 +12,30 @@ import (
 	"go.uber.org/zap"
 )
 
+// reconnectGrace is the time to wait before broadcasting a user_left event.
+// If the user reconnects within this window (e.g. page refresh), the leave
+// is cancelled silently — no leave/join messages, no state changes.
+const reconnectGrace = 10 * time.Second
+
 // handleJoin broadcasts the user_join event and sends message history to
 // the newly connected client.
 func (h *WSHandler) handleJoin(ctx context.Context, conn *websocket.Conn, roomID, userID int, username, token string) {
-	// Fetch room state for the join broadcast.
+	// Check if this is a reconnect (pending leave exists).
+	leaveKey := fmt.Sprintf("%d:%d", roomID, userID)
+	h.pendingLeaveMu.Lock()
+	cancel, isReconnect := h.pendingLeaves[leaveKey]
+	if isReconnect {
+		cancel() // cancel the pending leave — user came back
+		delete(h.pendingLeaves, leaveKey)
+	}
+	h.pendingLeaveMu.Unlock()
+
+	// Fetch room state.
 	usernames := h.manager.GetUsernamesInRoom(roomID)
 	adminNames := h.getAdminUsernames(ctx, roomID)
 	mutedNames := h.getMutedUsernames(ctx, roomID)
 
-	// Broadcast join event with full room state.
-	joinBroadcast := map[string]interface{}{
+	roomState := map[string]interface{}{
 		"type":     "user_join",
 		"username": username,
 		"users":    usernames,
@@ -29,54 +43,109 @@ func (h *WSHandler) handleJoin(ctx context.Context, conn *websocket.Conn, roomID
 		"muted":    mutedNames,
 		"room_id":  roomID,
 	}
-	h.manager.BroadcastRoom(roomID, joinBroadcast)
 
-	// Produce join event to Kafka for downstream consumers (analytics, audit).
-	h.produceEvent(ctx, "user_joined", roomID, userID, username)
+	if isReconnect {
+		// Reconnect (e.g. page refresh): send room state only to the
+		// reconnecting user so their UI rebuilds, but don't notify others.
+		_ = h.manager.SendToConn(conn, roomState)
+	} else {
+		// First-time join: broadcast to everyone and persist.
+		h.manager.BroadcastRoom(roomID, roomState)
+
+		joinMsgID := uuid.New().String()
+		joinNow := time.Now().UTC().Format(time.RFC3339)
+		joinKafka := map[string]interface{}{
+			"type":      "message",
+			"room_id":   roomID,
+			"sender_id": 0,
+			"username":  "system",
+			"text":      fmt.Sprintf("%s joined the room", username),
+			"msg_id":    joinMsgID,
+			"timestamp": joinNow,
+		}
+		joinPayload, _ := json.Marshal(joinKafka)
+		_ = h.delivery.DeliverChat(ctx, roomID, joinPayload)
+
+		h.produceEvent(ctx, "user_joined", roomID, userID, username)
+	}
 
 	// Send message history to the newly joined connection.
 	h.sendHistory(conn, roomID, token)
 }
 
-// handleDisconnect cleans up the connection, handles admin succession,
-// clears the user's mute status, and broadcasts the user_left event.
-// For kicked users, the user_left broadcast is skipped (handleKick already sent it).
+// handleDisconnect cleans up the connection and schedules a delayed leave
+// broadcast. If the user reconnects within the grace period (e.g. page
+// refresh), the leave is cancelled silently.
+// For kicked users, the leave is immediate (no grace period).
 func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, roomID, userID int, username string) {
 	h.manager.DisconnectRoom(roomID, conn)
 	_ = conn.Close()
 
-	// If this user was kicked, skip the user_left broadcast — it was already
-	// sent by handleKick. Also skip admin succession (kicked users aren't admins).
+	// Kicked users: immediate leave (already broadcast by handleKick).
 	if h.wasKicked(roomID, userID) {
 		return
 	}
 
-	// Handle admin succession before broadcasting leave.
-	h.handleAdminSuccession(ctx, roomID, userID, username)
-
-	// Clear mute on leave — user should not remain muted after disconnecting.
-	isMuted, _ := h.store.IsMuted(ctx, roomID, userID)
-	if isMuted {
-		_ = h.store.UnmuteUser(ctx, roomID, userID)
+	// Check if user still has other connections in this room (multi-tab).
+	if h.manager.IsUserInRoom(roomID, userID) {
+		return
 	}
 
-	// Get updated room state for leave broadcast.
-	remainingUsers := h.manager.GetUsernamesInRoom(roomID)
-	updatedAdmins := h.getAdminUsernames(ctx, roomID)
-	updatedMuted := h.getMutedUsernames(ctx, roomID)
+	// Schedule a delayed leave. If the user reconnects within the grace
+	// period, handleJoin cancels this and no leave/join is broadcast.
+	leaveCtx, cancel := context.WithCancel(context.Background())
+	leaveKey := fmt.Sprintf("%d:%d", roomID, userID)
 
-	leaveBroadcast := map[string]interface{}{
-		"type":     "user_left",
-		"username": username,
-		"users":    remainingUsers,
-		"admins":   updatedAdmins,
-		"muted":    updatedMuted,
-		"room_id":  roomID,
-	}
-	h.manager.BroadcastRoom(roomID, leaveBroadcast)
+	h.pendingLeaveMu.Lock()
+	h.pendingLeaves[leaveKey] = cancel
+	h.pendingLeaveMu.Unlock()
 
-	// Produce leave event to Kafka for downstream consumers.
-	h.produceEvent(ctx, "user_left", roomID, userID, username)
+	go func() {
+		select {
+		case <-leaveCtx.Done():
+			// Cancelled — user reconnected. Do nothing.
+			return
+		case <-time.After(reconnectGrace):
+			// Grace period expired — user truly left.
+		}
+
+		h.pendingLeaveMu.Lock()
+		delete(h.pendingLeaves, leaveKey)
+		h.pendingLeaveMu.Unlock()
+
+		// Broadcast leave with updated room state.
+		bgCtx := context.Background()
+		remainingUsers := h.manager.GetUsernamesInRoom(roomID)
+		updatedAdmins := h.getAdminUsernames(bgCtx, roomID)
+		updatedMuted := h.getMutedUsernames(bgCtx, roomID)
+
+		leaveBroadcast := map[string]interface{}{
+			"type":     "user_left",
+			"username": username,
+			"users":    remainingUsers,
+			"admins":   updatedAdmins,
+			"muted":    updatedMuted,
+			"room_id":  roomID,
+		}
+		h.manager.BroadcastRoom(roomID, leaveBroadcast)
+
+		// Persist leave system message.
+		leaveMsgID := uuid.New().String()
+		leaveNow := time.Now().UTC().Format(time.RFC3339)
+		leaveKafka := map[string]interface{}{
+			"type":      "message",
+			"room_id":   roomID,
+			"sender_id": 0,
+			"username":  "system",
+			"text":      fmt.Sprintf("%s left the room", username),
+			"msg_id":    leaveMsgID,
+			"timestamp": leaveNow,
+		}
+		leavePayload, _ := json.Marshal(leaveKafka)
+		_ = h.delivery.DeliverChat(bgCtx, roomID, leavePayload)
+
+		h.produceEvent(bgCtx, "user_left", roomID, userID, username)
+	}()
 }
 
 // handleAdminSuccession handles admin departure and succession logic.

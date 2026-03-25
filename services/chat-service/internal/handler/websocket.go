@@ -108,6 +108,12 @@ type WSHandler struct {
 	// set and skips the "user_left" broadcast to avoid duplicates.
 	kickedMu    sync.Mutex
 	kickedUsers map[string]bool
+
+	// pendingLeaves tracks delayed leave broadcasts for reconnect grace period.
+	// Key: "room:user" → cancel function. If the user reconnects within the
+	// grace period, the pending leave is cancelled silently.
+	pendingLeaveMu sync.Mutex
+	pendingLeaves  map[string]context.CancelFunc
 }
 
 // NewWSHandler creates a WebSocket handler.
@@ -128,6 +134,7 @@ func NewWSHandler(
 		limiter:       newRateLimiter(),
 		messageSvcURL: messageServiceURL,
 		kickedUsers:   make(map[string]bool),
+		pendingLeaves: make(map[string]context.CancelFunc),
 	}
 }
 
@@ -198,14 +205,24 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 	user := ws.UserInfo{UserID: userID, Username: username}
 	h.manager.ConnectRoom(roomID, conn, user)
 
-	// If this is the first user in the room, make them admin.
+	// Auto-promote to admin if no admin is currently connected to this room.
+	// Stale admin records (from users who left) are cleared so the first
+	// user to join an empty room always becomes admin.
 	ctx := context.Background()
-	isAdmin, _ := h.store.IsAdmin(ctx, roomID, userID)
-	if !isAdmin {
-		users := h.manager.GetUsersInRoom(roomID)
-		if len(users) == 1 {
-			_, _ = h.store.AddAdmin(ctx, roomID, userID)
+	admins, _ := h.store.GetAdmins(ctx, roomID)
+	hasConnectedAdmin := false
+	for _, a := range admins {
+		if h.manager.IsUserInRoom(roomID, a.UserID) {
+			hasConnectedAdmin = true
+			break
 		}
+	}
+	if !hasConnectedAdmin {
+		// Clear stale admin records from previous sessions.
+		for _, a := range admins {
+			_ = h.store.RemoveAdmin(ctx, roomID, a.UserID)
+		}
+		_, _ = h.store.AddAdmin(ctx, roomID, userID)
 	}
 
 	// Handle join: broadcast, send history.
