@@ -205,12 +205,23 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 	user := ws.UserInfo{UserID: userID, Username: username}
 	h.manager.ConnectRoom(roomID, conn, user)
 
-	// Auto-promote to admin if no admin exists for this room.
-	// Admin status persists across disconnects/refreshes, so this only
-	// triggers for truly new rooms or rooms where all admins were removed.
+	// Auto-promote to admin if no admin is currently connected to this room.
+	// Stale admin records (from users who left) are cleared so the first
+	// user to join an empty room always becomes admin.
 	ctx := context.Background()
 	admins, _ := h.store.GetAdmins(ctx, roomID)
-	if len(admins) == 0 {
+	hasConnectedAdmin := false
+	for _, a := range admins {
+		if h.manager.IsUserInRoom(roomID, a.UserID) {
+			hasConnectedAdmin = true
+			break
+		}
+	}
+	if !hasConnectedAdmin {
+		// Clear stale admin records from previous sessions.
+		for _, a := range admins {
+			_ = h.store.RemoveAdmin(ctx, roomID, a.UserID)
+		}
 		_, _ = h.store.AddAdmin(ctx, roomID, userID)
 	}
 
