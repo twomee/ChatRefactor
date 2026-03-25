@@ -31,6 +31,21 @@ func (h *WSHandler) handleJoin(ctx context.Context, conn *websocket.Conn, roomID
 	}
 	h.manager.BroadcastRoom(roomID, joinBroadcast)
 
+	// Persist join system message so it appears in history.
+	joinMsgID := uuid.New().String()
+	joinNow := time.Now().UTC().Format(time.RFC3339)
+	joinKafka := map[string]interface{}{
+		"type":      "message",
+		"room_id":   roomID,
+		"sender_id": 0,
+		"username":  "system",
+		"text":      fmt.Sprintf("%s joined the room", username),
+		"msg_id":    joinMsgID,
+		"timestamp": joinNow,
+	}
+	joinPayload, _ := json.Marshal(joinKafka)
+	_ = h.delivery.DeliverChat(ctx, roomID, joinPayload)
+
 	// Produce join event to Kafka for downstream consumers (analytics, audit).
 	h.produceEvent(ctx, "user_joined", roomID, userID, username)
 
@@ -69,6 +84,21 @@ func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, 
 		"room_id":  roomID,
 	}
 	h.manager.BroadcastRoom(roomID, leaveBroadcast)
+
+	// Persist leave system message so it appears in history.
+	leaveMsgID := uuid.New().String()
+	leaveNow := time.Now().UTC().Format(time.RFC3339)
+	leaveKafka := map[string]interface{}{
+		"type":      "message",
+		"room_id":   roomID,
+		"sender_id": 0,
+		"username":  "system",
+		"text":      fmt.Sprintf("%s left the room", username),
+		"msg_id":    leaveMsgID,
+		"timestamp": leaveNow,
+	}
+	leavePayload, _ := json.Marshal(leaveKafka)
+	_ = h.delivery.DeliverChat(ctx, roomID, leavePayload)
 
 	// Produce leave event to Kafka for downstream consumers.
 	h.produceEvent(ctx, "user_left", roomID, userID, username)

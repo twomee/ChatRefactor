@@ -163,7 +163,7 @@ func (h *AdminHandler) ResetDatabase(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"detail": "database reset complete"})
 }
 
-// ListOnlineUsers returns all online users grouped by room.
+// ListOnlineUsers returns all logged-in users (lobby connections) and users per room.
 // GET /admin/users
 func (h *AdminHandler) ListOnlineUsers(c *gin.Context) {
 	if h.requireGlobalAdmin(c) == nil {
@@ -178,22 +178,15 @@ func (h *AdminHandler) ListOnlineUsers(c *gin.Context) {
 	}
 
 	perRoom := make(map[int][]string)
-	allOnlineSet := make(map[string]bool)
-
 	for _, room := range rooms {
 		usernames := h.manager.GetUsernamesInRoom(room.ID)
 		if len(usernames) > 0 {
 			perRoom[room.ID] = usernames
-			for _, u := range usernames {
-				allOnlineSet[u] = true
-			}
 		}
 	}
 
-	allOnline := make([]string, 0, len(allOnlineSet))
-	for u := range allOnlineSet {
-		allOnline = append(allOnline, u)
-	}
+	// All online = all lobby-connected users (logged in, regardless of room membership).
+	allOnline := h.manager.GetLobbyUsernames()
 
 	c.JSON(http.StatusOK, gin.H{
 		"all_online": allOnline,

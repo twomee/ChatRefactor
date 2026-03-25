@@ -28,7 +28,7 @@ export default function ChatPage() {
   const { pmState, pmDispatch } = usePM();
   const navigate = useNavigate();
 
-  const { joinRoom, exitRoom, exitAllRooms, disconnectAll, sendMessage, connectionStatus } = useChatConnection();
+  const { joinRoom, exitRoom, disconnectAll, sendMessage, connectionStatus } = useChatConnection();
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
