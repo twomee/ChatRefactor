@@ -123,6 +123,49 @@ func TestGetUserByUsernameEscapesPath(t *testing.T) {
 	}
 }
 
+func TestGetUserByIDSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/auth/users/7" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(UserResponse{ID: 7, Username: "bob"})
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	c := NewAuthClient(srv.URL, logger)
+
+	user, err := c.GetUserByID(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if user == nil {
+		t.Fatal("expected non-nil user")
+	}
+	if user.ID != 7 {
+		t.Errorf("expected user ID 7, got %d", user.ID)
+	}
+}
+
+func TestGetUserByIDNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	c := NewAuthClient(srv.URL, logger)
+
+	user, err := c.GetUserByID(context.Background(), 999)
+	if err != nil {
+		t.Fatalf("expected nil error for 404, got: %v", err)
+	}
+	if user != nil {
+		t.Errorf("expected nil user for 404, got %+v", user)
+	}
+}
+
 func TestPingSuccess(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/health" {
