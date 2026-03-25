@@ -132,7 +132,7 @@ func main() {
 	// --- Handlers ---
 	healthH := handler.NewHealthHandler(dbPool, rdb, kafkaProducer, brokers)
 	roomH := handler.NewRoomHandler(roomStore, wsManager, authClient, logger)
-	wsH := handler.NewWSHandler(wsManager, roomStore, deliveryStrategy, cfg.SecretKey, cfg.MessageServiceURL, logger)
+	wsH := handler.NewWSHandler(wsManager, roomStore, deliveryStrategy, authClient, cfg.SecretKey, cfg.MessageServiceURL, logger)
 	lobbyH := handler.NewLobbyHandler(wsManager, cfg.SecretKey, logger)
 	pmH := handler.NewPMHandler(wsManager, authClient, deliveryStrategy, logger)
 	adminH := handler.NewAdminHandler(roomStore, wsManager, authClient, logger)

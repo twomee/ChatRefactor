@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 
+	"github.com/twomee/chatbox/chat-service/internal/client"
 	"github.com/twomee/chatbox/chat-service/internal/delivery"
 	"github.com/twomee/chatbox/chat-service/internal/middleware"
 	"github.com/twomee/chatbox/chat-service/internal/store"
@@ -98,6 +99,7 @@ type WSHandler struct {
 	manager       *ws.Manager
 	store         store.RoomRepository
 	delivery      delivery.Strategy
+	authClient    *client.AuthClient
 	secretKey     string
 	logger        *zap.Logger
 	limiter       *rateLimiter
@@ -121,6 +123,7 @@ func NewWSHandler(
 	manager *ws.Manager,
 	store store.RoomRepository,
 	delivery delivery.Strategy,
+	authClient *client.AuthClient,
 	secretKey string,
 	messageServiceURL string,
 	logger *zap.Logger,
@@ -129,6 +132,7 @@ func NewWSHandler(
 		manager:       manager,
 		store:         store,
 		delivery:      delivery,
+		authClient:    authClient,
 		secretKey:     secretKey,
 		logger:        logger,
 		limiter:       newRateLimiter(),
@@ -162,6 +166,23 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "invalid token"})
 		return
+	}
+
+	// Verify user still exists in auth database. JWTs are stateless, so a
+	// valid token might belong to a deleted/re-registered user. Without this
+	// check, stale tokens create ghost connections that cause duplicate
+	// messages and phantom presence.
+	if h.authClient != nil {
+		authUser, authErr := h.authClient.GetUserByID(c.Request.Context(), userID)
+		if authErr != nil {
+			h.logger.Warn("auth_user_lookup_failed", zap.Error(authErr))
+			c.JSON(http.StatusServiceUnavailable, gin.H{"detail": "auth service unavailable"})
+			return
+		}
+		if authUser == nil || authUser.Username != username {
+			c.JSON(http.StatusUnauthorized, gin.H{"detail": "user no longer exists"})
+			return
+		}
 	}
 
 	// Verify room exists and is active.

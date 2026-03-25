@@ -26,7 +26,7 @@ func setupWSServer(t *testing.T) (srvURL string, cleanup func()) {
 		adminSet: make(map[string]bool),
 		muteSet:  make(map[string]bool),
 	}
-	wsH := NewWSHandler(manager, store, del, testSecret, "http://localhost:8004", logger)
+	wsH := NewWSHandler(manager, store, del, nil, testSecret, "http://localhost:8004", logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
