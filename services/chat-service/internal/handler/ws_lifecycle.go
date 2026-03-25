@@ -30,24 +30,25 @@ func (h *WSHandler) handleJoin(ctx context.Context, conn *websocket.Conn, roomID
 	}
 	h.pendingLeaveMu.Unlock()
 
-	// Fetch room state for the join broadcast.
-	usernames := h.manager.GetUsernamesInRoom(roomID)
-	adminNames := h.getAdminUsernames(ctx, roomID)
-	mutedNames := h.getMutedUsernames(ctx, roomID)
+	if isReconnect {
+		// Reconnect (e.g. page refresh): user never truly left, so no
+		// join/leave broadcast. Just send history to the new connection.
+	} else {
+		// First-time join: broadcast to room and persist.
+		usernames := h.manager.GetUsernamesInRoom(roomID)
+		adminNames := h.getAdminUsernames(ctx, roomID)
+		mutedNames := h.getMutedUsernames(ctx, roomID)
 
-	// Always broadcast updated user list (so other clients refresh their view).
-	joinBroadcast := map[string]interface{}{
-		"type":     "user_join",
-		"username": username,
-		"users":    usernames,
-		"admins":   adminNames,
-		"muted":    mutedNames,
-		"room_id":  roomID,
-	}
-	h.manager.BroadcastRoom(roomID, joinBroadcast)
+		joinBroadcast := map[string]interface{}{
+			"type":     "user_join",
+			"username": username,
+			"users":    usernames,
+			"admins":   adminNames,
+			"muted":    mutedNames,
+			"room_id":  roomID,
+		}
+		h.manager.BroadcastRoom(roomID, joinBroadcast)
 
-	if !isReconnect {
-		// First-time join: persist system message and produce event.
 		joinMsgID := uuid.New().String()
 		joinNow := time.Now().UTC().Format(time.RFC3339)
 		joinKafka := map[string]interface{}{
