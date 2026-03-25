@@ -22,7 +22,7 @@ export default function FileUpload({ roomId }) {
       });
       if (inputRef.current) inputRef.current.value = '';
     } catch (err) {
-      setError(err.response?.data?.detail || 'Upload failed');
+      setError(err.response?.data?.error || err.response?.data?.detail || 'Upload failed');
     } finally {
       setUploading(false);
       setProgress(0);
