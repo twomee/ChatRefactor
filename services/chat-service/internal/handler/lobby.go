@@ -64,7 +64,7 @@ func (h *LobbyHandler) HandleLobbyWS(c *gin.Context) {
 	// Read loop just keeps the connection alive and detects disconnection.
 	for {
 		if _, _, err := conn.ReadMessage(); err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure, websocket.CloseAbnormalClosure, websocket.CloseNoStatusReceived) {
 				h.logger.Warn("lobby_ws_read_error", zap.Error(err))
 			}
 			break

@@ -64,7 +64,7 @@ func (h *WSHandler) readLoop(conn *websocket.Conn, roomID, userID int, username 
 	for {
 		_, raw, err := conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure, websocket.CloseAbnormalClosure, websocket.CloseNoStatusReceived) {
 				h.logger.Warn("ws_read_error", zap.Error(err))
 			}
 			return
