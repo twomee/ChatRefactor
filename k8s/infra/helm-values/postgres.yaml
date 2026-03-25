@@ -1,0 +1,24 @@
+## Bitnami PostgreSQL Helm values
+## Install: helm install postgres oci://registry-1.docker.io/bitnamicharts/postgresql
+##          -n chatbox-infra -f k8s/infra/helm-values/postgres.yaml
+##          --set auth.postgresPassword=<your-password>
+
+auth:
+  username: chatbox
+  database: chatbox
+
+primary:
+  persistence:
+    size: 8Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  extendedConfiguration: |
+    max_connections = 200
+
+metrics:
+  enabled: false

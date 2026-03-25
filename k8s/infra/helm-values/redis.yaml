@@ -1,0 +1,19 @@
+## Bitnami Redis Helm values
+## Install: helm install redis oci://registry-1.docker.io/bitnamicharts/redis
+##          -n chatbox-infra -f k8s/infra/helm-values/redis.yaml
+##          --set auth.password=<your-password>
+
+architecture: standalone
+
+auth: {}
+
+master:
+  persistence:
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi

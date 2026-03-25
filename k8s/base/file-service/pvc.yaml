@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: file-uploads-pvc
+  namespace: chatbox
+  labels:
+    app.kubernetes.io/name: file-service
+    app.kubernetes.io/part-of: chatbox
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

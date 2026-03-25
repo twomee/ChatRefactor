@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# teardown.sh — Remove everything and delete the kind cluster
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+K8S_DIR="$PROJECT_ROOT/k8s"
+CLUSTER_NAME="chatbox"
+
+echo "========================================="
+echo "  Chatbox K8s Teardown"
+echo "========================================="
+
+echo ""
+echo "[1/4] Removing application..."
+kubectl delete -k "$K8S_DIR/overlays/dev" --ignore-not-found 2>/dev/null || true
+
+echo ""
+echo "[2/4] Removing init jobs..."
+kubectl delete -f "$K8S_DIR/jobs/" --ignore-not-found 2>/dev/null || true
+
+echo ""
+echo "[3/4] Removing infrastructure..."
+helm uninstall kafka --namespace chatbox-infra 2>/dev/null || true
+helm uninstall redis --namespace chatbox-infra 2>/dev/null || true
+helm uninstall postgres --namespace chatbox-infra 2>/dev/null || true
+
+echo ""
+echo "[4/4] Deleting kind cluster..."
+kind delete cluster --name "$CLUSTER_NAME"
+
+echo ""
+echo "========================================="
+echo "  Teardown complete!"
+echo "========================================="

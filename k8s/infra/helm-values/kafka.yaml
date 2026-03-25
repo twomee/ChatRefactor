@@ -1,0 +1,31 @@
+## Bitnami Kafka Helm values (KRaft mode, no ZooKeeper)
+## Install: helm install kafka oci://registry-1.docker.io/bitnamicharts/kafka
+##          -n chatbox-infra -f k8s/infra/helm-values/kafka.yaml
+
+kraft:
+  enabled: true
+
+controller:
+  replicaCount: 1
+
+listeners:
+  client:
+    protocol: PLAINTEXT
+
+persistence:
+  size: 8Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+log:
+  retention:
+    hours: 168
+
+zookeeper:
+  enabled: false

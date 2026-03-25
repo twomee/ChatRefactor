@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: file-service
+  namespace: chatbox
+  labels:
+    app.kubernetes.io/name: file-service
+    app.kubernetes.io/part-of: chatbox
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: file-service
+  ports:
+    - port: 8005
+      targetPort: 8005
+      protocol: TCP
