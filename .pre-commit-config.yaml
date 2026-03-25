@@ -5,22 +5,62 @@ repos:
     hooks:
       - id: gitleaks
 
-  # Python linting and formatting
+  # v1/backend — Python linting and formatting
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.8.6
     hooks:
       - id: ruff
         args: [--fix]
-        files: ^backend/
+        files: ^v1/backend/
       - id: ruff-format
-        files: ^backend/
+        files: ^v1/backend/
 
-  # Frontend linting
+  # auth-service — Python linting and formatting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^services/auth-service/
+      - id: ruff-format
+        files: ^services/auth-service/
+
+  # message-service — Python linting and formatting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^services/message-service/
+      - id: ruff-format
+        files: ^services/message-service/
+
+  # frontend — JavaScript linting
   - repo: local
     hooks:
-      - id: eslint
-        name: eslint
+      - id: eslint-frontend
+        name: eslint (frontend)
         entry: bash -c 'cd frontend && npx eslint --fix "$@"' --
         language: system
-        files: ^frontend/.*\.(js|jsx)$
+        files: ^frontend/.*\.(js|jsx|ts|tsx)$
         types: [file]
+
+  # file-service — JavaScript linting
+  - repo: local
+    hooks:
+      - id: eslint-file-service
+        name: eslint (file-service)
+        entry: bash -c 'cd services/file-service && npx eslint --fix "$@"' --
+        language: system
+        files: ^services/file-service/.*\.(ts|js)$
+        types: [file]
+
+  # chat-service — Go linting
+  - repo: local
+    hooks:
+      - id: go-vet-chat-service
+        name: go vet (chat-service)
+        entry: bash -c 'cd services/chat-service && go vet ./...'
+        language: system
+        files: ^services/chat-service/.*\.go$
+        pass_filenames: false

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chat.private.schema.json",
+  "title": "Private Message",
+  "description": "Produced by Chat & Room Service to chat.private topic when a user sends a direct message.",
+  "type": "object",
+  "required": ["msg_id", "sender", "recipient", "text", "timestamp"],
+  "properties": {
+    "msg_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID for idempotent persistence"
+    },
+    "sender": {
+      "type": "string",
+      "description": "Username of the sender"
+    },
+    "recipient": {
+      "type": "string",
+      "description": "Username of the recipient"
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Message content"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp"
+    }
+  },
+  "additionalProperties": false,
+  "_kafka": {
+    "topic": "chat.private",
+    "key": "sorted_username_pair (e.g. alice:bob)",
+    "retention": "7 days",
+    "producer": "Chat & Room Service (Go)",
+    "consumer": "Message Service (Python)"
+  }
+}

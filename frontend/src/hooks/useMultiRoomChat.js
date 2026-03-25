@@ -89,10 +89,16 @@ export function useMultiRoomChat() {
         break;
 
       case 'user_join':
+        dispatch({ type: 'SET_USERS', roomId: msg.room_id, users: msg.users });
+        if (msg.admins) dispatch({ type: 'SET_ADMINS', roomId: msg.room_id, admins: msg.admins });
+        if (msg.muted !== undefined) dispatch({ type: 'SET_MUTED_USERS', roomId: msg.room_id, muted: msg.muted });
+        if (msg.username) dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { isSystem: true, text: `${msg.username} joined the room` } });
+        break;
       case 'user_left':
         dispatch({ type: 'SET_USERS', roomId: msg.room_id, users: msg.users });
         if (msg.admins) dispatch({ type: 'SET_ADMINS', roomId: msg.room_id, admins: msg.admins });
         if (msg.muted !== undefined) dispatch({ type: 'SET_MUTED_USERS', roomId: msg.room_id, muted: msg.muted });
+        if (msg.username) dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { isSystem: true, text: `${msg.username} left the room` } });
         break;
 
       case 'system':
@@ -100,13 +106,23 @@ export function useMultiRoomChat() {
         trackTimestamp(msg.room_id);
         break;
 
-      case 'message':
+      case 'message': {
+        // Deduplicate by msg_id to prevent duplicates from overlapping
+        // connections (e.g. stale JWT sessions with different user IDs).
+        if (msg.msg_id) {
+          if (seenMsgIdsRef.current.has(msg.msg_id)) break;
+          if (seenMsgIdsRef.current.size >= 500) {
+            seenMsgIdsRef.current.delete(seenMsgIdsRef.current.values().next().value);
+          }
+          seenMsgIdsRef.current.add(msg.msg_id);
+        }
         dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { from: msg.from, text: msg.text } });
         if (msg.room_id !== activeRoomIdRef.current) {
           dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
         }
         trackTimestamp(msg.room_id);
         break;
+      }
 
       case 'private_message': {
         if (msg.msg_id) {
@@ -305,6 +321,12 @@ export function useMultiRoomChat() {
     [...socketsRef.current.keys()].forEach(roomId => exitRoom(roomId));
   }, [exitRoom]);
 
+  // ── disconnectAll (logout) — close sockets but keep localStorage ──
+  const disconnectAll = useCallback(() => {
+    socketsRef.current.forEach(ws => ws.close());
+    socketsRef.current.clear();
+  }, []);
+
   useEffect(() => { exitRoomRef.current = exitRoom; }, [exitRoom]);
   useEffect(() => { exitAllRoomsRef.current = exitAllRooms; }, [exitAllRooms]);
 
@@ -385,5 +407,5 @@ export function useMultiRoomChat() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { joinRoom, exitRoom, exitAllRooms, sendMessage, connectionStatus };
+  return { joinRoom, exitRoom, exitAllRooms, disconnectAll, sendMessage, connectionStatus };
 }

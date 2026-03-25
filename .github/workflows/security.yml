@@ -2,9 +2,9 @@ name: Security Scan
 
 on:
   push:
-    branches: [main]
+    branches: [main, microservices]
   pull_request:
-    branches: [main]
+    branches: [main, microservices]
   schedule:
     # Run every Monday at 9:00 AM UTC
     - cron: "0 9 * * 1"
@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Build backend image
-        run: docker build -t chatbox-backend:scan ./backend
+        run: docker build -t chatbox-backend:scan ./v1/backend
 
       - name: Scan backend image
         uses: aquasecurity/trivy-action@master
@@ -61,6 +61,35 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: chatbox-frontend:scan
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+  trivy-auth-service-image:
+    name: Trivy Auth Service Image Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check if auth-service Dockerfile exists
+        id: check-auth
+        run: |
+          if [ -f services/auth-service/Dockerfile ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build auth-service image
+        if: steps.check-auth.outputs.exists == 'true'
+        run: docker build -t chatbox-auth:scan ./services/auth-service
+
+      - name: Scan auth-service image
+        if: steps.check-auth.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: chatbox-auth:scan
           format: table
           exit-code: 1
           severity: CRITICAL,HIGH

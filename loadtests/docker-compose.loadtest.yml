@@ -13,19 +13,19 @@ services:
     ports:
       - "8089:8089"
     environment:
-      - LOADTEST_API_BASE=http://backend:8000
-      - LOADTEST_WS_BASE=ws://backend:8000
+      - LOADTEST_API_BASE=http://kong
+      - LOADTEST_WS_BASE=ws://kong
       - LOADTEST_NUM_USERS=200
       - ADMIN_USERNAME=${ADMIN_USERNAME:-ido}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
     command: >
-      locust -f scenarios/http_endpoints.py
+      locust -f locustfile.py
       --master
-      --host=http://backend:8000
+      --host=http://kong
     volumes:
       - ./loadtests/reports:/loadtests/reports
     depends_on:
-      backend:
+      kong:
         condition: service_healthy
 
   locust-worker:
@@ -33,13 +33,13 @@ services:
       context: ./loadtests
       dockerfile: Dockerfile.locust
     environment:
-      - LOADTEST_API_BASE=http://backend:8000
-      - LOADTEST_WS_BASE=ws://backend:8000
+      - LOADTEST_API_BASE=http://kong
+      - LOADTEST_WS_BASE=ws://kong
       - LOADTEST_NUM_USERS=200
       - ADMIN_USERNAME=${ADMIN_USERNAME:-ido}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
     command: >
-      locust -f scenarios/http_endpoints.py
+      locust -f locustfile.py
       --worker
       --master-host=locust-master
     depends_on:

@@ -1,9 +1,43 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// Suppress EPIPE/ECONNREFUSED errors on all proxy routes.
+// These happen when the browser drops connections on refresh or
+// when a backend service is temporarily down.
+const silenceProxyErrors = {
+  error: () => {},
+  proxyReq: (_proxyReq, _req, res) => {
+    res.on('error', () => {});
+  },
+  proxyReqWs: (_proxyReq, _req, socket) => {
+    socket.on('error', () => {});
+  },
+};
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  server: {
+    proxy: {
+      '/auth': { target: 'http://localhost:8001', on: silenceProxyErrors },
+      '/rooms': { target: 'http://localhost:8003', on: silenceProxyErrors },
+      '/ws': { target: 'http://localhost:8003', ws: true, on: silenceProxyErrors },
+      '/pm': { target: 'http://localhost:8003', on: silenceProxyErrors },
+      '/admin': {
+        target: 'http://localhost:8003',
+        on: silenceProxyErrors,
+        // Don't proxy browser page navigation (SPA route /admin).
+        // Only proxy API calls (XHR/fetch) to the chat service.
+        bypass: (req) => {
+          if (req.headers.accept?.includes('text/html')) {
+            return '/index.html';
+          }
+        },
+      },
+      '/messages': { target: 'http://localhost:8004', on: silenceProxyErrors },
+      '/files': { target: 'http://localhost:8005', on: silenceProxyErrors },
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',

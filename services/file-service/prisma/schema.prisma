@@ -1,0 +1,24 @@
+// Prisma schema for File Service
+// Owns the `files` table in `chatbox_files` database
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model File {
+  id           Int      @id @default(autoincrement())
+  originalName String   @map("original_name") @db.VarChar(256)
+  storedPath   String   @map("stored_path") @db.VarChar(512)
+  fileSize     Int      @map("file_size")
+  senderId     Int      @map("sender_id")
+  senderName   String?  @map("sender_name") @db.VarChar(64)
+  roomId       Int      @map("room_id")
+  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+
+  @@map("files")
+}

@@ -96,32 +96,32 @@ The orchestrator will:
 ```bash
 # HTTP endpoints with Locust web UI (http://localhost:8089)
 # This opens a live dashboard where you can watch the test in real time
-locust -f scenarios/http_endpoints.py --host http://localhost:8000
+locust -f scenarios/http_endpoints.py --host http://localhost
 
 # HTTP endpoints headless (no UI, just results — good for CI)
 locust -f scenarios/http_endpoints.py --headless \
   --users 100 --spawn-rate 10 --run-time 10m \
-  --host http://localhost:8000 \
+  --host http://localhost \
   --csv reports/http_load --html reports/http_load.html
 
 # WebSocket connections + messaging
 locust -f scenarios/websocket_chat.py --headless \
   --users 50 --spawn-rate 10 --run-time 5m \
-  --host ws://localhost:8000
+  --host ws://localhost
 
 # Full user journey (register → login → WS → chat → logout)
 locust -f scenarios/user_journey.py --headless \
   --users 20 --spawn-rate 5 --run-time 5m \
-  --host http://localhost:8000
+  --host http://localhost
 
 # DB pool stress test (zero-wait, maximum pressure)
 locust -f scenarios/http_endpoints.py DbPoolStressUser --headless \
   --users 500 --spawn-rate 50 --run-time 5m \
-  --host http://localhost:8000
+  --host http://localhost
 
 # Spike test (10 → 200 → 10 users)
 locust -f scenarios/spike_shape.py,scenarios/http_endpoints.py --headless \
-  --host http://localhost:8000
+  --host http://localhost
 
 # Standalone WebSocket stress (asyncio — more efficient for high connections)
 python3 scripts/ws_stress.py --connections 100 --duration 60 --rooms 3
@@ -141,6 +141,116 @@ pytest benchmarks/bench_auth.py --benchmark-only -v
 # Save benchmark results as JSON
 pytest benchmarks/ --benchmark-only --benchmark-json=reports/benchmarks.json
 ```
+
+---
+
+## Microservices Load Tests (locustfile.py)
+
+The `locustfile.py` in the root of `loadtests/` tests all four microservices through the Kong API Gateway. All load test traffic goes through Kong on port 80, which routes to the correct service. This tests the full production stack: Locust → Kong → microservice → DB/Redis/Kafka.
+
+### Running Microservices Load Tests
+
+```bash
+# All four service user classes with web UI
+locust -f locustfile.py --host http://localhost
+
+# Single service user class
+locust -f locustfile.py AuthUser --host http://localhost
+locust -f locustfile.py ChatUser --host http://localhost
+locust -f locustfile.py FileUser --host http://localhost
+locust -f locustfile.py MessageUser --host http://localhost
+
+# Headless CI mode
+locust -f locustfile.py --headless \
+  --users 200 --spawn-rate 20 --run-time 10m \
+  --host http://localhost \
+  --csv reports/microservices --html reports/microservices.html
+```
+
+Open the Locust UI at **http://localhost:8089**, configure users and spawn rate, then start.
+
+### User Classes
+
+| User Class | Service | Port | Weight | What It Tests |
+|------------|---------|------|--------|---------------|
+| **AuthUser** | auth-service (Python) | 8001 | 3 | Registration, login, token validation, logout |
+| **ChatUser** | chat-service (Go) | 8003 | 5 | WebSocket connections, message send/receive, PMs |
+| **FileUser** | file-service (Node.js) | 8005 | 2 | File upload (small/medium), list, download |
+| **MessageUser** | message-service (Python) | 8004 | 4 | Message history, replay, pagination, private messages |
+
+Weights control how many virtual users of each type are spawned. ChatUser has the highest weight because real-time messaging is the primary workload.
+
+### AuthUser Tasks
+
+| Task | Weight | Endpoint | What It Measures |
+|------|--------|----------|-----------------|
+| `login` | 5 | `POST /auth/login` | JWT issuance latency |
+| `validate_token` | 3 | `POST /auth/ping` | Token validation throughput |
+| `register` | 1 | `POST /auth/register` | Registration throughput |
+| `logout_and_relogin` | 1 | `POST /auth/logout` | Token blacklist + re-auth cycle |
+
+### ChatUser Tasks
+
+| Task | Weight | Protocol | What It Measures |
+|------|--------|----------|-----------------|
+| `send_message` | 8 | WebSocket | Message round-trip latency (send -> broadcast echo) |
+| `send_private_message` | 2 | WebSocket | PM delivery latency |
+
+### FileUser Tasks
+
+| Task | Weight | Endpoint | What It Measures |
+|------|--------|----------|-----------------|
+| `list_files` | 4 | `GET /files/room/{room_id}` | File listing throughput |
+| `upload_small_file` | 3 | `POST /files/upload?room_id=N` | Small file (2.4KB) upload throughput |
+| `download_file` | 2 | `GET /files/download/{id}` | Download throughput |
+| `upload_medium_file` | 1 | `POST /files/upload?room_id=N` | Medium file (512KB) upload throughput |
+
+### MessageUser Tasks
+
+| Task | Weight | Endpoint | What It Measures |
+|------|--------|----------|-----------------|
+| `get_room_messages` | 6 | `GET /messages/rooms/{id}/history?limit=50` | Recent history query performance |
+| `get_messages_since` | 3 | `GET /messages/rooms/{id}?since=ISO8601&limit=100` | Timestamp-based replay performance |
+| `get_messages_limited` | 2 | `GET /messages/rooms/{id}/history?limit=N` | History with varied page size |
+| `get_messages_recent` | 1 | `GET /messages/rooms/{id}/history?limit=10` | Lightweight recent messages |
+
+### Microservices Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GATEWAY_URL` | `http://localhost` | Kong API Gateway URL |
+| `WS_GATEWAY_URL` | `ws://localhost` | WebSocket gateway URL |
+| `ADMIN_USERNAME` | `ido` | Admin user for seeding |
+| `ADMIN_PASSWORD` | `changeme` | Admin password |
+| `LOADTEST_USER_PREFIX` | `lt_user` | Prefix for generated usernames |
+| `LOADTEST_USER_PASSWORD` | `LoadTest_Pass_123!` | Password for generated users |
+
+### Expected Baselines
+
+These baselines assume a local Docker Compose deployment with default resources:
+
+| Metric | Target | Critical Threshold |
+|--------|--------|--------------------|
+| Auth login p95 | < 200ms | < 500ms |
+| Auth register p95 | < 300ms | < 800ms |
+| WS connect p95 | < 500ms | < 2000ms |
+| WS message round-trip p95 | < 100ms | < 500ms |
+| File upload (small) p95 | < 500ms | < 2000ms |
+| File download p95 | < 200ms | < 1000ms |
+| Message history p95 | < 150ms | < 500ms |
+| Message replay p95 | < 200ms | < 800ms |
+| Error rate | < 1% | < 5% |
+
+### Recommended Load Profiles
+
+| Profile | Users | Spawn Rate | Duration | Purpose |
+|---------|-------|------------|----------|---------|
+| Smoke | 10 | 2/s | 2m | Verify endpoints work |
+| Load | 100 | 10/s | 10m | Normal production load |
+| Stress | 500 | 50/s | 15m | Find breaking points |
+| Spike | 50 -> 500 -> 50 | burst | 10m | Test auto-scaling / recovery |
+
+---
 
 ## How Each Scenario Works
 
@@ -237,35 +347,36 @@ Then open http://localhost:8089 for the Locust dashboard. The master coordinates
 
 ```
 loadtests/
-  config.py                    # Settings (API base, user count, rooms)
-  requirements.txt             # Python dependencies
+  locustfile.py                  # Microservices load test (4 user classes via Kong)
+  config.py                      # Settings (API base, user count, rooms)
+  requirements.txt               # Python dependencies
 
   utils/
-    user_pool.py               # Pre-provisions users, caches JWT tokens
-    ws_client.py               # Async WebSocket client for cHATBOX protocol
+    user_pool.py                 # Pre-provisions users, caches JWT tokens
+    ws_client.py                 # Async WebSocket client for cHATBOX protocol
 
-  scenarios/                   # Locust test files (the actual test logic)
-    http_endpoints.py          # REST API load test (ChatHttpUser, DbPoolStressUser)
-    websocket_chat.py          # WebSocket connections + messaging
-    user_journey.py            # Full register → chat → logout lifecycle
-    spike_shape.py             # Spike, Soak, and Stepped load shapes
+  scenarios/                     # Locust test files (additional scenario types)
+    http_endpoints.py            # REST API load test (ChatHttpUser, DbPoolStressUser)
+    websocket_chat.py            # WebSocket connections + messaging
+    user_journey.py              # Full register → chat → logout lifecycle
+    spike_shape.py               # Spike, Soak, and Stepped load shapes
 
-  scripts/                     # Standalone scripts and tools
-    run_all.py                 # Orchestrator — runs all scenarios in sequence
-    ws_stress.py               # Standalone asyncio WebSocket stress test
-    check_criteria.py          # CI gate — pass/fail based on thresholds
+  scripts/                       # Standalone scripts and tools
+    run_all.py                   # Orchestrator — runs all scenarios in sequence
+    ws_stress.py                 # Standalone asyncio WebSocket stress test
+    check_criteria.py            # CI gate — pass/fail based on thresholds
 
-  benchmarks/                  # Micro-benchmarks (pytest-benchmark)
-    bench_auth.py              # Argon2 + JWT speed benchmarks
-    bench_serialization.py     # JSON encode/decode for WS messages
+  benchmarks/                    # Micro-benchmarks (pytest-benchmark)
+    bench_auth.py                # Argon2 + JWT speed benchmarks
+    bench_serialization.py       # JSON encode/decode for WS messages
 
-  config/environments/         # Environment-specific settings
-    local.env                  # Settings for local Docker development
-    ci.env                     # Settings for CI pipelines
+  config/environments/           # Environment-specific settings
+    local.env                    # Settings for local Docker development
+    ci.env                       # Settings for CI pipelines
 
-  reports/                     # Generated reports (.csv, .html, .json)
-  Dockerfile.locust            # Locust container for distributed mode
-  docker-compose.loadtest.yml  # Adds Locust to the Docker stack
+  reports/                       # Generated reports (.csv, .html, .json)
+  Dockerfile.locust              # Locust container for distributed mode
+  docker-compose.loadtest.yml    # Adds Locust to the Docker stack
 ```
 
 ## Configuration
@@ -274,8 +385,8 @@ Settings are loaded from environment variables or `.env` files:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LOADTEST_API_BASE` | `http://localhost:8000` | Backend HTTP base URL |
-| `LOADTEST_WS_BASE` | `ws://localhost:8000` | Backend WebSocket base URL |
+| `LOADTEST_API_BASE` | `http://localhost` | Kong HTTP base URL |
+| `LOADTEST_WS_BASE` | `ws://localhost` | Kong WebSocket base URL |
 | `LOADTEST_NUM_USERS` | `200` | Number of fake users to create |
 | `LOADTEST_ROOMS` | `politics,sports,movies` | Chat rooms to use in tests |
 | `ADMIN_USERNAME` | `ido` | Admin user for room creation |
@@ -292,7 +403,7 @@ The backend rate-limits registration (5/min) and login (10/min) per IP. Load tes
 
 1. **Pre-provisioning**: All fake users are created once **before** tests start via `UserPool`
 2. **Token caching**: JWT tokens are cached in memory and reused throughout the entire test run
-3. **Dev mode**: Rate limiting is disabled when `APP_ENV=dev` (see `backend/middleware/rate_limit.py`)
+3. **Dev mode**: Rate limiting is disabled when `APP_ENV=dev` (see `v1/backend/middleware/rate_limit.py`)
 
 For staging/production testing, provision users before enabling rate limits, or add a load-test-specific exemption.
 

@@ -2,20 +2,21 @@
 Locust HTTP endpoint load test.
 
 Tests REST API throughput and latency under concurrent load.
+All requests go through Kong (port 80) which routes to the correct microservice.
 Weighted tasks simulate realistic traffic distribution:
   - list_rooms: most frequent (users check room list often)
   - get_room_users: moderate (checking who's online)
   - get_messages: moderate (message replay/history)
-  - health/ready: low (monitoring probes)
+  - list_files: low (file browser)
 
 Usage:
   # With Locust web UI
-  locust -f scenarios/http_endpoints.py --host http://localhost:8000
+  locust -f scenarios/http_endpoints.py --host http://localhost
 
   # Headless (CI mode)
   locust -f scenarios/http_endpoints.py --headless \
     --users 100 --spawn-rate 10 --run-time 10m \
-    --host http://localhost:8000 \
+    --host http://localhost \
     --csv reports/http_load --html reports/http_load.html
 """
 
@@ -91,8 +92,8 @@ class ChatHttpUser(HttpUser):
 
     @task(5)
     def list_rooms(self):
-        """GET /rooms/ — most common: users check room list."""
-        self.client.get("/rooms/", headers=self._headers, name="/rooms/")
+        """GET /rooms — most common: users check room list."""
+        self.client.get("/rooms", headers=self._headers, name="/rooms")
 
     @task(3)
     def get_room_users(self):
@@ -106,26 +107,26 @@ class ChatHttpUser(HttpUser):
 
     @task(3)
     def get_room_messages(self):
-        """GET /rooms/{id}/messages — message replay/history."""
+        """GET /messages/rooms/{id} — message replay/history via message-service."""
         room_id = random.choice(self._room_ids)
         since = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime(
             "%Y-%m-%dT%H:%M:%S"
         )
         self.client.get(
-            f"/rooms/{room_id}/messages?since={since}&limit=50",
+            f"/messages/rooms/{room_id}?since={since}&limit=50",
             headers=self._headers,
-            name="/rooms/[id]/messages",
+            name="/messages/rooms/[id]",
         )
 
-    @task(1)
-    def health_check(self):
-        """GET /health — liveness probe."""
-        self.client.get("/health", name="/health")
-
-    @task(1)
-    def readiness_check(self):
-        """GET /ready — readiness probe (DB + Redis + Kafka)."""
-        self.client.get("/ready", name="/ready")
+    @task(2)
+    def list_files(self):
+        """GET /files/room/{id} — list files in a room via file-service."""
+        room_id = random.choice(self._room_ids)
+        self.client.get(
+            f"/files/room/{room_id}",
+            headers=self._headers,
+            name="/files/room/[id]",
+        )
 
 
 class DbPoolStressUser(HttpUser):
@@ -160,14 +161,14 @@ class DbPoolStressUser(HttpUser):
         """Large message replay — forces long DB hold time."""
         room_id = random.choice(self._room_ids)
         self.client.get(
-            f"/rooms/{room_id}/messages?since=2020-01-01T00%3A00%3A00&limit=500",
+            f"/messages/rooms/{room_id}?since=2020-01-01T00:00:00&limit=500",
             headers=self._headers,
-            name="/rooms/[id]/messages (heavy)",
+            name="/messages/rooms/[id] (heavy)",
         )
 
     @task(3)
     def list_rooms(self):
-        self.client.get("/rooms/", headers=self._headers, name="/rooms/ (stress)")
+        self.client.get("/rooms", headers=self._headers, name="/rooms (stress)")
 
     @task(2)
     def get_room_users(self):
