@@ -2,7 +2,6 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from alembic import command as alembic_command
+from alembic.config import Config as AlembicConfig
 from core.config import ADMIN_PASSWORD, ADMIN_USERNAME, APP_ENV, CORS_ORIGINS, SECRET_KEY
 from core.database import engine
 from core.logging import get_logger, setup_logging

@@ -349,8 +349,16 @@ func TestWSLobbyUpgrade(t *testing.T) {
 		t.Errorf("expected 101, got %d", resp.StatusCode)
 	}
 
-	// Verify the user appears in manager.
-	if manager.TotalConnections() != 1 {
-		t.Errorf("expected 1 connection, got %d", manager.TotalConnections())
+	// Poll briefly — the server goroutine may not have called ConnectLobby yet.
+	var got int
+	for i := 0; i < 50; i++ {
+		got = manager.TotalConnections()
+		if got == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got != 1 {
+		t.Errorf("expected 1 connection, got %d", got)
 	}
 }
