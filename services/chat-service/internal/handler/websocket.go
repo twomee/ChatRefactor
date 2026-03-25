@@ -108,6 +108,12 @@ type WSHandler struct {
 	// set and skips the "user_left" broadcast to avoid duplicates.
 	kickedMu    sync.Mutex
 	kickedUsers map[string]bool
+
+	// pendingLeaves tracks delayed leave broadcasts for reconnect grace period.
+	// Key: "room:user" → cancel function. If the user reconnects within the
+	// grace period, the pending leave is cancelled silently.
+	pendingLeaveMu sync.Mutex
+	pendingLeaves  map[string]context.CancelFunc
 }
 
 // NewWSHandler creates a WebSocket handler.
@@ -128,6 +134,7 @@ func NewWSHandler(
 		limiter:       newRateLimiter(),
 		messageSvcURL: messageServiceURL,
 		kickedUsers:   make(map[string]bool),
+		pendingLeaves: make(map[string]context.CancelFunc),
 	}
 }
 
