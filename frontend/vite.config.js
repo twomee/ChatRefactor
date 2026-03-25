@@ -11,6 +11,13 @@ export default defineConfig({
       '/ws': {
         target: 'http://localhost:8003',
         ws: true,
+        // Suppress EPIPE errors when browser drops WebSocket on refresh.
+        on: {
+          error: () => {},
+          proxyReqWs: (_proxyReq, _req, socket) => {
+            socket.on('error', () => {});
+          },
+        },
       },
       '/pm': 'http://localhost:8003',
       '/admin': {
