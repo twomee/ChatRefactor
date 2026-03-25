@@ -106,13 +106,23 @@ export function useMultiRoomChat() {
         trackTimestamp(msg.room_id);
         break;
 
-      case 'message':
+      case 'message': {
+        // Deduplicate by msg_id to prevent duplicates from overlapping
+        // connections (e.g. stale JWT sessions with different user IDs).
+        if (msg.msg_id) {
+          if (seenMsgIdsRef.current.has(msg.msg_id)) break;
+          if (seenMsgIdsRef.current.size >= 500) {
+            seenMsgIdsRef.current.delete(seenMsgIdsRef.current.values().next().value);
+          }
+          seenMsgIdsRef.current.add(msg.msg_id);
+        }
         dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { from: msg.from, text: msg.text } });
         if (msg.room_id !== activeRoomIdRef.current) {
           dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
         }
         trackTimestamp(msg.room_id);
         break;
+      }
 
       case 'private_message': {
         if (msg.msg_id) {

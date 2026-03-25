@@ -54,22 +54,18 @@ func TestLoadFromEnv(t *testing.T) {
 }
 
 func TestValidateFailsInProdWithoutSecretKey(t *testing.T) {
-	t.Setenv("APP_ENV", "prod")
-	t.Setenv("SECRET_KEY", "")
-	t.Setenv("DATABASE_URL", "postgres://localhost/prod")
-
-	_, err := Load()
+	// Test validate() directly to avoid Viper reading .env files
+	// which would override our empty values.
+	cfg := &Config{AppEnv: "prod", SecretKey: "", DatabaseURL: "postgres://localhost/prod"}
+	err := cfg.validate()
 	if err == nil {
 		t.Error("expected validation error for missing SECRET_KEY in prod")
 	}
 }
 
 func TestValidateFailsInProdWithoutDatabaseURL(t *testing.T) {
-	t.Setenv("APP_ENV", "prod")
-	t.Setenv("SECRET_KEY", "some-secret")
-	t.Setenv("DATABASE_URL", "")
-
-	_, err := Load()
+	cfg := &Config{AppEnv: "prod", SecretKey: "some-secret", DatabaseURL: ""}
+	err := cfg.validate()
 	if err == nil {
 		t.Error("expected validation error for missing DATABASE_URL in prod")
 	}

@@ -55,21 +55,25 @@ def ping(current_user: dict = Depends(get_current_user)):
 
 
 # ── Internal endpoints (for inter-service communication) ──────────────────────
-
-
-@router.get("/users/{user_id}", response_model=UserResponse)
-def get_user_by_id(user_id: int, db: Session = Depends(get_db)):
-    """Internal: Look up a user by ID. Used by other services (Chat, File, etc.)."""
-    user = user_dal.get_by_id(db, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+# NOTE: The by-username route MUST come before the {user_id} route.
+# FastAPI matches routes top-to-bottom. If /users/{user_id} is first,
+# a request to /users/by-username/alice will match {user_id}="by-username"
+# and fail with a type validation error (string can't coerce to int).
 
 
 @router.get("/users/by-username/{username}", response_model=UserResponse)
 def get_user_by_username(username: str, db: Session = Depends(get_db)):
     """Internal: Look up a user by username. Used by other services."""
     user = user_dal.get_by_username(db, username)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+@router.get("/users/{user_id}", response_model=UserResponse)
+def get_user_by_id(user_id: int, db: Session = Depends(get_db)):
+    """Internal: Look up a user by ID. Used by other services (Chat, File, etc.)."""
+    user = user_dal.get_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user

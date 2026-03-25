@@ -58,12 +58,15 @@ CREATE TABLE IF NOT EXISTS messages (
     id SERIAL PRIMARY KEY,
     message_id VARCHAR(36) UNIQUE,
     sender_id INTEGER NOT NULL,
+    sender_name VARCHAR(64),
     room_id INTEGER,
     recipient_id INTEGER,
     content TEXT NOT NULL,
     is_private BOOLEAN DEFAULT FALSE NOT NULL,
     sent_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
+-- Idempotent column addition for existing databases.
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_name VARCHAR(64);
 CREATE INDEX IF NOT EXISTS idx_messages_message_id ON messages(message_id);
 CREATE INDEX IF NOT EXISTS idx_messages_room_sent ON messages(room_id, sent_at);
 EOSQL
@@ -76,9 +79,12 @@ CREATE TABLE IF NOT EXISTS files (
     stored_path VARCHAR(512) NOT NULL,
     file_size INTEGER NOT NULL,
     sender_id INTEGER NOT NULL,
+    sender_name VARCHAR(64),
     room_id INTEGER NOT NULL,
     uploaded_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
+-- Idempotent column addition for existing databases.
+ALTER TABLE files ADD COLUMN IF NOT EXISTS sender_name VARCHAR(64);
 CREATE INDEX IF NOT EXISTS idx_files_room_id ON files(room_id);
 EOSQL
 

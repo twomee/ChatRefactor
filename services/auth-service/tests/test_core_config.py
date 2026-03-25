@@ -4,7 +4,11 @@ Tests for:
 - _require_env fail-fast in production mode
 - DATABASE_URL fail-fast in production mode
 - Default values in non-prod mode
+
+Note: load_dotenv is patched out in reload tests so the .env file
+doesn't override the test environment variables.
 """
+import importlib
 import os
 from unittest.mock import patch
 
@@ -18,13 +22,11 @@ class TestRequireEnv:
         """In prod mode, missing required env var should call sys.exit."""
         env = {k: v for k, v in os.environ.items()}
         env["APP_ENV"] = "prod"
-        # Remove the key we're testing
         env.pop("SECRET_KEY", None)
 
-        with patch.dict(os.environ, env, clear=True):
+        with patch.dict(os.environ, env, clear=True), \
+             patch("dotenv.load_dotenv"):
             with pytest.raises(SystemExit):
-                # Re-import the module to trigger _require_env with prod APP_ENV
-                import importlib
                 import app.core.config as config_mod
                 importlib.reload(config_mod)
 
@@ -36,13 +38,10 @@ class TestRequireEnv:
         env.pop("ADMIN_USERNAME", None)
         env.pop("ADMIN_PASSWORD", None)
 
-        with patch.dict(os.environ, env, clear=True):
-            import importlib
+        with patch.dict(os.environ, env, clear=True), \
+             patch("dotenv.load_dotenv"):
             import app.core.config as config_mod
             importlib.reload(config_mod)
-            # In dev mode, _require_env returns empty string for missing vars
-            # The SECRET_KEY will be replaced by secrets.token_urlsafe
-            # but ADMIN_USERNAME should be empty
             assert config_mod.ADMIN_USERNAME == ""
 
     def test_database_url_exits_in_prod_when_empty(self):
@@ -54,8 +53,8 @@ class TestRequireEnv:
         env["ADMIN_USERNAME"] = "admin"
         env["ADMIN_PASSWORD"] = "password"
 
-        with patch.dict(os.environ, env, clear=True):
+        with patch.dict(os.environ, env, clear=True), \
+             patch("dotenv.load_dotenv"):
             with pytest.raises(SystemExit):
-                import importlib
                 import app.core.config as config_mod
                 importlib.reload(config_mod)
