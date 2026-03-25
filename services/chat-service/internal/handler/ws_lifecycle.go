@@ -15,7 +15,7 @@ import (
 // reconnectGrace is the time to wait before broadcasting a user_left event.
 // If the user reconnects within this window (e.g. page refresh), the leave
 // is cancelled silently — no leave/join messages, no state changes.
-const reconnectGrace = 3 * time.Second
+const reconnectGrace = 10 * time.Second
 
 // handleJoin broadcasts the user_join event and sends message history to
 // the newly connected client.
