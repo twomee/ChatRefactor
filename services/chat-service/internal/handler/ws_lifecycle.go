@@ -30,24 +30,27 @@ func (h *WSHandler) handleJoin(ctx context.Context, conn *websocket.Conn, roomID
 	}
 	h.pendingLeaveMu.Unlock()
 
-	if isReconnect {
-		// Reconnect (e.g. page refresh): user never truly left, so no
-		// join/leave broadcast. Just send history to the new connection.
-	} else {
-		// First-time join: broadcast to room and persist.
-		usernames := h.manager.GetUsernamesInRoom(roomID)
-		adminNames := h.getAdminUsernames(ctx, roomID)
-		mutedNames := h.getMutedUsernames(ctx, roomID)
+	// Fetch room state.
+	usernames := h.manager.GetUsernamesInRoom(roomID)
+	adminNames := h.getAdminUsernames(ctx, roomID)
+	mutedNames := h.getMutedUsernames(ctx, roomID)
 
-		joinBroadcast := map[string]interface{}{
-			"type":     "user_join",
-			"username": username,
-			"users":    usernames,
-			"admins":   adminNames,
-			"muted":    mutedNames,
-			"room_id":  roomID,
-		}
-		h.manager.BroadcastRoom(roomID, joinBroadcast)
+	roomState := map[string]interface{}{
+		"type":     "user_join",
+		"username": username,
+		"users":    usernames,
+		"admins":   adminNames,
+		"muted":    mutedNames,
+		"room_id":  roomID,
+	}
+
+	if isReconnect {
+		// Reconnect (e.g. page refresh): send room state only to the
+		// reconnecting user so their UI rebuilds, but don't notify others.
+		_ = h.manager.SendToConn(conn, roomState)
+	} else {
+		// First-time join: broadcast to everyone and persist.
+		h.manager.BroadcastRoom(roomID, roomState)
 
 		joinMsgID := uuid.New().String()
 		joinNow := time.Now().UTC().Format(time.RFC3339)
