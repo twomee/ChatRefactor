@@ -261,9 +261,9 @@ func TestUserConnectionCount(t *testing.T) {
 	m.ConnectRoom(2, conn2, UserInfo{UserID: 10, Username: "alice"})
 	m.ConnectLobby(conn3, UserInfo{UserID: 10, Username: "alice"})
 
-	// userConns tracks all 3 conns; lobby loop adds 1 more for the lobby conn = 4
-	if m.UserConnectionCount(10) != 4 {
-		t.Errorf("expected 4, got %d", m.UserConnectionCount(10))
+	// userConns tracks all 3 conns: 2 room connections + 1 lobby connection
+	if m.UserConnectionCount(10) != 3 {
+		t.Errorf("expected 3, got %d", m.UserConnectionCount(10))
 	}
 	if m.UserConnectionCount(99) != 0 {
 		t.Errorf("expected 0 for unknown user, got %d", m.UserConnectionCount(99))

@@ -124,3 +124,94 @@ func TestDisconnectRoomUnknownConn(t *testing.T) {
 	}
 }
 
+// ---- SendToConn tests ----
+
+func TestSendToConnSuccess(t *testing.T) {
+	m := newTestManager()
+
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+	var serverConn *websocket.Conn
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		serverConn, err = upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatalf("upgrade: %v", err)
+		}
+	}))
+	defer srv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
+	client, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer client.Close()
+
+	for serverConn == nil {
+	}
+
+	// Register the connection so connMu is populated (via ConnectRoom).
+	m.ConnectRoom(1, serverConn, UserInfo{UserID: 1, Username: "alice"})
+
+	msg := map[string]string{"type": "test", "content": "hello"}
+	if err := m.SendToConn(serverConn, msg); err != nil {
+		t.Fatalf("SendToConn returned error: %v", err)
+	}
+
+	var received map[string]string
+	if err := client.ReadJSON(&received); err != nil {
+		t.Fatalf("client read: %v", err)
+	}
+	if received["content"] != "hello" {
+		t.Errorf("expected 'hello', got %q", received["content"])
+	}
+	if received["type"] != "test" {
+		t.Errorf("expected 'test', got %q", received["type"])
+	}
+}
+
+func TestSendToConnMarshalError(t *testing.T) {
+	m := newTestManager()
+	conn, cleanup := newWSConn(t)
+	defer cleanup()
+
+	m.ConnectRoom(1, conn, UserInfo{UserID: 1, Username: "alice"})
+
+	// json.Marshal cannot handle channels — this triggers a marshal error.
+	err := m.SendToConn(conn, make(chan int))
+	if err == nil {
+		t.Error("expected marshal error, got nil")
+	}
+}
+
+func TestSendToConnUnregistered(t *testing.T) {
+	m := newTestManager()
+	conn, cleanup := newWSConn(t)
+	defer cleanup()
+
+	// conn is never registered with the manager, so connMu lookup fails.
+	msg := map[string]string{"type": "test"}
+	err := m.SendToConn(conn, msg)
+	if err == nil {
+		t.Error("expected error for unregistered connection, got nil")
+	}
+}
+
+func TestSendToConnClosedConn(t *testing.T) {
+	m := newTestManager()
+	conn, cleanup := newWSConn(t)
+
+	m.ConnectRoom(1, conn, UserInfo{UserID: 1, Username: "alice"})
+
+	// Close the connection to simulate failure.
+	cleanup()
+
+	msg := map[string]string{"type": "test"}
+	err := m.SendToConn(conn, msg)
+	if err == nil {
+		t.Error("expected write error on closed connection, got nil")
+	}
+}
+

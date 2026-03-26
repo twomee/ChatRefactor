@@ -64,7 +64,7 @@ jobs:
           DATABASE_URL: sqlite:///./test.db
           KAFKA_BOOTSTRAP_SERVERS: localhost:29092
           AUTH_SERVICE_URL: http://localhost:8001
-        run: pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=50
+        run: pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=95
 
       - name: Upload coverage to Codecov
         if: always()
