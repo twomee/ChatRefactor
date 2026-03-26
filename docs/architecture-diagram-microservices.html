@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Microservices Architecture - Chat Project</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; padding: 30px; }
+  h1 { text-align: center; font-size: 2rem; margin-bottom: 8px; color: #f8fafc; }
+  h2 { font-size: 1.4rem; margin: 30px 0 12px; color: #93c5fd; border-bottom: 1px solid #334155; padding-bottom: 6px; }
+  h3 { font-size: 1.1rem; margin: 20px 0 8px; color: #a5b4fc; }
+  .subtitle { text-align: center; color: #94a3b8; margin-bottom: 30px; font-size: 1rem; }
+  .diagram-container { background: #1e293b; border-radius: 12px; padding: 24px; margin: 20px 0; border: 1px solid #334155; overflow-x: auto; }
+  .diagram-container .mermaid { display: flex; justify-content: center; }
+  .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 16px 0; }
+  .info-card { background: #1e293b; border-radius: 10px; padding: 18px; border: 1px solid #334155; }
+  .info-card h4 { font-size: 1rem; margin-bottom: 8px; }
+  .info-card p, .info-card li { font-size: 0.9rem; color: #94a3b8; line-height: 1.6; }
+  .info-card ul { padding-left: 18px; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 4px; }
+  .tag-python { background: #1e3a5f; color: #93c5fd; }
+  .tag-go { background: #164e63; color: #67e8f9; }
+  .tag-node { background: #1a2e05; color: #bef264; }
+  .tag-react { background: #312e81; color: #c4b5fd; }
+  .topic-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  .topic-table th, .topic-table td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #334155; font-size: 0.9rem; }
+  .topic-table th { color: #93c5fd; font-weight: 600; }
+  .topic-table td { color: #cbd5e1; }
+  .flow-box { background: #0f172a; border-left: 3px solid #6366f1; padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 10px 0; font-family: 'Fira Code', monospace; font-size: 0.85rem; line-height: 1.8; color: #c4b5fd; }
+  .section-divider { border: none; border-top: 1px solid #1e293b; margin: 30px 0; }
+</style>
+</head>
+<body>
+
+<h1>Microservices Architecture</h1>
+<p class="subtitle">Chat Project - Full System Design</p>
+
+<!-- ============ MAIN ARCHITECTURE DIAGRAM ============ -->
+<h2>1. System Overview</h2>
+<div class="diagram-container">
+<pre class="mermaid">
+graph TB
+    subgraph FE["Frontend Layer"]
+        frontend["React Frontend\n(Vite, port 3000)"]
+    end
+
+    subgraph GW["API Gateway"]
+        kong["Kong Gateway (port 80)\nCORS | Rate Limiting | Security Headers | Request IDs"]
+    end
+
+    subgraph SERVICES["Application Services (Docker Network)"]
+        auth["Auth Service\nPython/FastAPI :8001"]
+        chat["Chat Service\nGo/Gin :8003"]
+        msg["Message Service\nPython/FastAPI :8004"]
+        file["File Service\nNode/Express :8005"]
+    end
+
+    subgraph INFRA["Infrastructure Layer"]
+        redis[("Redis\nToken Blacklist")]
+        kafka[("Apache Kafka\nEvent Streaming")]
+        subgraph PG["PostgreSQL (single instance)"]
+            db_auth[("chatbox_auth\nusers")]
+            db_chat[("chatbox_chat\nrooms, room_admins\nmuted_users")]
+            db_msg[("chatbox_messages\nmessages")]
+            db_file[("chatbox_files\nfiles")]
+        end
+        disk[("Disk Storage\n/app/uploads")]
+    end
+
+    frontend -->|"HTTP & WebSocket"| kong
+    kong -->|"/auth/*"| auth
+    kong -->|"/rooms/* /ws/* /pm/* /admin/*"| chat
+    kong -->|"/messages/*"| msg
+    kong -->|"/files/*"| file
+
+    auth --- db_auth
+    chat --- db_chat
+    msg --- db_msg
+    file --- db_file
+    file --- disk
+
+    auth ---|"logout tokens (TTL)"| redis
+
+    chat -.->|"HTTP: user lookup"| auth
+    msg -.->|"HTTP: resolve usernames"| auth
+
+    auth -->|"produce: auth.events"| kafka
+    chat -->|"produce: chat.messages\nchat.private, chat.events"| kafka
+    file -->|"produce: file.events"| kafka
+
+    kafka -->|"consume: chat.messages\nchat.private"| msg
+    kafka -->|"consume: file.events"| chat
+
+    classDef feStyle fill:#3b82f6,stroke:#1d4ed8,color:#fff
+    classDef gwStyle fill:#f59e0b,stroke:#d97706,color:#000
+    classDef svcStyle fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    classDef infraStyle fill:#0d9488,stroke:#0f766e,color:#fff
+    classDef dbStyle fill:#ea580c,stroke:#c2410c,color:#fff
+    classDef redisStyle fill:#dc2626,stroke:#b91c1c,color:#fff
+
+    class frontend feStyle
+    class kong gwStyle
+    class auth,chat,msg,file svcStyle
+    class kafka infraStyle
+    class db_auth,db_chat,db_msg,db_file,disk dbStyle
+    class redis redisStyle
+</pre>
+</div>
+
+<!-- ============ SERVICE DETAILS ============ -->
+<h2>2. Service Details</h2>
+<div class="info-grid">
+  <div class="info-card">
+    <h4><span class="tag tag-python">Python/FastAPI</span> Auth Service :8001</h4>
+    <ul>
+      <li><strong>Database:</strong> chatbox_auth (users table)</li>
+      <li><strong>Public:</strong> register, login, logout, ping</li>
+      <li><strong>Internal:</strong> GET /auth/users/{id} and /by-username/{name}</li>
+      <li><strong>Redis:</strong> Stores blacklisted JWT tokens on logout (TTL = token expiry)</li>
+      <li><strong>Kafka:</strong> Produces auth.events (register/login/logout)</li>
+    </ul>
+  </div>
+  <div class="info-card">
+    <h4><span class="tag tag-go">Go/Gin</span> Chat Service :8003</h4>
+    <ul>
+      <li><strong>Database:</strong> chatbox_chat (rooms, room_admins, muted_users)</li>
+      <li><strong>REST:</strong> Room CRUD, admin/mute management, PM send</li>
+      <li><strong>WebSocket:</strong> /ws/{roomId} (room chat), /ws/lobby (presence + DMs)</li>
+      <li><strong>Kafka Producer:</strong> chat.messages, chat.private, chat.events</li>
+      <li><strong>Kafka Consumer:</strong> file.events (broadcasts file notifications to WS)</li>
+      <li><strong>HTTP Client:</strong> Calls Auth Service for user lookups</li>
+    </ul>
+  </div>
+  <div class="info-card">
+    <h4><span class="tag tag-python">Python/FastAPI</span> Message Service :8004</h4>
+    <ul>
+      <li><strong>Database:</strong> chatbox_messages (messages table)</li>
+      <li><strong>CQRS Write:</strong> Kafka consumer persists messages from chat.messages + chat.private</li>
+      <li><strong>CQRS Read:</strong> REST API for history replay and room history</li>
+      <li><strong>Idempotent:</strong> Skips duplicate message_id (UUID) on retry</li>
+      <li><strong>DLQ:</strong> Failed messages go to chat.dlq after 3 retries</li>
+      <li><strong>HTTP Client:</strong> Calls Auth Service to resolve usernames for DMs</li>
+    </ul>
+  </div>
+  <div class="info-card">
+    <h4><span class="tag tag-node">Node/Express</span> File Service :8005</h4>
+    <ul>
+      <li><strong>Database:</strong> chatbox_files (Prisma ORM)</li>
+      <li><strong>Upload:</strong> Multer, 150MB max, extension + MIME validation</li>
+      <li><strong>Download:</strong> Stream from disk with RFC 5987 encoding</li>
+      <li><strong>Security:</strong> Path traversal prevention, filename sanitization</li>
+      <li><strong>Kafka:</strong> Produces file.uploaded to file.events (fire-and-forget)</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============ KAFKA TOPICS ============ -->
+<h2>3. Kafka Topics - Producers & Consumers</h2>
+<div class="diagram-container">
+<pre class="mermaid">
+graph LR
+    subgraph PRODUCERS["Producers"]
+        auth_p["Auth Service"]
+        chat_p["Chat Service"]
+        file_p["File Service"]
+    end
+
+    subgraph TOPICS["Kafka Topics"]
+        t1["auth.events\n(3 partitions)"]
+        t2["chat.messages\n(6 partitions)"]
+        t3["chat.private\n(3 partitions)"]
+        t4["chat.events\n(3 partitions)"]
+        t5["chat.dlq\n(1 partition)"]
+        t6["file.events\n(3 partitions)"]
+    end
+
+    subgraph CONSUMERS["Consumers"]
+        msg_c["Message Service\n(group: chat-persistence)"]
+        chat_c["Chat Service"]
+        none1["Not consumed yet"]
+        none2["Monitoring only"]
+    end
+
+    auth_p -->|"register/login/logout"| t1
+    chat_p -->|"room messages"| t2
+    chat_p -->|"direct messages"| t3
+    chat_p -->|"admin actions"| t4
+    file_p -->|"file uploaded"| t6
+
+    t1 -.->|"future use"| none1
+    t2 -->|"persist"| msg_c
+    t3 -->|"persist"| msg_c
+    t4 -.->|"archived"| none1
+    t5 -.->|"failed msgs"| none2
+    t6 -->|"broadcast to WS"| chat_c
+
+    msg_c -->|"failed after 3 retries"| t5
+
+    classDef prod fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    classDef topic fill:#0d9488,stroke:#0f766e,color:#fff
+    classDef cons fill:#22c55e,stroke:#15803d,color:#fff
+    classDef inactive fill:#475569,stroke:#334155,color:#94a3b8
+
+    class auth_p,chat_p,file_p prod
+    class t1,t2,t3,t4,t5,t6 topic
+    class msg_c,chat_c cons
+    class none1,none2 inactive
+</pre>
+</div>
+
+<table class="topic-table">
+  <tr><th>Topic</th><th>Partitions</th><th>Producer</th><th>Consumer</th><th>Purpose</th></tr>
+  <tr><td>auth.events</td><td>3</td><td>Auth Service</td><td>None (future)</td><td>User lifecycle events</td></tr>
+  <tr><td>chat.messages</td><td>6</td><td>Chat Service</td><td>Message Service</td><td>Room message persistence</td></tr>
+  <tr><td>chat.private</td><td>3</td><td>Chat Service</td><td>Message Service</td><td>DM persistence</td></tr>
+  <tr><td>chat.events</td><td>3</td><td>Chat Service</td><td>None (archived)</td><td>Admin/room state changes</td></tr>
+  <tr><td>chat.dlq</td><td>1</td><td>Message Service</td><td>Monitoring</td><td>Failed message processing</td></tr>
+  <tr><td>file.events</td><td>3</td><td>File Service</td><td>Chat Service</td><td>File upload notifications</td></tr>
+</table>
+
+<!-- ============ REDIS ============ -->
+<h2>4. Redis - Token Blacklist</h2>
+<div class="diagram-container">
+<pre class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant FE as Frontend
+    participant Auth as Auth Service
+    participant R as Redis
+
+    Note over R: Only Auth Service uses Redis
+
+    U->>FE: Click Logout
+    FE->>Auth: POST /auth/logout (Bearer JWT)
+    Auth->>R: SET blacklist:{token} = 1 (TTL = 3 hours)
+    Auth-->>FE: 200 OK
+
+    Note over R: On next request from any service...
+
+    FE->>Auth: POST /auth/ping (Bearer JWT)
+    Auth->>R: EXISTS blacklist:{token}?
+    R-->>Auth: 1 (exists = blacklisted)
+    Auth-->>FE: 401 Unauthorized
+</pre>
+</div>
+<div class="info-card" style="margin-top:12px">
+  <h4>Why Redis for this?</h4>
+  <p>JWTs are stateless - you can't "invalidate" them without a blacklist. Redis is perfect because:
+  (1) O(1) lookups on every authenticated request,
+  (2) TTL auto-cleans expired tokens - no cron jobs needed,
+  (3) In-memory = microsecond latency. The blacklist only lives as long as the token would have been valid anyway.</p>
+</div>
+
+<!-- ============ MESSAGE FLOWS ============ -->
+<h2>5. Data Flows</h2>
+
+<h3>Room Chat Message</h3>
+<div class="diagram-container">
+<pre class="mermaid">
+sequenceDiagram
+    participant FE as Frontend
+    participant WS as Chat Service (WebSocket)
+    participant K as Kafka
+    participant MS as Message Service
+    participant DB as chatbox_messages
+
+    FE->>WS: WebSocket: {"type":"message","text":"Hello"}
+    Note over WS: Rate limit check (30/10s)
+    Note over WS: Mute check
+    Note over WS: Generate UUID msg_id
+    WS-->>FE: Broadcast to all room connections (REAL-TIME)
+    WS->>K: Produce to chat.messages (ASYNC)
+    K->>MS: Consumer picks up message
+    Note over MS: Check if msg_id exists (idempotent)
+    MS->>DB: INSERT message
+    Note over FE,DB: On reconnect, Frontend GETs /messages/rooms/{id}?since=timestamp
+</pre>
+</div>
+<div class="flow-box">
+Frontend WS --> Chat Service (validate + broadcast immediately) --> Kafka chat.messages --> Message Service --> PostgreSQL<br>
+<strong>Key insight:</strong> Real-time delivery is synchronous (instant). Persistence is asynchronous (eventual). Users see messages immediately even if Kafka is slow.
+</div>
+
+<h3>Private Message</h3>
+<div class="diagram-container">
+<pre class="mermaid">
+sequenceDiagram
+    participant FE as Frontend
+    participant Chat as Chat Service
+    participant Auth as Auth Service
+    participant Lobby as Lobby WebSocket
+    participant K as Kafka
+    participant MS as Message Service
+
+    FE->>Chat: POST /pm/send {"to_username":"bob","content":"Hey"}
+    Chat->>Auth: GET /auth/users/by-username/bob
+    Auth-->>Chat: {user_id: 3, username: "bob"}
+
+    alt Bob is online
+        Chat->>Lobby: Send via lobby WebSocket
+        Lobby-->>FE: {"type":"private_message","from":"alice",...}
+    end
+
+    Chat->>K: Produce to chat.private
+    K->>MS: Consumer picks up
+    MS->>Auth: Resolve sender/recipient usernames
+    MS->>MS: INSERT to chatbox_messages (is_private=true)
+</pre>
+</div>
+
+<h3>File Upload</h3>
+<div class="diagram-container">
+<pre class="mermaid">
+sequenceDiagram
+    participant FE as Frontend
+    participant FS as File Service
+    participant Disk as Disk Storage
+    participant DB as chatbox_files
+    participant K as Kafka
+    participant Chat as Chat Service
+    participant WS as Room WebSocket
+
+    FE->>FS: POST /files/upload?room_id=1 (multipart)
+    Note over FS: Validate extension + MIME + size
+    Note over FS: Sanitize filename
+    FS->>Disk: Write file to /app/uploads/
+    FS->>DB: Save metadata (Prisma)
+    FS->>K: Produce file.uploaded to file.events
+    FS-->>FE: 200 {file_id, filename, ...}
+    K->>Chat: Consumer receives file.uploaded
+    Chat->>WS: Broadcast {"type":"file_shared",...} to room
+</pre>
+</div>
+
+<!-- ============ DATABASE OWNERSHIP ============ -->
+<h2>6. Database Ownership (No Shared Tables)</h2>
+<div class="diagram-container">
+<pre class="mermaid">
+graph TB
+    subgraph PG["PostgreSQL Instance"]
+        subgraph A["chatbox_auth"]
+            users["users\nid, username, password_hash\nis_global_admin, created_at"]
+        end
+        subgraph B["chatbox_chat"]
+            rooms["rooms\nid, name, is_active, created_at"]
+            radmins["room_admins\nuser_id, room_id, appointed_at"]
+            muted["muted_users\nuser_id, room_id, muted_at"]
+        end
+        subgraph C["chatbox_messages"]
+            messages["messages\nid, message_id (UUID), sender_id\nsender_name, room_id, recipient_id\ncontent, is_private, sent_at"]
+        end
+        subgraph D["chatbox_files"]
+            files["files\nid, originalName, storedPath\nfileSize, senderId, senderName\nroomId, uploadedAt"]
+        end
+    end
+
+    auth_svc["Auth Service"] --- A
+    chat_svc["Chat Service"] --- B
+    msg_svc["Message Service"] --- C
+    file_svc["File Service"] --- D
+
+    classDef svc fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    classDef db fill:#f59e0b,stroke:#d97706,color:#000
+
+    class auth_svc,chat_svc,msg_svc,file_svc svc
+    class users,rooms,radmins,muted,messages,files db
+</pre>
+</div>
+<div class="info-card" style="margin-top:12px">
+  <h4>Why no foreign keys across databases?</h4>
+  <p>Each service owns its data independently. Messages store sender_name and sender_id as denormalized copies -
+  they don't reference the users table in chatbox_auth. This means services can be deployed, scaled, and even have their
+  schemas changed independently without breaking each other. The trade-off is eventual consistency - if a username changes,
+  old messages still show the old name.</p>
+</div>
+
+<!-- ============ KONG ROUTING ============ -->
+<h2>7. Kong Gateway Routing</h2>
+<div class="diagram-container">
+<pre class="mermaid">
+graph LR
+    FE["Frontend\nlocalhost:3000"] -->|"port 80"| Kong
+
+    Kong -->|"POST /auth/register\n5 req/min"| Auth["Auth :8001"]
+    Kong -->|"POST /auth/login\n10 req/min"| Auth
+    Kong -->|"POST /auth/logout\n100 req/min"| Auth
+    Kong -->|"GET,POST /rooms\n30 req/min"| Chat["Chat :8003"]
+    Kong -->|"WS /ws/*\nno rate limit"| Chat
+    Kong -->|"POST /pm/*\n100 req/min"| Chat
+    Kong -->|"/admin/*\n100 req/min"| Chat
+    Kong -->|"GET /messages/*\n30 req/min"| Msg["Message :8004"]
+    Kong -->|"/files/*\n20 req/min"| File["File :8005"]
+
+    style Kong fill:#f59e0b,stroke:#d97706,color:#000
+    style Auth fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style Chat fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style Msg fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style File fill:#8b5cf6,stroke:#6d28d9,color:#fff
+</pre>
+</div>
+<div class="info-card" style="margin-top:12px">
+  <h4>Internal-only endpoints (NOT exposed through Kong)</h4>
+  <p><code>GET /auth/users/{id}</code> and <code>GET /auth/users/by-username/{name}</code> have no Kong route.
+  They're only reachable over the Docker network by Chat Service and Message Service. This is your security boundary -
+  external clients can never enumerate users.</p>
+</div>
+
+<hr class="section-divider">
+<p style="text-align:center;color:#475569;margin-top:20px;font-size:0.85rem;">Generated for Chat Project - Microservices Architecture Documentation</p>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      primaryColor: '#8b5cf6',
+      primaryTextColor: '#f8fafc',
+      primaryBorderColor: '#6d28d9',
+      lineColor: '#64748b',
+      secondaryColor: '#1e293b',
+      tertiaryColor: '#0f172a',
+      fontSize: '14px'
+    }
+  });
+</script>
+</body>
+</html>
