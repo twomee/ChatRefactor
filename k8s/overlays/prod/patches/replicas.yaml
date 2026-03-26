@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: chatbox
+spec:
+  replicas: 2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-service
+  namespace: chatbox
+spec:
+  replicas: 3
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: message-service
+  namespace: chatbox
+spec:
+  replicas: 2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: chatbox
+spec:
+  replicas: 2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong
+  namespace: chatbox
+spec:
+  replicas: 2
+# NOTE: file-service is intentionally not scaled beyond 1 replica.
+# Its PersistentVolumeClaim uses ReadWriteOnce access mode, which
+# only allows a single pod to write. To scale file-service, switch
+# to object storage (S3/GCS) or use a ReadWriteMany volume.

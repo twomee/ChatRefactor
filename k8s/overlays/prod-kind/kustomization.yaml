@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# prod-kind: Extends the prod overlay for local kind clusters.
+# Overrides DockerHub image references, sets imagePullPolicy back to IfNotPresent,
+# and uses NodePort instead of LoadBalancer for Kong (no MetalLB in kind).
+# Usage: kubectl apply -k k8s/overlays/prod-kind
+resources:
+  - ../prod
+patches:
+  # Override LoadBalancer → NodePort for local kind access
+  - path: patches/kong-service-nodeport.yaml
+  # Override imagePullPolicy Always → IfNotPresent for locally-loaded kind images
+  - path: patches/image-pull-policy-local.yaml
+images:
+  # Override DockerHub image names to use locally-loaded kind images
+  - name: docker.io/DOCKERHUB_USER/chatbox-auth-service
+    newName: auth-service
+    newTag: latest
+  - name: docker.io/DOCKERHUB_USER/chatbox-chat-service
+    newName: chat-service
+    newTag: latest
+  - name: docker.io/DOCKERHUB_USER/chatbox-message-service
+    newName: message-service
+    newTag: latest
+  - name: docker.io/DOCKERHUB_USER/chatbox-file-service
+    newName: file-service
+    newTag: latest
+  - name: docker.io/DOCKERHUB_USER/chatbox-frontend
+    newName: frontend
+    newTag: latest

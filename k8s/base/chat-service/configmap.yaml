@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chat-service-config
+  namespace: chatbox
+  labels:
+    app.kubernetes.io/name: chat-service
+    app.kubernetes.io/part-of: chatbox
+data:
+  PORT: "8003"
+  LOG_LEVEL: "info"

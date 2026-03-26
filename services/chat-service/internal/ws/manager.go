@@ -91,17 +91,14 @@ func (m *Manager) SendToConn(conn *websocket.Conn, msg interface{}) error {
 
 // UserConnectionCount returns the total number of active connections for a user
 // across all rooms and lobby. Used to enforce per-user connection limits.
+//
+// Both ConnectRoom and ConnectLobby register connections in m.userConns, so
+// len(m.userConns[userID]) already reflects the complete count across all
+// connection types. No additional iteration over lobbyConns is needed.
 func (m *Manager) UserConnectionCount(userID int) int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	count := len(m.userConns[userID])
-	// Also count lobby connections for this user
-	for _, info := range m.lobbyConns {
-		if info.UserID == userID {
-			count++
-		}
-	}
-	return count
+	return len(m.userConns[userID])
 }
 
 // RoomCount returns the number of active rooms with connections.

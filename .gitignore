@@ -1,4 +1,6 @@
 .env
+k8s/secrets.env
+k8s/secrets.env.local
 *.db
 __pycache__/
 .pytest_cache/

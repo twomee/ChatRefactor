@@ -1,0 +1,63 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: chatbox
+resources:
+  - ../../base
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: auth-service
+      spec:
+        replicas: 2
+    target:
+      kind: Deployment
+      name: auth-service
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: chat-service
+      spec:
+        replicas: 2
+    target:
+      kind: Deployment
+      name: chat-service
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: message-service
+      spec:
+        replicas: 2
+    target:
+      kind: Deployment
+      name: message-service
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: frontend
+      spec:
+        replicas: 2
+    target:
+      kind: Deployment
+      name: frontend
+  - path: patches/kong-cors.yaml
+images:
+  - name: auth-service
+    newName: docker.io/DOCKERHUB_USER/chatbox-auth-service
+    newTag: latest
+  - name: chat-service
+    newName: docker.io/DOCKERHUB_USER/chatbox-chat-service
+    newTag: latest
+  - name: message-service
+    newName: docker.io/DOCKERHUB_USER/chatbox-message-service
+    newTag: latest
+  - name: file-service
+    newName: docker.io/DOCKERHUB_USER/chatbox-file-service
+    newTag: latest
+  - name: frontend
+    newName: docker.io/DOCKERHUB_USER/chatbox-frontend
+    newTag: latest
