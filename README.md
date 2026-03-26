@@ -99,7 +99,38 @@ Frontend at **http://localhost:5173** | Services at ports **8001, 8003, 8004, 80
 
 > **Note:** In local dev without Kong, the frontend `.env` must point directly to service ports. In Docker, Kong handles all routing through port 80.
 
-### Option C: Legacy Monolith (reference only)
+### Option C: Kubernetes (kind — local cluster)
+
+Run the full platform on a local Kubernetes cluster using `kind`.
+
+**Prerequisites:** Docker, `kubectl`, `kind`, `helm` — see [docs/k8s-operations.md](docs/k8s-operations.md) for install instructions.
+
+```bash
+# 1. Spin up the cluster, install infra, build images, and deploy everything
+make k8s-setup-local
+
+# 2. Verify all pods are running
+make k8s-status
+
+# 3. Run the full E2E test suite (46 tests covering every service)
+bash k8s/scripts/e2e-test.sh
+```
+
+Services available at:
+- **Frontend:** http://localhost:30000
+- **API (Kong):** http://localhost:30080
+- **Grafana:** http://localhost:30030 (admin / admin)
+- **Prometheus:** `make k8s-prometheus` (port-forwards to http://localhost:9090)
+
+Tear everything down when done:
+```bash
+make k8s-teardown
+```
+
+For concepts and architecture: [docs/k8s-readme.md](docs/k8s-readme.md)
+For step-by-step commands and troubleshooting: [docs/k8s-operations.md](docs/k8s-operations.md)
+
+### Option D: Legacy Monolith (reference only)
 
 The original monolith is preserved at `v1/backend/` for reference. See [v1/backend/](v1/backend/) if you need to run it.
 
@@ -177,6 +208,19 @@ Chat-Project-Final/
 │   ├── Dockerfile               # Production container (Node 20 build + Nginx 1.25)
 │   └── package.json
 │
+├── k8s/                         # Kubernetes manifests and scripts
+│   ├── base/                    # Base Kustomize config (env-agnostic)
+│   ├── overlays/                # Environment overlays: dev, staging, prod, *-kind
+│   ├── infra/                   # Helm values for PostgreSQL, Redis, Kafka
+│   ├── jobs/                    # Init jobs (db-init, kafka-init)
+│   └── scripts/                 # Automation scripts
+│       ├── setup-local.sh       # One-command cluster setup
+│       ├── teardown.sh          # Full teardown
+│       ├── build-images.sh      # Build + load images into kind
+│       ├── deploy.sh            # Apply overlay + wait for rollouts
+│       ├── generate-secrets.sh  # Create K8s Secrets from secrets.env
+│       └── e2e-test.sh          # 46-test E2E functional test suite
+│
 ├── contracts/                   # Kafka event schemas (JSON Schema)
 │   └── events/                  # 6 event contract files (chat, file, auth, dlq)
 │
@@ -227,9 +271,99 @@ Chat-Project-Final/
 | **[Architecture & Tech Decisions](docs/ARCHITECTURE_AND_TECH_DECISIONS.md)** | Why every technology was chosen, microservice architecture, design patterns, trade-offs |
 | **[Dev Platform Guide](DEV_PLATFORM_GUIDE.md)** | CI/CD pipelines, per-service linting/testing, security scanning, pre-commit hooks |
 | **[Frontend Explained](docs/FRONTEND_EXPLAINED.md)** | Frontend architecture, React concepts, component structure, data flow |
+| **[K8s Guide](docs/k8s-readme.md)** | Kubernetes architecture, namespaces, Kustomize overlays, secrets, migrations — the "why" |
+| **[K8s Operations](docs/k8s-operations.md)** | Step-by-step K8s commands, scripts reference, Makefile targets, troubleshooting |
 | **[Kafka Event Contracts](contracts/README.md)** | Kafka event schemas, producer/consumer mapping, contract rules |
 | **[Verification Checklist](docs/MICROSERVICES_VERIFICATION_CHECKLIST.md)** | 174-item feature parity checklist (171/174 passed) |
 | **[Load Tests](loadtests/README.md)** | Load testing suite, performance baselines, user classes, pass/fail criteria |
+
+---
+
+## Kubernetes Scripts
+
+All scripts live in `k8s/scripts/`. Run them from the project root.
+
+| Script | What It Does | Usage |
+|--------|-------------|-------|
+| `setup-local.sh` | Full setup: creates kind cluster, installs infra via Helm, generates secrets, runs init jobs, builds images, deploys app | `bash k8s/scripts/setup-local.sh` |
+| `teardown.sh` | Removes app, jobs, Helm releases, and deletes the kind cluster | `bash k8s/scripts/teardown.sh` |
+| `build-images.sh` | Builds Docker images for all 5 services and loads them into the kind cluster | `bash k8s/scripts/build-images.sh` |
+| `deploy.sh` | Applies a Kustomize overlay and waits for all rollouts | `bash k8s/scripts/deploy.sh [dev\|staging\|prod]` |
+| `generate-secrets.sh` | Creates K8s Secret objects from `k8s/secrets.env` (or the example defaults) | `bash k8s/scripts/generate-secrets.sh` |
+| `e2e-test.sh` | Full end-to-end functional test — 46 tests across every service, WebSocket, and monitoring | `bash k8s/scripts/e2e-test.sh` |
+
+### E2E Test Suite
+
+```bash
+# Run against the default local cluster (Kong :30080, Frontend :30000, Grafana :30030)
+bash k8s/scripts/e2e-test.sh
+
+# Run against a custom endpoint (e.g. staging)
+bash k8s/scripts/e2e-test.sh http://staging.example.com http://staging.example.com:3000 http://grafana.example.com
+```
+
+Tests cover:
+- **Frontend** — HTML served through Kong
+- **Auth** — Register, duplicate detection, login (JWT), wrong password, token ping
+- **Chat rooms** — List rooms, admin creates room (RBAC), regular user blocked (403)
+- **WebSocket** — Connect to room, send message, receive broadcast
+- **Messages** — History endpoint, replay (`?since=`), auth enforcement
+- **Files** — Multipart upload, list, download with content verification
+- **Logout** — Token blacklisted in Redis after logout; other users unaffected
+- **Monitoring** — Grafana health + datasources, Prometheus targets + app metrics
+
+---
+
+## Monitoring (Grafana + Prometheus)
+
+Install the monitoring stack (first time only):
+```bash
+make k8s-monitoring-setup
+```
+
+### Grafana
+
+```
+URL:      http://localhost:30030
+Username: admin
+Password: admin
+```
+
+```bash
+# Or open it via make
+make k8s-grafana
+```
+
+Pre-loaded dashboards (Dashboards → Browse):
+- **Kubernetes / Compute Resources / Namespace (Pods)** — CPU and memory per pod
+- **Kubernetes / Compute Resources / Cluster** — Cluster-wide resource usage
+- **Node Exporter / Nodes** — Host machine metrics
+
+### Prometheus
+
+```bash
+# Port-forward to http://localhost:9090
+make k8s-prometheus
+```
+
+Useful queries in the Prometheus UI:
+```promql
+# CPU usage per chatbox pod
+rate(container_cpu_usage_seconds_total{namespace="chatbox"}[5m])
+
+# Memory per chatbox pod
+container_memory_working_set_bytes{namespace="chatbox"}
+
+# Active HTTP requests (if service exposes /metrics)
+http_requests_total{namespace="chatbox"}
+```
+
+Quick health check (no browser needed):
+```bash
+make k8s-status                                         # all pods running?
+kubectl top pods -n chatbox                             # live CPU/memory
+kubectl get events -n chatbox --field-selector type=Warning  # any warnings?
+```
 
 ---
 
