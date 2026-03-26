@@ -33,7 +33,7 @@ WORKDIR /app
 # Copy dependency manifests and install production-only deps
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
-RUN npm ci --omit=dev && npx prisma generate
+RUN npm ci --omit=dev && npm audit fix --omit=dev || true && npx prisma generate
 
 # Copy compiled JavaScript from build stage
 COPY --from=builder /app/dist ./dist/
