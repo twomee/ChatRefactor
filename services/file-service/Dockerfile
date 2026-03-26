@@ -3,7 +3,7 @@
 # Stage 2: Production runtime with minimal image
 
 # ── Build stage ─────────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ COPY src ./src/
 RUN npm run build
 
 # ── Production stage ────────────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 # Keep base image up to date (security)
 RUN apk upgrade --no-cache
@@ -32,8 +32,12 @@ WORKDIR /app
 
 # Copy dependency manifests and install production-only deps
 COPY package.json package-lock.json* ./
-COPY prisma ./prisma/
-RUN npm ci --omit=dev && npx prisma generate
+RUN npm ci --omit=dev
+
+# Copy Prisma generated client from builder instead of regenerating.
+# This avoids installing the prisma CLI (devDep) and its transitive
+# dependencies (cross-spawn, glob, minimatch, tar) in the prod image.
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 # Copy compiled JavaScript from build stage
 COPY --from=builder /app/dist ./dist/

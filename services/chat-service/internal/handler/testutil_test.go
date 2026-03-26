@@ -3,10 +3,15 @@ package handler
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 
 	"github.com/twomee/chatbox/chat-service/internal/client"
@@ -199,6 +204,30 @@ func (m *mockDelivery) DeliverEvent(ctx context.Context, eventType string, paylo
 	return m.err
 }
 
+// ---- Two-phase auth client ----
+// Returns different results for GetUserByID (caller admin check) vs
+// GetUserByUsername (target user lookup). Used to test PromoteUserInAllRooms
+// where the caller must be a global admin but the target lookup can fail.
+
+type mockTwoPhaseAuthClient struct {
+	byIDUser       *client.UserResponse
+	byIDErr        error
+	byUsernameUser *client.UserResponse
+	byUsernameErr  error
+}
+
+func (m *mockTwoPhaseAuthClient) GetUserByID(ctx context.Context, userID int) (*client.UserResponse, error) {
+	return m.byIDUser, m.byIDErr
+}
+
+func (m *mockTwoPhaseAuthClient) GetUserByUsername(ctx context.Context, username string) (*client.UserResponse, error) {
+	return m.byUsernameUser, m.byUsernameErr
+}
+
+func (m *mockTwoPhaseAuthClient) Ping(ctx context.Context) error {
+	return nil
+}
+
 // ---- Helpers ----
 
 func makeToken(userID int, username string) string {
@@ -215,5 +244,42 @@ func makeToken(userID int, username string) string {
 func newLogger() *zap.Logger {
 	l, _ := zap.NewDevelopment()
 	return l
+}
+
+// createDummyConn creates a WebSocket connection that can be registered with
+// the ws.Manager. Uses an in-memory httptest server with a simple upgrader.
+// The returned connection is the server-side connection.
+func createDummyConn(t *testing.T) *websocket.Conn {
+	t.Helper()
+	var serverConn *websocket.Conn
+	upgrader := websocket.Upgrader{}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatalf("upgrade: %v", err)
+		}
+		serverConn = conn
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
+	clientConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer clientConn.Close()
+
+	// Wait for upgrade to complete.
+	time.Sleep(50 * time.Millisecond)
+
+	if serverConn == nil {
+		t.Fatal("server-side WebSocket connection was not established")
+	}
+
+	return serverConn
 }
 

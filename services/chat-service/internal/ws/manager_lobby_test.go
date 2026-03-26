@@ -1,17 +1,10 @@
 package ws
 
 import (
-	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
-
-	"github.com/gorilla/websocket"
 )
 
-
-
-// ---- Lobby + broadcast tests ----
+// ---- Lobby connect/disconnect and query tests ----
 
 func TestConnectAndDisconnectLobby(t *testing.T) {
 	m := newTestManager()
@@ -44,162 +37,92 @@ func TestDisconnectLobbyUnknownConn(t *testing.T) {
 	}
 }
 
-func TestBroadcastRoom(t *testing.T) {
+func TestGetLobbyUsernamesEmpty(t *testing.T) {
 	m := newTestManager()
-
-	// Create server-side connections via httptest and client connections
-	// that can actually read.
-	upgrader := websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool { return true },
-	}
-
-	var serverConns []*websocket.Conn
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			t.Fatalf("upgrade: %v", err)
-		}
-		serverConns = append(serverConns, c)
-	}))
-	defer srv.Close()
-
-	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
-
-	// Create 2 client connections.
-	client1, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer client1.Close()
-
-	// Wait for server to register.
-	for len(serverConns) < 1 {
-	}
-
-	client2, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer client2.Close()
-
-	for len(serverConns) < 2 {
-	}
-
-	m.ConnectRoom(1, serverConns[0], UserInfo{UserID: 10, Username: "alice"})
-	m.ConnectRoom(1, serverConns[1], UserInfo{UserID: 20, Username: "bob"})
-
-	msg := map[string]string{"type": "message", "content": "hello"}
-	m.BroadcastRoom(1, msg)
-
-	// Read from client side.
-	var received map[string]string
-	if err := client1.ReadJSON(&received); err != nil {
-		t.Fatalf("client1 read: %v", err)
-	}
-	if received["content"] != "hello" {
-		t.Errorf("expected 'hello', got %q", received["content"])
-	}
-
-	if err := client2.ReadJSON(&received); err != nil {
-		t.Fatalf("client2 read: %v", err)
-	}
-	if received["content"] != "hello" {
-		t.Errorf("expected 'hello', got %q", received["content"])
+	names := m.GetLobbyUsernames()
+	if len(names) != 0 {
+		t.Errorf("expected empty list, got %v", names)
 	}
 }
 
-func TestBroadcastRoomEmptyRoom(t *testing.T) {
-	m := newTestManager()
-
-	// Should not panic on empty room.
-	msg := map[string]string{"type": "message"}
-	m.BroadcastRoom(999, msg)
-}
-
-func TestBroadcastRoomRemovesFailedConns(t *testing.T) {
+func TestGetLobbyUsernamesSingleUser(t *testing.T) {
 	m := newTestManager()
 	conn, cleanup := newWSConn(t)
+	defer cleanup()
 
-	m.ConnectRoom(1, conn, UserInfo{UserID: 10, Username: "alice"})
+	m.ConnectLobby(conn, UserInfo{UserID: 1, Username: "alice"})
 
-	// Close the connection to simulate failure.
-	cleanup()
-
-	msg := map[string]string{"type": "message", "content": "hello"}
-	m.BroadcastRoom(1, msg)
-
-	// After broadcast with failed write, the connection should be cleaned up.
-	if m.TotalConnections() != 0 {
-		t.Errorf("expected 0 connections after failed broadcast, got %d", m.TotalConnections())
+	names := m.GetLobbyUsernames()
+	if len(names) != 1 {
+		t.Fatalf("expected 1 username, got %d", len(names))
+	}
+	if names[0] != "alice" {
+		t.Errorf("expected 'alice', got %q", names[0])
 	}
 }
 
-func TestSendPersonalSuccess(t *testing.T) {
+func TestGetLobbyUsernamesMultipleUsers(t *testing.T) {
 	m := newTestManager()
+	conn1, cleanup1 := newWSConn(t)
+	defer cleanup1()
+	conn2, cleanup2 := newWSConn(t)
+	defer cleanup2()
 
-	upgrader := websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool { return true },
-	}
-	var serverConn *websocket.Conn
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var err error
-		serverConn, err = upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			t.Fatalf("upgrade: %v", err)
-		}
-	}))
-	defer srv.Close()
+	m.ConnectLobby(conn1, UserInfo{UserID: 10, Username: "alice"})
+	m.ConnectLobby(conn2, UserInfo{UserID: 20, Username: "bob"})
 
-	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
-	client, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer client.Close()
-
-	for serverConn == nil {
+	names := m.GetLobbyUsernames()
+	if len(names) != 2 {
+		t.Fatalf("expected 2 usernames, got %d", len(names))
 	}
 
-	m.ConnectLobby(serverConn, UserInfo{UserID: 42, Username: "bob"})
-
-	msg := map[string]string{"type": "pm", "content": "hello bob"}
-	sent := m.SendPersonal(42, msg)
-	if !sent {
-		t.Error("expected SendPersonal to return true")
+	nameSet := make(map[string]bool)
+	for _, n := range names {
+		nameSet[n] = true
 	}
-
-	var received map[string]string
-	if err := client.ReadJSON(&received); err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if received["content"] != "hello bob" {
-		t.Errorf("expected 'hello bob', got %q", received["content"])
+	if !nameSet["alice"] || !nameSet["bob"] {
+		t.Errorf("expected alice and bob, got %v", names)
 	}
 }
 
-func TestSendPersonalNoRecipient(t *testing.T) {
+func TestGetLobbyUsernamesDeduplicates(t *testing.T) {
 	m := newTestManager()
+	conn1, cleanup1 := newWSConn(t)
+	defer cleanup1()
+	conn2, cleanup2 := newWSConn(t)
+	defer cleanup2()
 
-	msg := map[string]string{"type": "pm", "content": "hello"}
-	sent := m.SendPersonal(999, msg)
-	if sent {
-		t.Error("expected SendPersonal to return false when no recipient connected")
+	// Same user with two lobby connections (e.g. two browser tabs).
+	m.ConnectLobby(conn1, UserInfo{UserID: 10, Username: "alice"})
+	m.ConnectLobby(conn2, UserInfo{UserID: 10, Username: "alice"})
+
+	names := m.GetLobbyUsernames()
+	if len(names) != 1 {
+		t.Errorf("expected 1 deduplicated username, got %d: %v", len(names), names)
+	}
+	if names[0] != "alice" {
+		t.Errorf("expected 'alice', got %q", names[0])
 	}
 }
 
-func TestSendPersonalFailedWrite(t *testing.T) {
+func TestGetLobbyUsernamesAfterDisconnect(t *testing.T) {
 	m := newTestManager()
-	conn, cleanup := newWSConn(t)
+	conn1, cleanup1 := newWSConn(t)
+	defer cleanup1()
+	conn2, cleanup2 := newWSConn(t)
+	defer cleanup2()
 
-	m.ConnectLobby(conn, UserInfo{UserID: 10, Username: "alice"})
+	m.ConnectLobby(conn1, UserInfo{UserID: 10, Username: "alice"})
+	m.ConnectLobby(conn2, UserInfo{UserID: 20, Username: "bob"})
 
-	// Close the connection to simulate failure.
-	cleanup()
+	m.DisconnectLobby(conn1)
 
-	msg := map[string]string{"type": "pm", "content": "hello"}
-	sent := m.SendPersonal(10, msg)
-	if sent {
-		t.Error("expected SendPersonal to return false when write fails")
+	names := m.GetLobbyUsernames()
+	if len(names) != 1 {
+		t.Fatalf("expected 1 username after disconnect, got %d", len(names))
+	}
+	if names[0] != "bob" {
+		t.Errorf("expected 'bob', got %q", names[0])
 	}
 }
 
@@ -257,4 +180,3 @@ func TestTotalConnectionsMixedRoomAndLobby(t *testing.T) {
 		t.Errorf("expected 2 total connections, got %d", m.TotalConnections())
 	}
 }
-
