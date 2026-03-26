@@ -89,7 +89,7 @@ k8s-status: ## Show pods, services, endpoints, recent events
 .PHONY: k8s-logs
 k8s-logs: ## Tail logs for a service (usage: make k8s-logs SVC=auth-service)
 	@if [ -z "$(SVC)" ]; then echo "Error: SVC required. Usage: make k8s-logs SVC=auth-service"; exit 1; fi
-	@kubectl logs -f -l app.kubernetes.io/name=$(SVC) --namespace chatbox --all-containers --tail=100
+	@kubectl logs -f -l app.kubernetes.io/name=$(SVC) --namespace chatbox --all-containers --tail=100 --max-log-requests=10
 
 .PHONY: k8s-shell
 k8s-shell: ## Exec into a pod (usage: make k8s-shell SVC=auth-service)
