@@ -3,8 +3,16 @@ name: CI
 on:
   push:
     branches: [main, microservices]
+    paths:
+      - "v1/**"
+      - "frontend/**"
+      - ".github/workflows/ci.yml"
   pull_request:
     branches: [main, microservices]
+    paths:
+      - "v1/**"
+      - "frontend/**"
+      - ".github/workflows/ci.yml"
 
 concurrency:
   group: ci-${{ github.ref }}

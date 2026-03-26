@@ -2,9 +2,9 @@ name: Security Scan
 
 on:
   push:
-    branches: [main, microservices]
+    branches: [main]
   pull_request:
-    branches: [main, microservices]
+    branches: [main]
   schedule:
     # Run every Monday at 9:00 AM UTC
     - cron: "0 9 * * 1"
@@ -30,8 +30,12 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
 
+  # Docker image scans only run on push to main and weekly schedule.
+  # They are slow (build + scan each image) and rarely find new issues
+  # on a PR-by-PR basis. The filesystem scan above catches dependency CVEs.
   trivy-backend-image:
     name: Trivy Backend Image Scan
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +54,7 @@ jobs:
 
   trivy-frontend-image:
     name: Trivy Frontend Image Scan
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,6 +73,7 @@ jobs:
 
   trivy-auth-service-image:
     name: Trivy Auth Service Image Scan
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -97,6 +103,7 @@ jobs:
 
   trivy-chat-service-image:
     name: Trivy Chat Service Image Scan
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -126,6 +133,7 @@ jobs:
 
   trivy-message-service-image:
     name: Trivy Message Service Image Scan
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -155,6 +163,7 @@ jobs:
 
   trivy-file-service-image:
     name: Trivy File Service Image Scan
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
