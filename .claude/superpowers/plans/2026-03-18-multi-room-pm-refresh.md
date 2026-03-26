@@ -8,7 +8,7 @@
 
 **Tech Stack:** FastAPI + WebSockets (Python), React 18 + Vite, SQLite/SQLAlchemy, native browser WebSocket API, axios for HTTP
 
-**Spec:** `docs/superpowers/specs/2026-03-17-multi-room-pm-refresh-design.md`
+**Spec:** `.claude/superpowers/specs/2026-03-17-multi-room-pm-refresh-design.md`
 
 **Run backend tests:** `cd /home/ido/Desktop/Chat-Project-Final/backend && python -m pytest tests/ -v`
 
