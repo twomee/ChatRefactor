@@ -7,13 +7,14 @@ This guide contains **commands and step-by-step instructions** for running, mana
 ## Table of Contents
 
 1. [Quick Start](#quick-start)
-2. [Step-by-Step Setup](#step-by-step-setup)
-3. [Exploring the Cluster](#exploring-the-cluster)
-4. [Common Operations](#common-operations)
-5. [Monitoring](#monitoring)
-6. [Troubleshooting](#troubleshooting)
-7. [Teardown](#teardown)
-8. [Reference](#reference)
+2. [Running by Environment](#running-by-environment)
+3. [Step-by-Step Setup](#step-by-step-setup)
+4. [Resource Commands Reference](#resource-commands-reference)
+5. [Common Operations](#common-operations)
+6. [Monitoring](#monitoring)
+7. [Troubleshooting](#troubleshooting)
+8. [Teardown](#teardown)
+9. [Reference](#reference)
 
 ---
 
@@ -70,6 +71,107 @@ kubectl version --client    # Client Version: v1.28+
 kind --version      # kind v0.24+
 helm version        # v3.13+
 ```
+
+---
+
+## Running by Environment
+
+The same infrastructure (Postgres, Redis, Kafka) runs for all environments. What changes per environment is the **Kustomize overlay** — it controls how many replicas run, what resource limits are set, and how services are exposed.
+
+---
+
+### Dev — 1 replica, local kind cluster
+
+Use this for everyday development. It's the default.
+
+```bash
+# Full setup from zero (creates cluster, installs infra, builds images, deploys)
+bash k8s/scripts/setup-local.sh
+# or: make k8s-setup-local
+
+# Deploy / re-deploy app only (infra already running)
+bash k8s/scripts/deploy.sh dev
+# or: make k8s-deploy
+
+# After changing code in one service — rebuild + restart just that service
+make k8s-redeploy SVC=auth-service
+# valid values: auth-service, chat-service, message-service, file-service, frontend, kong
+
+# Manual kubectl equivalent
+kubectl apply -k k8s/overlays/dev
+bash k8s/scripts/generate-secrets.sh   # always re-run after kustomize apply
+```
+
+**Access:** Frontend → http://localhost:30000 | API → http://localhost:30080
+
+---
+
+### Staging-kind — 2 replicas, local kind cluster
+
+Same config as staging (2 replicas per service) but uses your locally built images instead of DockerHub. Use this to test the staging overlay before pushing images to a registry.
+
+```bash
+# Deploy the staging overlay (images must already be loaded into kind)
+bash k8s/scripts/deploy.sh staging-kind
+# or: make k8s-deploy OVERLAY=staging-kind
+
+# Manual kubectl equivalent
+kubectl apply -k k8s/overlays/staging-kind
+bash k8s/scripts/generate-secrets.sh
+```
+
+**What's different vs dev:** 2 replicas for every service instead of 1.
+
+**Access:** same ports — Frontend → http://localhost:30000 | API → http://localhost:30080
+
+---
+
+### Prod-kind — 3 chat replicas + HPA + PDB, local kind cluster
+
+Full production config but using locally built images. Use this to validate the production overlay locally before deploying to a real cluster.
+
+```bash
+# Deploy the prod overlay (images must already be loaded into kind)
+bash k8s/scripts/deploy.sh prod-kind
+# or: make k8s-deploy OVERLAY=prod-kind
+
+# Manual kubectl equivalent
+kubectl apply -k k8s/overlays/prod-kind
+bash k8s/scripts/generate-secrets.sh
+```
+
+**What's different vs dev:**
+- `chat-service` → 3 replicas (scales up to 10 automatically based on CPU)
+- All other services → 2 replicas
+- `HorizontalPodAutoscaler` active on chat-service (CPU target: 70%)
+- `PodDisruptionBudgets` on all 5 services (K8s won't take all pods offline at once during maintenance)
+
+**Verify the HPA is active:**
+```bash
+kubectl get hpa -n chatbox
+# NAME                  REFERENCE                TARGETS   MINPODS   MAXPODS   REPLICAS
+# chat-service-hpa      Deployment/chat-service  0%/70%    3         10        3
+```
+
+**Access:** same ports — Frontend → http://localhost:30000 | API → http://localhost:30080
+
+---
+
+### Staging / Prod — real cluster (requires DockerHub images)
+
+These overlays are for deployment to a real cloud cluster (AWS EKS, GKE, AKS). They expect images to already exist in DockerHub.
+
+```bash
+# Push images to DockerHub first (done automatically by CI, or manually)
+docker push <your-dockerhub-user>/chatbox-auth-service:latest
+# ... repeat for all 5 services
+
+# Then deploy
+bash k8s/scripts/deploy.sh staging
+bash k8s/scripts/deploy.sh prod
+```
+
+> **Note:** Your kubeconfig must point to the target cluster (`kubectl config current-context`).
 
 ---
 
@@ -243,97 +345,266 @@ kubectl get pods -n chatbox
 
 ---
 
-## Exploring the Cluster
+## Resource Commands Reference
 
-### View All Pods
+All commands below are organized by Kubernetes resource type. Replace `<pod-name>` with the actual pod name from `kubectl get pods -n chatbox`.
+
+---
+
+### Pods
+
+A **Pod** is the running instance of your container. Deployments manage pods — you normally don't create pods directly.
 
 ```bash
-# Application pods
+# List all app pods and their status
 kubectl get pods -n chatbox
 
-# Infrastructure pods
+# List infrastructure pods (Postgres, Redis, Kafka)
 kubectl get pods -n chatbox-infra
 
-# All namespaces at once
-kubectl get pods -A | grep chatbox
+# List monitoring pods (Prometheus, Grafana)
+kubectl get pods -n chatbox-monitoring
 ```
 
-Output explained:
+Reading the output:
 ```
 NAME                              READY   STATUS    RESTARTS   AGE
 auth-service-7d8f9b6c4d-x2k9p    1/1     Running   0          5m
 │                                  │       │         │
-│                                  │       │         └── Times the container was restarted
-│                                  │       └── Current state (Running = healthy)
-│                                  └── Ready containers / Total containers
-└── Pod name (deployment name + random suffix)
+│                                  │       │         └── Times the container crashed and restarted
+│                                  │       └── Running = healthy, CrashLoopBackOff = broken
+│                                  └── Ready containers / Total containers (1/1 = good)
+└── Deployment name + random pod ID
 ```
 
-### View Services
+```bash
+# Show full details of a pod (resources, env vars, events, probe status)
+kubectl describe pod <pod-name> -n chatbox
+
+# Tail live logs for all pods of a service
+kubectl logs -f -l app.kubernetes.io/name=auth-service -n chatbox --max-log-requests=10
+
+# Logs for a specific pod
+kubectl logs <pod-name> -n chatbox
+
+# Logs from before the last crash (when pod keeps restarting)
+kubectl logs <pod-name> -n chatbox --previous
+
+# Init container logs (runs before the app starts — migration, wait-for-db, etc.)
+kubectl logs <pod-name> -n chatbox -c wait-for-postgres
+kubectl logs <pod-name> -n chatbox -c run-migrations
+
+# Open an interactive shell inside a running pod
+kubectl exec -it deployment/auth-service -n chatbox -- /bin/sh
+
+# Run a single command inside a pod without opening a shell
+kubectl exec deployment/auth-service -n chatbox -- env | grep DATABASE
+```
+
+---
+
+### Deployments
+
+A **Deployment** tells Kubernetes: "keep N copies of this container running, and roll out updates without downtime."
 
 ```bash
+# List all deployments and how many replicas are running
+kubectl get deployments -n chatbox
+
+# Show full config: replicas, image, resource limits, probes, env vars
+kubectl describe deployment/auth-service -n chatbox
+
+# Trigger a zero-downtime rolling restart (e.g. after a config change)
+kubectl rollout restart deployment/auth-service -n chatbox
+
+# Wait for the restart to finish before running the next command
+kubectl rollout status deployment/auth-service -n chatbox
+
+# See the history of past deploys
+kubectl rollout history deployment/auth-service -n chatbox
+
+# Roll back to the previous version
+kubectl rollout undo deployment/auth-service -n chatbox
+
+# Temporarily scale to more replicas (overrides kustomize — reverted on next apply)
+kubectl scale deployment/chat-service --replicas=3 -n chatbox
+```
+
+---
+
+### Services
+
+A **Service** is a stable DNS name and IP address that routes traffic to pods. Pods come and go (they restart, scale), but the service address stays the same.
+
+```bash
+# List all services and their type + ports
 kubectl get svc -n chatbox
 ```
 
-Output explained:
+Reading the output:
 ```
-NAME              TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)
-kong              NodePort    10.96.45.12     <none>        80:30080/TCP
-│                 │                                         │
-│                 │                                         └── External port : Internal port
-│                 └── How the service is exposed
-└── Service name (used as DNS hostname)
+NAME    TYPE       CLUSTER-IP     EXTERNAL-IP  PORT(S)
+kong    NodePort   10.96.45.12    <none>       80:30080/TCP
+│       │                                      │
+│       │                                      └── internal:external port
+│       └── NodePort = reachable from outside the cluster on that port
+└── This is the DNS name other pods use to reach this service
 ```
-
-### View Logs
 
 ```bash
-# Follow logs for a specific service (all pods)
-kubectl logs -f -l app.kubernetes.io/name=auth-service -n chatbox
+# Show full details: selector, endpoints, port config
+kubectl describe svc/kong -n chatbox
 
-# View logs for a specific pod
-kubectl logs auth-service-7d8f9b6c4d-x2k9p -n chatbox
-
-# View init container logs (useful for debugging startup)
-kubectl logs auth-service-7d8f9b6c4d-x2k9p -n chatbox -c wait-for-postgres
-kubectl logs auth-service-7d8f9b6c4d-x2k9p -n chatbox -c run-migrations
-
-# View last 50 lines
-kubectl logs -l app.kubernetes.io/name=chat-service -n chatbox --tail=50
-```
-
-### Exec Into a Container
-
-```bash
-# Open a shell inside a running container
-kubectl exec -it deployment/auth-service -n chatbox -- /bin/sh
-
-# Run a single command
-kubectl exec deployment/auth-service -n chatbox -- env | grep DATABASE
-
-# Test connectivity from inside a pod
+# Test that a service is reachable from inside another pod
 kubectl exec deployment/auth-service -n chatbox -- \
   wget -q -O- http://chat-service:8003/health
 ```
 
-### View Events
+---
+
+### PersistentVolumeClaims (PVCs)
+
+A **PVC** is a request for disk storage that survives pod restarts. Only `file-service` uses one — it stores uploaded files.
 
 ```bash
-# Recent events (shows scheduling, pulling, starting, errors)
-kubectl get events -n chatbox --sort-by='.lastTimestamp' | tail -20
+# Check if the PVC is bound (STATUS should be Bound, not Pending)
+kubectl get pvc -n chatbox
 
-# Events for a specific pod
-kubectl describe pod auth-service-7d8f9b6c4d-x2k9p -n chatbox
-# Scroll to the "Events" section at the bottom
+# Show details: storage class, size, which pod is using it
+kubectl describe pvc/file-uploads-pvc -n chatbox
 ```
 
-### View Resource Usage
+> If STATUS is `Pending`, the cluster can't provision storage. Run `kubectl get storageclass` to check what's available.
+
+---
+
+### ConfigMaps
+
+A **ConfigMap** holds non-sensitive configuration (URLs, feature flags, ports). Think of it as the `.env` file for non-secret values.
 
 ```bash
-# Pod CPU and memory usage (requires metrics-server)
-kubectl top pods -n chatbox
+# List all ConfigMaps in the app namespace
+kubectl get configmaps -n chatbox
 
-# Node resource usage
+# View the contents of a ConfigMap
+kubectl get configmap chatbox-shared-config -n chatbox -o yaml
+
+# Edit a ConfigMap in-place
+kubectl edit configmap chatbox-shared-config -n chatbox
+```
+
+> **Important:** Pods do NOT automatically pick up ConfigMap changes. After editing, you must restart the affected services:
+```bash
+kubectl rollout restart deployment/auth-service -n chatbox
+kubectl rollout restart deployment/chat-service -n chatbox
+```
+
+---
+
+### Secrets
+
+A **Secret** holds sensitive values (passwords, tokens, database URLs). Stored as base64-encoded strings in etcd — not encrypted by default, so treat them carefully.
+
+```bash
+# List all secrets
+kubectl get secrets -n chatbox
+
+# Decode and print a single secret value
+kubectl get secret auth-service-secrets -n chatbox \
+  -o jsonpath='{.data.DATABASE_URL}' | base64 -d
+
+# Decode the admin username
+kubectl get secret auth-admin-secret -n chatbox \
+  -o jsonpath='{.data.ADMIN_USERNAME}' | base64 -d
+
+# Regenerate all secrets from k8s/secrets.env (safest way to update)
+bash k8s/scripts/generate-secrets.sh
+```
+
+---
+
+### Jobs
+
+A **Job** runs a container once to completion and stops. We use them for database setup (`db-init`) and Kafka topic creation (`kafka-init`).
+
+```bash
+# Check if init jobs completed successfully (COMPLETIONS should be 1/1)
+kubectl get jobs -n chatbox
+
+# Read the output of the db-init job (shows which databases were created)
+kubectl logs job/db-init -n chatbox
+
+# Read the output of the kafka-init job (shows which topics were created)
+kubectl logs job/kafka-init -n chatbox
+
+# Re-run jobs (must delete first — K8s won't re-run a completed job)
+kubectl delete job db-init kafka-init -n chatbox --ignore-not-found
+kubectl apply -f k8s/jobs/db-init-job.yaml
+kubectl apply -f k8s/jobs/kafka-init-job.yaml
+kubectl wait --for=condition=complete job/db-init --namespace chatbox --timeout=120s
+kubectl wait --for=condition=complete job/kafka-init --namespace chatbox --timeout=120s
+```
+
+---
+
+### HorizontalPodAutoscaler (HPA) — prod overlay only
+
+An **HPA** watches CPU/memory usage and automatically adds or removes pod replicas. Only active in the `prod` and `prod-kind` overlays.
+
+```bash
+# Check HPA status — TARGETS shows current CPU vs threshold
+kubectl get hpa -n chatbox
+# NAME               TARGETS   MINPODS   MAXPODS   REPLICAS
+# chat-service-hpa   0%/70%    3         10        3
+# ↑ at 0% CPU now, threshold is 70%, keeps 3-10 replicas
+
+# Full details: current metrics, conditions, recent scaling events
+kubectl describe hpa chat-service-hpa -n chatbox
+```
+
+> The HPA only works if `metrics-server` is installed. For kind: `kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml`
+
+---
+
+### PodDisruptionBudgets (PDB) — prod overlay only
+
+A **PDB** prevents Kubernetes from taking too many pods offline at once during cluster maintenance or rolling restarts. Only active in `prod` and `prod-kind`.
+
+```bash
+# List PDBs (one per service in prod)
+kubectl get pdb -n chatbox
+
+# Show details: how many pods must stay up, current status
+kubectl describe pdb auth-service-pdb -n chatbox
+```
+
+---
+
+### Events
+
+**Events** are K8s's log of what happened — pod scheduled, image pulled, container started, OOMKilled, etc. The first place to look when something is broken.
+
+```bash
+# All recent events, newest last
+kubectl get events -n chatbox --sort-by='.lastTimestamp' | tail -20
+
+# Only warnings (errors, failures, OOMKilled)
+kubectl get events -n chatbox --field-selector type=Warning
+
+# Events for infrastructure namespace
+kubectl get events -n chatbox-infra --sort-by='.lastTimestamp' | tail -10
+```
+
+---
+
+### Resource Usage
+
+```bash
+# CPU and memory per pod (requires metrics-server to be installed)
+kubectl top pods -n chatbox
+kubectl top pods -n chatbox-infra
+
+# CPU and memory of the cluster node itself
 kubectl top nodes
 ```
 
