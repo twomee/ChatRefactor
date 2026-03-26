@@ -12,11 +12,11 @@ echo "  Chatbox K8s Teardown"
 echo "========================================="
 
 echo ""
-echo "[1/4] Removing application..."
+echo "[1/5] Removing application..."
 kubectl delete -k "$K8S_DIR/overlays/dev" --ignore-not-found 2>/dev/null || true
 
 echo ""
-echo "[2/4] Removing init jobs..."
+echo "[2/5] Removing init jobs..."
 kubectl delete -f "$K8S_DIR/jobs/" --ignore-not-found 2>/dev/null || true
 
 echo ""
