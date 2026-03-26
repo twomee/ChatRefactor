@@ -66,7 +66,15 @@ jobs:
           DATABASE_URL: sqlite:///./test.db
           REDIS_URL: redis://localhost:6379/0
           KAFKA_BOOTSTRAP_SERVERS: localhost:29092
-        run: pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-fail-under=50
+        run: pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=50
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: services/auth-service/coverage.xml
+          flags: auth-service
+          fail_ci_if_error: false
 
   docker-build:
     name: Auth Docker Build

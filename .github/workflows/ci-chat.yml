@@ -67,6 +67,14 @@ jobs:
             exit 1
           fi
 
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: services/chat-service/coverage.out
+          flags: chat-service
+          fail_ci_if_error: false
+
   docker-build:
     name: Chat Docker Build
     runs-on: ubuntu-latest

@@ -67,6 +67,14 @@ jobs:
           KAFKA_BOOTSTRAP_SERVERS: localhost:9092
         run: npm run test:coverage
 
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: services/file-service/coverage/lcov.info
+          flags: file-service
+          fail_ci_if_error: false
+
   docker-build:
     name: File Service Docker Build
     runs-on: ubuntu-latest

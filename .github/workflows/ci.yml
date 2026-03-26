@@ -70,6 +70,14 @@ jobs:
           path: v1/backend/coverage.xml
           retention-days: 14
 
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: v1/backend/coverage.xml
+          flags: legacy-backend
+          fail_ci_if_error: false
+
   frontend-lint:
     name: Frontend Lint
     runs-on: ubuntu-latest
@@ -110,7 +118,7 @@ jobs:
         run: npm ci
 
       - name: Run tests with coverage
-        run: npm run test:coverage
+        run: npx vitest run --coverage --reporter=default --coverage.reporter=lcov --coverage.reporter=text
 
       - name: Upload frontend coverage report
         if: always()
@@ -119,6 +127,14 @@ jobs:
           name: frontend-coverage
           path: frontend/coverage/
           retention-days: 14
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: frontend/coverage/lcov.info
+          flags: frontend
+          fail_ci_if_error: false
 
   frontend-build:
     name: Frontend Build
