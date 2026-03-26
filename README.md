@@ -279,6 +279,72 @@ Chat-Project-Final/
 
 ---
 
+## Makefile Reference
+
+All K8s tasks have a `make` shortcut. Run `make <target>` from the project root.
+
+### Variables
+
+| Variable | Default | Used By |
+|----------|---------|---------|
+| `SVC` | *(required for some targets)* | `k8s-logs`, `k8s-shell`, `k8s-restart`, `k8s-redeploy` |
+| `OVERLAY` | `dev` | `k8s-deploy`, `k8s-validate` |
+| `CLUSTER_NAME` | `chatbox` | All kind commands |
+
+Valid values for `SVC`: `auth-service`, `chat-service`, `message-service`, `file-service`, `frontend`, `kong`
+
+Valid values for `OVERLAY`: `dev`, `staging`, `prod`, `staging-kind`, `prod-kind`
+
+### Cluster Lifecycle
+
+```bash
+make k8s-setup-local      # Full zero-to-running setup (kind + infra + build + deploy)
+make k8s-teardown         # Tear everything down and delete the kind cluster
+```
+
+### Infrastructure
+
+```bash
+make k8s-infra-setup      # Install PostgreSQL, Redis, Kafka via Helm
+make k8s-infra-teardown   # Uninstall Helm releases (keeps kind cluster)
+make k8s-init-jobs        # Run db-init + kafka-init jobs (creates databases and topics)
+make k8s-secrets          # Generate K8s Secrets from k8s/secrets.env
+```
+
+### Application
+
+```bash
+make k8s-build                          # Build all 5 Docker images and load into kind
+make k8s-deploy                         # Deploy with dev overlay (default)
+make k8s-deploy OVERLAY=staging-kind    # Deploy with a different overlay
+make k8s-validate                       # Dry-run YAML validation (no cluster changes)
+make k8s-validate OVERLAY=prod          # Validate a specific overlay
+
+make k8s-redeploy SVC=auth-service      # Rebuild image + reload into kind + rolling restart
+make k8s-redeploy SVC=chat-service      # Same for chat-service
+```
+
+### Operations
+
+```bash
+make k8s-status                         # Show pods, services, infra, recent events
+make k8s-logs SVC=auth-service          # Tail live logs (all pods for that service)
+make k8s-logs SVC=chat-service          # Same for chat-service
+make k8s-shell SVC=auth-service         # Open a shell inside a running pod
+make k8s-restart SVC=message-service    # Rolling restart (zero downtime)
+make k8s-port-forward                   # Print access URLs (NodePort already exposed)
+```
+
+### Monitoring
+
+```bash
+make k8s-monitoring-setup   # Install Prometheus + Grafana (first time only)
+make k8s-grafana            # Print Grafana URL and credentials
+make k8s-prometheus         # Port-forward Prometheus → http://localhost:9090
+```
+
+---
+
 ## Kubernetes Scripts
 
 All scripts live in `k8s/scripts/`. Run them from the project root.

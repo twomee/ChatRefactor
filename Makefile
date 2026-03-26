@@ -131,6 +131,12 @@ k8s-grafana: ## Print Grafana URL
 	@echo "Username: admin"
 	@echo "Password: admin"
 
+.PHONY: k8s-prometheus
+k8s-prometheus: ## Port-forward Prometheus to http://localhost:9090
+	@echo "Prometheus: http://localhost:9090"
+	@echo "Press Ctrl+C to stop."
+	@kubectl port-forward -n chatbox-monitoring svc/monitoring-kube-prometheus-prometheus 9090:9090
+
 # --- Config ---
 
 .PHONY: k8s-secrets
