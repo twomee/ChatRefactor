@@ -206,6 +206,6 @@ draw_box(500, 840, 700, 120, "#fff8e0", "#d97706",
          "4. On reconnect → GET /messages/history from Message Service")
 
 # Save
-output_path = "/home/ido/Desktop/Chat-Project-Final/docs/architecture-diagram.png"
+output_path = "/home/ido/Desktop/Chat-Project-Final/docs/architecture/diagrams/architecture-diagram.png"
 img.save(output_path, "PNG", quality=95)
 print(f"Saved to {output_path}")

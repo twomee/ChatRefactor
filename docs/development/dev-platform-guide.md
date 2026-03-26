@@ -3,6 +3,8 @@
 This guide explains every tool we use to build, test, and maintain ChatBox.
 No prior DevOps knowledge needed.
 
+> For CI tool configuration details (CodeQL, SonarCloud, Codecov, coverage thresholds), see [CI Tools Setup](ci-tools-setup.md).
+
 ---
 
 ## Table of Contents

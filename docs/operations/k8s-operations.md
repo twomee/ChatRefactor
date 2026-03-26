@@ -1,6 +1,6 @@
 # Kubernetes Operations Guide — Running Chatbox on K8s
 
-This guide contains **commands and step-by-step instructions** for running, managing, and troubleshooting Chatbox on Kubernetes. For understanding the architecture and concepts, see [k8s-readme.md](./k8s-readme.md).
+This guide contains **commands and step-by-step instructions** for running, managing, and troubleshooting Chatbox on Kubernetes. For understanding the architecture and concepts, see [k8s-concepts.md](./k8s-concepts.md).
 
 ---
 
