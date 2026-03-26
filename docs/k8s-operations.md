@@ -27,7 +27,7 @@ make k8s-setup-local
 
 This single command will:
 1. Create a local Kubernetes cluster using `kind`
-2. Install PostgreSQL, Redis, and Kafka via Helm
+2. Install PostgreSQL and Redis via Helm, Kafka via plain manifest
 3. Create databases and Kafka topics
 4. Build all Docker images
 5. Deploy all application services
@@ -192,10 +192,31 @@ kubectl get jobs -n chatbox
 ### Step 6: Build Docker Images
 
 ```bash
+# Option A: script (builds all 5 and loads into kind)
 bash k8s/scripts/build-images.sh
+
+# Option B: manually, one service at a time
+docker build -t auth-service:latest services/auth-service/
+docker build -t chat-service:latest services/chat-service/
+docker build -t message-service:latest services/message-service/
+docker build -t file-service:latest services/file-service/
+docker build -t frontend:latest \
+  --build-arg VITE_API_BASE=http://localhost:30080 \
+  --build-arg VITE_WS_BASE=ws://localhost:30080 \
+  frontend/
+
+# Load each image into the kind cluster
+kind load docker-image auth-service:latest --name chatbox
+kind load docker-image chat-service:latest --name chatbox
+kind load docker-image message-service:latest --name chatbox
+kind load docker-image file-service:latest --name chatbox
+kind load docker-image frontend:latest --name chatbox
 ```
 
-This builds all 5 service images and loads them into the kind cluster.
+Verify:
+```bash
+docker exec chatbox-control-plane crictl images | grep -E "auth|chat|message|file|frontend"
+```
 
 ### Step 7: Deploy Application
 
@@ -515,8 +536,9 @@ kubectl logs job/db-init -n chatbox
 kubectl logs job/kafka-init -n chatbox
 
 # Delete and re-run
-kubectl delete job db-init kafka-init -n chatbox
-kubectl apply -f k8s/jobs/
+kubectl delete job db-init kafka-init -n chatbox --ignore-not-found
+kubectl apply -f k8s/jobs/db-init-job.yaml
+kubectl apply -f k8s/jobs/kafka-init-job.yaml
 ```
 
 ### Images Not Found
@@ -582,10 +604,11 @@ make k8s-teardown
 ```
 
 This will:
-1. Delete all application resources
+1. Delete all application resources (dev overlay)
 2. Delete init jobs
-3. Uninstall Helm releases (Postgres, Redis, Kafka)
-4. Delete the kind cluster
+3. Uninstall Helm releases (Postgres, Redis), remove Kafka manifest
+4. Uninstall monitoring (Prometheus + Grafana)
+5. Delete the kind cluster
 
 ### Remove Only App (Keep Infrastructure)
 
@@ -622,7 +645,8 @@ helm uninstall monitoring --namespace chatbox-monitoring
 | `k8s-restart` | Rolling restart | `make k8s-restart SVC=auth-service` |
 | `k8s-port-forward` | Show access URLs | `make k8s-port-forward` |
 | `k8s-monitoring-setup` | Install Prometheus + Grafana | `make k8s-monitoring-setup` |
-| `k8s-grafana` | Show Grafana URL | `make k8s-grafana` |
+| `k8s-grafana` | Show Grafana URL and credentials | `make k8s-grafana` |
+| `k8s-prometheus` | Port-forward Prometheus → localhost:9090 | `make k8s-prometheus` |
 | `k8s-secrets` | Generate K8s secrets | `make k8s-secrets` |
 
 ### Services & Ports
@@ -653,7 +677,7 @@ helm uninstall monitoring --namespace chatbox-monitoring
 | POSTGRES_PASSWORD | Secret | (from secrets.env) |
 | REDIS_PASSWORD | Secret | (from secrets.env) |
 | SECRET_KEY | Secret | (from secrets.env) |
-| REDIS_URL | Secret | redis://:PASS@redis-master.chatbox-infra:6379/0 |
+| REDIS_URL | Secret | redis://default:PASS@redis-master.chatbox-infra:6379/0 |
 
 **Per-service:**
 | Variable | Service | Source |
@@ -681,8 +705,10 @@ k8s/
 │   └── kong/                # + ConfigMap with kong.yml
 ├── overlays/
 │   ├── dev/                 # Local: NodePort, 1 replica
-│   ├── staging/             # 2 replicas
-│   └── prod/                # LoadBalancer, HPA, PDB
+│   ├── staging/             # 2 replicas (requires DockerHub images)
+│   ├── prod/                # LoadBalancer, HPA, PDB (requires DockerHub images)
+│   ├── staging-kind/        # staging config using local kind images
+│   └── prod-kind/           # prod config using local kind images
 ├── infra/
 │   ├── namespace.yaml       # chatbox-infra + chatbox-monitoring
 │   └── helm-values/         # Helm chart configuration
