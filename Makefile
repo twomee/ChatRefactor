@@ -20,12 +20,15 @@ k8s-teardown: ## Full teardown: remove everything, delete kind cluster
 
 .PHONY: k8s-infra-setup
 k8s-infra-setup: ## Install Postgres, Redis, Kafka via Helm
-	@echo "Installing infrastructure..."
-	@helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true
-	@helm repo update
-	@helm upgrade --install postgres bitnami/postgresql --namespace chatbox-infra --values k8s/infra/helm-values/postgres.yaml --version 16.4.5 --wait --timeout 120s
-	@helm upgrade --install redis bitnami/redis --namespace chatbox-infra --values k8s/infra/helm-values/redis.yaml --version 20.6.2 --wait --timeout 120s
-	@helm upgrade --install kafka bitnami/kafka --namespace chatbox-infra --values k8s/infra/helm-values/kafka.yaml --version 31.2.0 --wait --timeout 180s
+	@test -f k8s/secrets.env || { echo "Error: k8s/secrets.env not found. Run 'make k8s-secrets' first."; exit 1; }
+	@POSTGRES_PASSWORD=$$(grep '^POSTGRES_PASSWORD=' k8s/secrets.env | cut -d= -f2); \
+	REDIS_PASSWORD=$$(grep '^REDIS_PASSWORD=' k8s/secrets.env | cut -d= -f2); \
+	echo "Installing infrastructure..."; \
+	helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true; \
+	helm repo update; \
+	helm upgrade --install postgres bitnami/postgresql --namespace chatbox-infra --values k8s/infra/helm-values/postgres.yaml --version 16.4.5 --set auth.postgresPassword=$$POSTGRES_PASSWORD --set auth.password=$$POSTGRES_PASSWORD --wait --timeout 120s; \
+	helm upgrade --install redis bitnami/redis --namespace chatbox-infra --values k8s/infra/helm-values/redis.yaml --version 20.6.2 --set auth.password=$$REDIS_PASSWORD --wait --timeout 120s; \
+	helm upgrade --install kafka bitnami/kafka --namespace chatbox-infra --values k8s/infra/helm-values/kafka.yaml --version 31.2.0 --wait --timeout 180s
 
 .PHONY: k8s-infra-teardown
 k8s-infra-teardown: ## Remove Helm infra releases only

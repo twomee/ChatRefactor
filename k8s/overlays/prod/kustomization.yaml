@@ -3,13 +3,14 @@ kind: Kustomization
 namespace: chatbox
 resources:
   - ../../base
+  - patches/hpa.yaml
+  - patches/pdb.yaml
 patches:
   - path: patches/replicas.yaml
   - path: patches/resources.yaml
-  - path: patches/hpa.yaml
-  - path: patches/pdb.yaml
   - path: patches/kong-service-lb.yaml
   - path: patches/image-pull-policy.yaml
+  - path: patches/kong-cors.yaml
 images:
   - name: auth-service
     newName: docker.io/DOCKERHUB_USER/chatbox-auth-service

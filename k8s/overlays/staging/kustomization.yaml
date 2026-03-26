@@ -44,6 +44,7 @@ patches:
     target:
       kind: Deployment
       name: frontend
+  - path: patches/kong-cors.yaml
 images:
   - name: auth-service
     newName: docker.io/DOCKERHUB_USER/chatbox-auth-service

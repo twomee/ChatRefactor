@@ -7,9 +7,9 @@ export const config = {
   apiBase:
     window.__RUNTIME_CONFIG__?.VITE_API_BASE ||
     import.meta.env.VITE_API_BASE ||
-    'http://localhost',
+    'http://localhost:8000',
   wsBase:
     window.__RUNTIME_CONFIG__?.VITE_WS_BASE ||
     import.meta.env.VITE_WS_BASE ||
-    'ws://localhost',
+    'ws://localhost:8000',
 };

@@ -27,6 +27,11 @@ jobs:
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
 
+      - name: Set up kustomize
+        uses: imranismail/setup-kustomize@v2
+        with:
+          kustomize-version: "5.4.3"
+
       - name: Configure kubeconfig
         run: |
           mkdir -p $HOME/.kube
@@ -47,12 +52,12 @@ jobs:
         run: |
           for svc in auth-service chat-service message-service file-service frontend kong; do
             echo "Waiting for $svc..."
-            kubectl rollout status deployment/$svc --namespace chatbox --timeout=300s || true
+            kubectl rollout status deployment/$svc --namespace chatbox --timeout=300s
           done
 
       - name: Smoke test
         run: |
           echo "Running health checks..."
           for svc in auth-service chat-service message-service file-service; do
-            kubectl exec deployment/$svc -n chatbox -- wget -q -O- http://localhost:$(kubectl get svc $svc -n chatbox -o jsonpath='{.spec.ports[0].port}')/health || echo "Warning: $svc health check failed"
+            kubectl exec deployment/$svc -n chatbox -- wget -q -O- http://localhost:$(kubectl get svc $svc -n chatbox -o jsonpath='{.spec.ports[0].port}')/health || { echo "Health check failed for $svc"; exit 1; }
           done

@@ -24,7 +24,7 @@ spec:
             - name: PGPORT
               value: "5432"
             - name: PGUSER
-              value: "chatbox"
+              value: "postgres"
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
@@ -38,8 +38,8 @@ spec:
               echo "=== Creating per-service databases ==="
               for db in chatbox_auth chatbox_chat chatbox_messages chatbox_files; do
                 echo "  Creating $db (if not exists)..."
-                psql -d chatbox -tc "SELECT 1 FROM pg_database WHERE datname = '$db'" | grep -q 1 \
-                  || psql -d chatbox -c "CREATE DATABASE $db"
+                psql -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$db'" | grep -q 1 \
+                  || psql -d postgres -c "CREATE DATABASE $db"
               done
 
               echo "  [auth] chatbox_auth..."
