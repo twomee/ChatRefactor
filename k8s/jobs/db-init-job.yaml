@@ -42,6 +42,15 @@ spec:
                   || psql -d postgres -c "CREATE DATABASE $db"
               done
 
+              echo "=== Granting chatbox user access to per-service databases ==="
+              for db in chatbox_auth chatbox_chat chatbox_messages chatbox_files; do
+                echo "  Granting access to $db..."
+                psql -d postgres -c "GRANT CONNECT ON DATABASE $db TO chatbox;"
+                psql -d "$db" -c "GRANT ALL PRIVILEGES ON SCHEMA public TO chatbox;"
+                psql -d "$db" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO chatbox;"
+                psql -d "$db" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO chatbox;"
+              done
+
               echo "  [auth] chatbox_auth..."
               psql -d chatbox_auth <<'EOSQL'
               CREATE TABLE IF NOT EXISTS users (

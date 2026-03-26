@@ -52,8 +52,8 @@ kubectl create secret generic file-service-secrets \
 # Auth admin secret
 kubectl create secret generic auth-admin-secret \
   --namespace chatbox \
-  --from-literal=ADMIN_USERNAME="${ADMIN_USERNAME:-admin}" \
-  --from-literal=ADMIN_PASSWORD="${ADMIN_PASSWORD:-changeme}" \
+  --from-literal=ADMIN_USERNAME="${ADMIN_USERNAME:?ADMIN_USERNAME is required in secrets.env}" \
+  --from-literal=ADMIN_PASSWORD="${ADMIN_PASSWORD:?ADMIN_PASSWORD is required in secrets.env}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 echo "All secrets applied!"

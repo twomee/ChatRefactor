@@ -23,9 +23,7 @@ resources:
     cpu: 500m
     memory: 1Gi
 
-log:
-  retention:
-    hours: 168
+logRetentionHours: 168
 
 zookeeper:
   enabled: false

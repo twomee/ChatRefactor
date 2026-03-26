@@ -1,4 +1,5 @@
 #!/bin/sh
+set -e
 # docker-entrypoint.sh — Generate runtime config.js from environment variables
 # This allows changing API URLs without rebuilding the frontend image
 

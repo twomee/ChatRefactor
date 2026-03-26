@@ -14,7 +14,7 @@ echo ""
 echo "Waiting for rollouts..."
 for svc in auth-service chat-service message-service file-service frontend kong; do
   echo "  Waiting for $svc..."
-  kubectl rollout status deployment/$svc --namespace chatbox --timeout=120s 2>/dev/null || echo "  Warning: $svc rollout not ready"
+  kubectl rollout status deployment/$svc --namespace chatbox --timeout=120s
 done
 
 echo ""
