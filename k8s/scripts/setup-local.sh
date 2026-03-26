@@ -62,6 +62,7 @@ helm upgrade --install postgres bitnami/postgresql \
   --values "$K8S_DIR/infra/helm-values/postgres.yaml" \
   --set auth.postgresPassword="$POSTGRES_PASSWORD" \
   --set auth.password="$POSTGRES_PASSWORD" \
+  --version 16.4.5 \
   --wait --timeout 120s
 
 # Redis
@@ -70,6 +71,7 @@ helm upgrade --install redis bitnami/redis \
   --namespace chatbox-infra \
   --values "$K8S_DIR/infra/helm-values/redis.yaml" \
   --set auth.password="$REDIS_PASSWORD" \
+  --version 20.6.2 \
   --wait --timeout 120s
 
 # Kafka
@@ -77,6 +79,7 @@ echo "  Installing Kafka..."
 helm upgrade --install kafka bitnami/kafka \
   --namespace chatbox-infra \
   --values "$K8S_DIR/infra/helm-values/kafka.yaml" \
+  --version 31.2.0 \
   --wait --timeout 180s
 
 # Step 4: Generate and apply secrets

@@ -41,3 +41,14 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: kong
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend-pdb
+  namespace: chatbox
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: frontend

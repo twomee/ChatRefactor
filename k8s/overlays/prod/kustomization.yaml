@@ -9,6 +9,7 @@ patches:
   - path: patches/hpa.yaml
   - path: patches/pdb.yaml
   - path: patches/kong-service-lb.yaml
+  - path: patches/image-pull-policy.yaml
 images:
   - name: auth-service
     newName: docker.io/DOCKERHUB_USER/chatbox-auth-service

@@ -4,4 +4,5 @@ resources:
   - deployment.yaml
   - service.yaml
   - serviceaccount.yaml
+  - configmap.yaml
   - secrets.yaml

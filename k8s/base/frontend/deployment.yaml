@@ -20,6 +20,8 @@ spec:
         app.kubernetes.io/component: frontend
     spec:
       serviceAccountName: frontend
+      # NOTE: nginx:alpine requires root to bind to port 80.
+      # To run as non-root, use nginx-unprivileged image on port 8080.
       securityContext:
         runAsNonRoot: false
         fsGroup: 1000

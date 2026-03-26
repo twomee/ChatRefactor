@@ -45,6 +45,8 @@ spec:
           volumeMounts:
             - name: kong-config
               mountPath: /etc/kong
+            - name: tmp
+              mountPath: /tmp
           livenessProbe:
             tcpSocket:
               port: 8000
@@ -65,7 +67,10 @@ spec:
               memory: 256Mi
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
       volumes:
         - name: kong-config
           configMap:
             name: kong-config
+        - name: tmp
+          emptyDir: {}

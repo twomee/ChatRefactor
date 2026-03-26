@@ -44,3 +44,19 @@ patches:
     target:
       kind: Deployment
       name: frontend
+images:
+  - name: auth-service
+    newName: docker.io/DOCKERHUB_USER/chatbox-auth-service
+    newTag: latest
+  - name: chat-service
+    newName: docker.io/DOCKERHUB_USER/chatbox-chat-service
+    newTag: latest
+  - name: message-service
+    newName: docker.io/DOCKERHUB_USER/chatbox-message-service
+    newTag: latest
+  - name: file-service
+    newName: docker.io/DOCKERHUB_USER/chatbox-file-service
+    newTag: latest
+  - name: frontend
+    newName: docker.io/DOCKERHUB_USER/chatbox-frontend
+    newTag: latest

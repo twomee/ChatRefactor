@@ -65,6 +65,8 @@ spec:
                 name: chatbox-shared-config
             - secretRef:
                 name: chatbox-infra-secrets
+            - configMapRef:
+                name: message-service-config
             - secretRef:
                 name: message-service-secrets
           livenessProbe:
@@ -87,5 +89,12 @@ spec:
             limits:
               cpu: 250m
               memory: 256Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
