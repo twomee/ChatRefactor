@@ -196,11 +196,13 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 		return
 	}
 
-	// Check for duplicate user in room before upgrading.
-	if h.manager.IsUserInRoom(roomID, userID) {
-		c.JSON(http.StatusConflict, gin.H{"detail": "user already in room"})
-		return
-	}
+	// If the user already has a connection in this room (e.g., a stale connection
+	// left over from a page refresh or a previous session that has not yet timed
+	// out), evict it so the incoming connection can join cleanly.  This is
+	// preferable to returning 409 (which the browser maps to WS close code 1006
+	// and the front-end does not retry), because the old connection is almost
+	// certainly dead — the client would not be trying to reconnect otherwise.
+	h.manager.CloseUserConnsInRoom(roomID, userID)
 
 	// Enforce per-user connection limit to prevent resource exhaustion.
 	if h.manager.UserConnectionCount(userID) >= maxConnectionsPerUser {

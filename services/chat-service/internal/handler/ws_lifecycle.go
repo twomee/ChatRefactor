@@ -113,6 +113,14 @@ func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, 
 		delete(h.pendingLeaves, leaveKey)
 		h.pendingLeaveMu.Unlock()
 
+		// If the user reconnected during the grace period (e.g., their old stale
+		// connection was evicted and a new one registered), skip the leave
+		// broadcast so we don't send a spurious "user left" for someone who is
+		// still in the room.
+		if h.manager.IsUserInRoom(roomID, userID) {
+			return
+		}
+
 		// Broadcast leave with updated room state.
 		bgCtx := context.Background()
 		remainingUsers := h.manager.GetUsernamesInRoom(roomID)
