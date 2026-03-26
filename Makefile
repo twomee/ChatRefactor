@@ -35,6 +35,7 @@ k8s-infra-teardown: ## Remove Helm infra releases only
 	@helm uninstall kafka --namespace chatbox-infra 2>/dev/null || true
 	@helm uninstall redis --namespace chatbox-infra 2>/dev/null || true
 	@helm uninstall postgres --namespace chatbox-infra 2>/dev/null || true
+	@helm uninstall monitoring --namespace chatbox-monitoring 2>/dev/null || true
 
 .PHONY: k8s-init-jobs
 k8s-init-jobs: ## Run db-init and kafka-init jobs (runs k8s-secrets first)

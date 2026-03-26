@@ -20,13 +20,17 @@ echo "[2/4] Removing init jobs..."
 kubectl delete -f "$K8S_DIR/jobs/" --ignore-not-found 2>/dev/null || true
 
 echo ""
-echo "[3/4] Removing infrastructure..."
+echo "[3/5] Removing infrastructure..."
 helm uninstall kafka --namespace chatbox-infra 2>/dev/null || true
 helm uninstall redis --namespace chatbox-infra 2>/dev/null || true
 helm uninstall postgres --namespace chatbox-infra 2>/dev/null || true
 
 echo ""
-echo "[4/4] Deleting kind cluster..."
+echo "[4/5] Removing monitoring..."
+helm uninstall monitoring --namespace chatbox-monitoring 2>/dev/null || true
+
+echo ""
+echo "[5/5] Deleting kind cluster..."
 kind delete cluster --name "$CLUSTER_NAME"
 
 echo ""

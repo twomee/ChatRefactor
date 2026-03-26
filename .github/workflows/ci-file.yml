@@ -24,7 +24,7 @@ jobs:
       run:
         working-directory: services/file-service
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v6
         with:
@@ -48,7 +48,7 @@ jobs:
       run:
         working-directory: services/file-service
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v6
         with:
@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint, test]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Build file-service image
         run: docker build -t chatbox-file:ci ./services/file-service

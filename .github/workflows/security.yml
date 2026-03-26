@@ -18,10 +18,10 @@ jobs:
     name: Trivy Code Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Run Trivy vulnerability scanner (filesystem)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: fs
           scan-ref: .
@@ -34,13 +34,13 @@ jobs:
     name: Trivy Backend Image Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Build backend image
         run: docker build -t chatbox-backend:scan ./v1/backend
 
       - name: Scan backend image
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: chatbox-backend:scan
           format: table
@@ -52,13 +52,13 @@ jobs:
     name: Trivy Frontend Image Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Build frontend image
         run: docker build -t chatbox-frontend:scan ./frontend
 
       - name: Scan frontend image
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: chatbox-frontend:scan
           format: table
@@ -70,7 +70,7 @@ jobs:
     name: Trivy Auth Service Image Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Check if auth-service Dockerfile exists
         id: check-auth
@@ -87,9 +87,96 @@ jobs:
 
       - name: Scan auth-service image
         if: steps.check-auth.outputs.exists == 'true'
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: chatbox-auth:scan
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+  trivy-chat-service-image:
+    name: Trivy Chat Service Image Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if chat-service Dockerfile exists
+        id: check-chat
+        run: |
+          if [ -f services/chat-service/Dockerfile ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build chat-service image
+        if: steps.check-chat.outputs.exists == 'true'
+        run: docker build -t chatbox-chat:scan ./services/chat-service
+
+      - name: Scan chat-service image
+        if: steps.check-chat.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: chatbox-chat:scan
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+  trivy-message-service-image:
+    name: Trivy Message Service Image Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if message-service Dockerfile exists
+        id: check-message
+        run: |
+          if [ -f services/message-service/Dockerfile ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build message-service image
+        if: steps.check-message.outputs.exists == 'true'
+        run: docker build -t chatbox-message:scan ./services/message-service
+
+      - name: Scan message-service image
+        if: steps.check-message.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: chatbox-message:scan
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+  trivy-file-service-image:
+    name: Trivy File Service Image Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if file-service Dockerfile exists
+        id: check-file
+        run: |
+          if [ -f services/file-service/Dockerfile ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build file-service image
+        if: steps.check-file.outputs.exists == 'true'
+        run: docker build -t chatbox-file:scan ./services/file-service
+
+      - name: Scan file-service image
+        if: steps.check-file.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: chatbox-file:scan
           format: table
           exit-code: 1
           severity: CRITICAL,HIGH
