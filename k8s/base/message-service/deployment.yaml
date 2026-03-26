@@ -43,6 +43,7 @@ spec:
             allowPrivilegeEscalation: false
         - name: run-migrations
           image: message-service:latest
+          imagePullPolicy: IfNotPresent
           command: ["alembic", "upgrade", "head"]
           envFrom:
             - configMapRef:

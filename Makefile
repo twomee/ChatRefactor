@@ -26,13 +26,13 @@ k8s-infra-setup: ## Install Postgres, Redis, Kafka via Helm
 	echo "Installing infrastructure..."; \
 	helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true; \
 	helm repo update; \
-	helm upgrade --install postgres bitnami/postgresql --namespace chatbox-infra --values k8s/infra/helm-values/postgres.yaml --version 16.4.5 --set auth.postgresPassword="$$POSTGRES_PASSWORD" --set auth.password="$$POSTGRES_PASSWORD" --wait --timeout 120s; \
-	helm upgrade --install redis bitnami/redis --namespace chatbox-infra --values k8s/infra/helm-values/redis.yaml --version 20.6.2 --set auth.password="$$REDIS_PASSWORD" --wait --timeout 120s; \
-	helm upgrade --install kafka bitnami/kafka --namespace chatbox-infra --values k8s/infra/helm-values/kafka.yaml --version 31.2.0 --wait --timeout 180s
+	helm upgrade --install postgres bitnami/postgresql --namespace chatbox-infra --values k8s/infra/helm-values/postgres.yaml --version 18.5.14 --set auth.postgresPassword="$$POSTGRES_PASSWORD" --set auth.password="$$POSTGRES_PASSWORD" --wait --timeout 180s; \
+	helm upgrade --install redis bitnami/redis --namespace chatbox-infra --values k8s/infra/helm-values/redis.yaml --version 25.3.9 --set auth.password="$$REDIS_PASSWORD" --wait --timeout 120s; \
+	kubectl apply -f k8s/infra/kafka.yaml; kubectl rollout status deployment/kafka --namespace chatbox-infra --timeout=120s
 
 .PHONY: k8s-infra-teardown
 k8s-infra-teardown: ## Remove Helm infra releases only
-	@helm uninstall kafka --namespace chatbox-infra 2>/dev/null || true
+	@kubectl delete -f k8s/infra/kafka.yaml --ignore-not-found 2>/dev/null || true
 	@helm uninstall redis --namespace chatbox-infra 2>/dev/null || true
 	@helm uninstall postgres --namespace chatbox-infra 2>/dev/null || true
 	@helm uninstall monitoring --namespace chatbox-monitoring 2>/dev/null || true
@@ -117,7 +117,11 @@ k8s-monitoring-setup: ## Install Prometheus + Grafana via Helm
 	@helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>/dev/null || true
 	@helm repo update
 	@kubectl apply -f k8s/infra/namespace.yaml
-	@helm upgrade --install monitoring prometheus-community/kube-prometheus-stack 		--namespace chatbox-monitoring 		--values k8s/infra/helm-values/monitoring.yaml 		--version 67.9.0 		--wait --timeout 300s
+	@helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+		--namespace chatbox-monitoring \
+		--values k8s/infra/helm-values/monitoring.yaml \
+		--version 82.14.1 \
+		--wait --timeout 300s
 	@echo ""
 	@echo "Grafana: http://localhost:30030 (admin/admin)"
 

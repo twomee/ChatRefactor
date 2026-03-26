@@ -62,8 +62,8 @@ helm upgrade --install postgres bitnami/postgresql \
   --values "$K8S_DIR/infra/helm-values/postgres.yaml" \
   --set auth.postgresPassword="$POSTGRES_PASSWORD" \
   --set auth.password="$POSTGRES_PASSWORD" \
-  --version 16.4.5 \
-  --wait --timeout 120s
+  --version 18.5.14 \
+  --wait --timeout 180s
 
 # Redis
 echo "  Installing Redis..."
@@ -71,16 +71,13 @@ helm upgrade --install redis bitnami/redis \
   --namespace chatbox-infra \
   --values "$K8S_DIR/infra/helm-values/redis.yaml" \
   --set auth.password="$REDIS_PASSWORD" \
-  --version 20.6.2 \
+  --version 25.3.9 \
   --wait --timeout 120s
 
-# Kafka
+# Kafka (official apache/kafka image — Bitnami removed all Kafka images from Docker Hub)
 echo "  Installing Kafka..."
-helm upgrade --install kafka bitnami/kafka \
-  --namespace chatbox-infra \
-  --values "$K8S_DIR/infra/helm-values/kafka.yaml" \
-  --version 31.2.0 \
-  --wait --timeout 180s
+kubectl apply -f "$K8S_DIR/infra/kafka.yaml"
+kubectl rollout status deployment/kafka --namespace chatbox-infra --timeout=120s
 
 # Step 4: Generate and apply secrets
 echo ""
@@ -108,6 +105,9 @@ bash "$K8S_DIR/scripts/build-images.sh"
 echo ""
 echo "[7/7] Deploying application..."
 kubectl apply -k "$K8S_DIR/overlays/dev"
+# Re-apply secrets after kustomize — base secrets.yaml files contain CHANGE_ME
+# placeholders and kustomize apply will overwrite the real secrets generated above
+bash "$K8S_DIR/scripts/generate-secrets.sh"
 
 echo ""
 echo "========================================="

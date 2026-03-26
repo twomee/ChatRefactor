@@ -43,6 +43,7 @@ spec:
             allowPrivilegeEscalation: false
         - name: run-migrations
           image: file-service:latest
+          imagePullPolicy: IfNotPresent
           command: ["npx", "prisma", "migrate", "deploy"]
           envFrom:
             - configMapRef:

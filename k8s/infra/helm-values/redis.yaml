@@ -7,7 +7,7 @@ architecture: standalone
 
 auth: {}
 
-master:
+primary:
   persistence:
     size: 2Gi
   resources:

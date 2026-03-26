@@ -17,7 +17,8 @@ spec:
           command: ['sh', '-c', 'until nc -z kafka.chatbox-infra.svc.cluster.local 9092; do echo "Waiting for Kafka..."; sleep 2; done']
       containers:
         - name: kafka-init
-          image: bitnami/kafka:3.8
+          image: apache/kafka:latest
+          imagePullPolicy: IfNotPresent
           command:
             - /bin/bash
             - -c
@@ -25,11 +26,11 @@ spec:
               set -e
               echo "=== Creating Kafka topics ==="
               BOOTSTRAP="--bootstrap-server kafka.chatbox-infra.svc.cluster.local:9092"
-              kafka-topics.sh $BOOTSTRAP --create --topic chat.messages --partitions 6 --replication-factor 1 --if-not-exists
-              kafka-topics.sh $BOOTSTRAP --create --topic chat.private  --partitions 3 --replication-factor 1 --if-not-exists
-              kafka-topics.sh $BOOTSTRAP --create --topic chat.events   --partitions 3 --replication-factor 1 --if-not-exists
-              kafka-topics.sh $BOOTSTRAP --create --topic chat.dlq      --partitions 1 --replication-factor 1 --if-not-exists
-              kafka-topics.sh $BOOTSTRAP --create --topic file.events   --partitions 3 --replication-factor 1 --if-not-exists
-              kafka-topics.sh $BOOTSTRAP --create --topic auth.events   --partitions 3 --replication-factor 1 --if-not-exists
+              /opt/kafka/bin/kafka-topics.sh $BOOTSTRAP --create --topic chat.messages --partitions 6 --replication-factor 1 --if-not-exists
+              /opt/kafka/bin/kafka-topics.sh $BOOTSTRAP --create --topic chat.private  --partitions 3 --replication-factor 1 --if-not-exists
+              /opt/kafka/bin/kafka-topics.sh $BOOTSTRAP --create --topic chat.events   --partitions 3 --replication-factor 1 --if-not-exists
+              /opt/kafka/bin/kafka-topics.sh $BOOTSTRAP --create --topic chat.dlq      --partitions 1 --replication-factor 1 --if-not-exists
+              /opt/kafka/bin/kafka-topics.sh $BOOTSTRAP --create --topic file.events   --partitions 3 --replication-factor 1 --if-not-exists
+              /opt/kafka/bin/kafka-topics.sh $BOOTSTRAP --create --topic auth.events   --partitions 3 --replication-factor 1 --if-not-exists
               echo "=== Topics created ==="
-              kafka-topics.sh $BOOTSTRAP --list
+              /opt/kafka/bin/kafka-topics.sh $BOOTSTRAP --list

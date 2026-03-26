@@ -58,6 +58,38 @@ spec:
             - 'until nc -z auth-service.chatbox.svc.cluster.local 8001; do echo "Waiting for Auth..."; sleep 2; done'
           securityContext:
             allowPrivilegeEscalation: false
+        - name: run-migrations
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PGHOST
+              value: "postgres-postgresql.chatbox-infra.svc.cluster.local"
+            - name: PGUSER
+              value: "chatbox"
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: chatbox-infra-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PGDATABASE
+              value: "chatbox_chat"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Running chat-service schema migrations..."
+              psql -c "CREATE TABLE IF NOT EXISTS rooms (id SERIAL PRIMARY KEY, name VARCHAR(128) UNIQUE NOT NULL, is_active BOOLEAN DEFAULT TRUE NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);"
+              psql -c "CREATE TABLE IF NOT EXISTS room_admins (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE, appointed_at TIMESTAMP DEFAULT NOW() NOT NULL, UNIQUE (user_id, room_id));"
+              psql -c "CREATE TABLE IF NOT EXISTS muted_users (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE, muted_at TIMESTAMP DEFAULT NOW() NOT NULL, UNIQUE (user_id, room_id));"
+              psql -c "CREATE INDEX IF NOT EXISTS idx_room_admins_room_id ON room_admins(room_id);"
+              psql -c "CREATE INDEX IF NOT EXISTS idx_room_admins_user_id ON room_admins(user_id);"
+              psql -c "CREATE INDEX IF NOT EXISTS idx_muted_users_room_id ON muted_users(room_id);"
+              psql -c "CREATE INDEX IF NOT EXISTS idx_muted_users_user_id ON muted_users(user_id);"
+              psql -c "INSERT INTO rooms (name) VALUES ('politics'), ('sports'), ('movies') ON CONFLICT (name) DO NOTHING;"
+              echo "Chat-service schema ready."
+          securityContext:
+            allowPrivilegeEscalation: false
       containers:
         - name: chat-service
           image: chat-service:latest

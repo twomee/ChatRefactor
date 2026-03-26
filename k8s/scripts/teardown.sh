@@ -21,7 +21,7 @@ kubectl delete -f "$K8S_DIR/jobs/" --ignore-not-found 2>/dev/null || true
 
 echo ""
 echo "[3/5] Removing infrastructure..."
-helm uninstall kafka --namespace chatbox-infra 2>/dev/null || true
+kubectl delete -f "$K8S_DIR/infra/kafka.yaml" --ignore-not-found 2>/dev/null || true
 helm uninstall redis --namespace chatbox-infra 2>/dev/null || true
 helm uninstall postgres --namespace chatbox-infra 2>/dev/null || true
 

@@ -51,6 +51,7 @@ spec:
             allowPrivilegeEscalation: false
         - name: run-migrations
           image: auth-service:latest
+          imagePullPolicy: IfNotPresent
           command: ["alembic", "upgrade", "head"]
           envFrom:
             - configMapRef:
