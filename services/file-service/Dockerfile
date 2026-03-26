@@ -32,8 +32,12 @@ WORKDIR /app
 
 # Copy dependency manifests and install production-only deps
 COPY package.json package-lock.json* ./
-COPY prisma ./prisma/
-RUN npm ci --omit=dev && npm audit fix --omit=dev || true && npx prisma generate
+RUN npm ci --omit=dev
+
+# Copy Prisma generated client from builder instead of regenerating.
+# This avoids installing the prisma CLI (devDep) and its transitive
+# dependencies (cross-spawn, glob, minimatch, tar) in the prod image.
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 # Copy compiled JavaScript from build stage
 COPY --from=builder /app/dist ./dist/
