@@ -13,6 +13,9 @@ concurrency:
 jobs:
   sonarcloud:
     name: SonarCloud Scan
+    # Skip on Dependabot PRs — GitHub does not expose secrets to
+    # Dependabot-triggered workflows for security reasons.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
