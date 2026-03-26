@@ -129,26 +129,29 @@ kubectl get namespaces
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
 
+# Load passwords from your secrets file (never hardcode them here)
+source k8s/secrets.env   # or k8s/base/secrets.env.example for defaults
+
 # Install PostgreSQL
 helm upgrade --install postgres bitnami/postgresql \
   --namespace chatbox-infra \
   --values k8s/infra/helm-values/postgres.yaml \
-  --set auth.postgresPassword=chatbox_pass \
-  --set auth.password=chatbox_pass \
-  --wait --timeout 120s
+  --version 18.5.14 \
+  --set auth.postgresPassword="$POSTGRES_PASSWORD" \
+  --set auth.password="$POSTGRES_PASSWORD" \
+  --wait --timeout 180s
 
 # Install Redis
 helm upgrade --install redis bitnami/redis \
   --namespace chatbox-infra \
   --values k8s/infra/helm-values/redis.yaml \
-  --set auth.password=chatbox_redis_pass \
+  --version 25.3.9 \
+  --set auth.password="$REDIS_PASSWORD" \
   --wait --timeout 120s
 
-# Install Kafka
-helm upgrade --install kafka bitnami/kafka \
-  --namespace chatbox-infra \
-  --values k8s/infra/helm-values/kafka.yaml \
-  --wait --timeout 180s
+# Install Kafka — plain manifest, NOT a Helm chart
+kubectl apply -f k8s/infra/kafka.yaml
+kubectl rollout status deployment/kafka --namespace chatbox-infra --timeout=120s
 ```
 
 Verify:
@@ -168,8 +171,12 @@ This creates K8s Secret objects from your environment variables. If you haven't 
 ### Step 5: Run Init Jobs
 
 ```bash
-# Apply init jobs (create databases and Kafka topics)
-kubectl apply -f k8s/jobs/
+# Delete any previous runs first (jobs are not re-runnable by default)
+kubectl delete job db-init kafka-init --namespace chatbox --ignore-not-found
+
+# Apply init jobs (create 4 databases + tables, create Kafka topics)
+kubectl apply -f k8s/jobs/db-init-job.yaml
+kubectl apply -f k8s/jobs/kafka-init-job.yaml
 
 # Wait for completion
 kubectl wait --for=condition=complete job/db-init --namespace chatbox --timeout=120s
@@ -194,6 +201,10 @@ This builds all 5 service images and loads them into the kind cluster.
 
 ```bash
 kubectl apply -k k8s/overlays/dev
+
+# Re-apply secrets immediately after — the base manifests contain CHANGE_ME
+# placeholders that kustomize will have just overwritten your real secrets with
+bash k8s/scripts/generate-secrets.sh
 ```
 
 Verify:
