@@ -17,15 +17,20 @@ source "$SECRETS_FILE"
 PG_HOST="postgres-postgresql.chatbox-infra.svc.cluster.local"
 REDIS_HOST="redis-master.chatbox-infra.svc.cluster.local"
 
+# Bitnami Redis ignores --set auth.password on helm upgrade if the secret already exists.
+# Read the actual password from the Helm-created secret so our REDIS_URL is always correct.
+ACTUAL_REDIS_PASSWORD=$(kubectl get secret redis -n chatbox-infra \
+  -o jsonpath='{.data.redis-password}' 2>/dev/null | base64 -d || echo "${REDIS_PASSWORD}")
+
 echo "Applying K8s secrets..."
 
 # Shared infra secrets
 kubectl create secret generic chatbox-infra-secrets \
   --namespace chatbox \
   --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-  --from-literal=REDIS_PASSWORD="$REDIS_PASSWORD" \
+  --from-literal=REDIS_PASSWORD="$ACTUAL_REDIS_PASSWORD" \
   --from-literal=SECRET_KEY="$SECRET_KEY" \
-  --from-literal=REDIS_URL="redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0" \
+  --from-literal=REDIS_URL="redis://default:${ACTUAL_REDIS_PASSWORD}@${REDIS_HOST}:6379/0" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Per-service secrets (DATABASE_URL with embedded password)
