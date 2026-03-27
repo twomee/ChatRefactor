@@ -34,6 +34,7 @@ from app.infrastructure.kafka_producer import (
 from app.infrastructure.metrics import db_pool_checked_out, db_pool_overflow, db_pool_size
 from app.middleware.correlation import CorrelationIdMiddleware
 from app.routers import auth
+from prometheus_fastapi_instrumentator import Instrumentator
 
 setup_logging()
 logger = get_logger("main")
@@ -119,8 +120,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="cHATBOX Auth Service", version="1.0.0", lifespan=lifespan)
 
 # ── Prometheus metrics ────────────────────────────────────────────────
-from prometheus_fastapi_instrumentator import Instrumentator
-
 instrumentator = Instrumentator(
     excluded_handlers=["/health", "/ready", "/metrics"],
 )

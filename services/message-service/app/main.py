@@ -30,6 +30,7 @@ from app.infrastructure.kafka_producer import (
 )
 from app.middleware.correlation import CorrelationIdMiddleware
 from app.routers import messages
+from prometheus_fastapi_instrumentator import Instrumentator
 
 setup_logging()
 logger = get_logger("main")
@@ -102,8 +103,6 @@ async def lifespan(app):
 app = FastAPI(title="cHATBOX Message Service", version="1.0.0", lifespan=lifespan)
 
 # ── Prometheus metrics ────────────────────────────────────────────────
-from prometheus_fastapi_instrumentator import Instrumentator
-
 instrumentator = Instrumentator(
     excluded_handlers=["/health", "/ready", "/metrics"],
 )
