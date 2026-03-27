@@ -114,10 +114,14 @@ class MessagePersistenceConsumer:
                 await self._process(msg.topic, msg.value)
                 duration = time.time() - start
                 kafka_consume_duration_seconds.labels(topic=msg.topic).observe(duration)
-                kafka_messages_consumed_total.labels(topic=msg.topic, status="success").inc()
+                kafka_messages_consumed_total.labels(
+                    topic=msg.topic, status="success"
+                ).inc()
                 return
             except Exception as e:
-                kafka_messages_consumed_total.labels(topic=msg.topic, status="retry").inc()
+                kafka_messages_consumed_total.labels(
+                    topic=msg.topic, status="retry"
+                ).inc()
                 logger.warning(
                     "consumer_process_failed",
                     topic=msg.topic,

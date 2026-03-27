@@ -31,7 +31,11 @@ from app.infrastructure.kafka_producer import (
     init_producer,
     is_kafka_available,
 )
-from app.infrastructure.metrics import db_pool_checked_out, db_pool_overflow, db_pool_size
+from app.infrastructure.metrics import (
+    db_pool_checked_out,
+    db_pool_overflow,
+    db_pool_size,
+)
 from app.middleware.correlation import CorrelationIdMiddleware
 from app.routers import auth
 from prometheus_fastapi_instrumentator import Instrumentator
