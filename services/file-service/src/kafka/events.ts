@@ -1,5 +1,5 @@
 // kafka/events.ts — Event type definitions and helpers for file events
-// Matches contracts/events/file.uploaded.schema.json
+// Matches services/contracts/events/file.uploaded.schema.json
 
 import type { FileUploadedEvent } from "../types/kafka.types.js";
 import { produce } from "./producer.js";

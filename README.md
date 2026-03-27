@@ -113,7 +113,7 @@ make k8s-setup-local
 make k8s-status
 
 # 3. Run the full E2E test suite (46 tests covering every service)
-bash k8s/scripts/e2e-test.sh
+bash infra/k8s/scripts/e2e-test.sh
 ```
 
 Services available at:
@@ -208,25 +208,15 @@ Chat-Project-Final/
 │   ├── Dockerfile               # Production container (Node 20 build + Nginx 1.25)
 │   └── package.json
 │
-├── k8s/                         # Kubernetes manifests and scripts
-│   ├── base/                    # Base Kustomize config (env-agnostic)
-│   ├── overlays/                # Environment overlays: dev, staging, prod, *-kind
-│   ├── infra/                   # Helm values for PostgreSQL, Redis, Kafka
-│   ├── jobs/                    # Init jobs (db-init, kafka-init)
-│   └── scripts/                 # Automation scripts
-│       ├── setup-local.sh       # One-command cluster setup
-│       ├── teardown.sh          # Full teardown
-│       ├── build-images.sh      # Build + load images into kind
-│       ├── deploy.sh            # Apply overlay + wait for rollouts
-│       ├── generate-secrets.sh  # Create K8s Secrets from secrets.env
-│       └── e2e-test.sh          # 46-test E2E functional test suite
-│
-├── contracts/                   # Kafka event schemas (JSON Schema)
-│   └── events/                  # 6 event contract files (chat, file, auth, dlq)
-│
-├── infra/                       # Infrastructure configs
+├── infra/                       # All infrastructure configs
 │   ├── docker/init/             # init-db.sh, init-kafka.sh
-│   └── kong/                    # kong.yml (declarative gateway config)
+│   ├── kong/                    # kong.yml (declarative gateway config)
+│   └── k8s/                    # Kubernetes manifests and scripts
+│       ├── base/                # Base Kustomize config (env-agnostic)
+│       ├── overlays/            # Environment overlays: dev, staging, prod, *-kind
+│       ├── infra/               # Helm values for PostgreSQL, Redis, Kafka
+│       ├── jobs/                # Init jobs (db-init, kafka-init)
+│       └── scripts/             # Automation scripts (setup, teardown, deploy, e2e)
 │
 ├── loadtests/                   # Load testing suite (Locust)
 │   ├── locustfile.py            # Microservices load test (4 user classes via Kong)
@@ -288,7 +278,7 @@ Chat-Project-Final/
 | **[Dev Platform Guide](docs/development/dev-platform-guide.md)** | CI/CD pipelines, per-service linting/testing, security scanning, pre-commit hooks |
 | **[CI Tools Setup](docs/development/ci-tools-setup.md)** | CodeQL, SonarCloud, Codecov configuration and troubleshooting |
 | **[Makefile Reference](docs/development/makefile-reference.md)** | Make targets, K8s scripts, monitoring setup |
-| **[Kafka Event Contracts](contracts/README.md)** | Kafka event schemas, producer/consumer mapping, contract rules |
+| **[Kafka Event Contracts](services/contracts/README.md)** | Kafka event schemas, producer/consumer mapping, contract rules |
 | **[Load Tests](loadtests/README.md)** | Load testing suite, performance baselines, user classes, pass/fail criteria |
 
 ---

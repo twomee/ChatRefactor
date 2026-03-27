@@ -1,6 +1,6 @@
 ## Bitnami Redis Helm values
 ## Install: helm install redis oci://registry-1.docker.io/bitnamicharts/redis
-##          -n chatbox-infra -f k8s/infra/helm-values/redis.yaml
+##          -n chatbox-infra -f infra/k8s/infra/helm-values/redis.yaml
 ##          --set auth.password=<your-password>
 
 architecture: standalone

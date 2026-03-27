@@ -1,6 +1,6 @@
 ## kube-prometheus-stack Helm values
 ## Install: helm install monitoring prometheus-community/kube-prometheus-stack
-##          -n chatbox-monitoring -f k8s/infra/helm-values/monitoring.yaml
+##          -n chatbox-monitoring -f infra/k8s/infra/helm-values/monitoring.yaml
 
 grafana:
   service:

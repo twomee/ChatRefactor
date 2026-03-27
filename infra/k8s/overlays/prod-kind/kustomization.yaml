@@ -1,14 +1,16 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# staging-kind: Extends the staging overlay for local kind clusters.
-# Overrides DockerHub image references to use locally-loaded kind images,
-# and keeps Kong as NodePort so localhost:30080 remains accessible.
-# Usage: kubectl apply -k k8s/overlays/staging-kind
+# prod-kind: Extends the prod overlay for local kind clusters.
+# Overrides DockerHub image references, sets imagePullPolicy back to IfNotPresent,
+# and uses NodePort instead of LoadBalancer for Kong (no MetalLB in kind).
+# Usage: kubectl apply -k infra/k8s/overlays/prod-kind
 resources:
-  - ../staging
+  - ../prod
 patches:
-  # Keep Kong as NodePort for local kind access (staging base uses ClusterIP)
+  # Override LoadBalancer → NodePort for local kind access
   - path: patches/kong-service-nodeport.yaml
+  # Override imagePullPolicy Always → IfNotPresent for locally-loaded kind images
+  - path: patches/image-pull-policy-local.yaml
 images:
   # Override DockerHub image names to use locally-loaded kind images
   - name: docker.io/DOCKERHUB_USER/chatbox-auth-service

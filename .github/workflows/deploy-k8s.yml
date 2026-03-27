@@ -39,14 +39,14 @@ jobs:
 
       - name: Update image tags
         run: |
-          cd k8s/overlays/${{ github.event.inputs.environment }}
+          cd infra/k8s/overlays/${{ github.event.inputs.environment }}
           for svc in auth-service chat-service message-service file-service frontend; do
             kustomize edit set image ${svc}=${{ secrets.DOCKERHUB_USERNAME }}/chatbox-${svc}:${{ github.event.inputs.image_tag }}
           done
 
       - name: Deploy
         run: |
-          kubectl apply -k k8s/overlays/${{ github.event.inputs.environment }}
+          kubectl apply -k infra/k8s/overlays/${{ github.event.inputs.environment }}
 
       - name: Wait for rollout
         run: |

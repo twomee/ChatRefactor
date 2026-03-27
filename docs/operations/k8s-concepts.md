@@ -228,7 +228,7 @@ Kustomize lets you define a **base** configuration and then apply **patches** fo
 
 ### The Base
 
-`k8s/base/` contains the default configuration that works for any environment:
+`infra/k8s/base/` contains the default configuration that works for any environment:
 - 1 replica per service
 - Low resource limits
 - ClusterIP services (internal only)
@@ -236,11 +236,11 @@ Kustomize lets you define a **base** configuration and then apply **patches** fo
 
 ### Overlays
 
-`k8s/overlays/dev/` applies patches on top of the base:
+`infra/k8s/overlays/dev/` applies patches on top of the base:
 - Changes Kong and Frontend services to `NodePort` (so you can access them locally)
 - Keeps 1 replica (local dev doesn't need scaling)
 
-`k8s/overlays/prod/` applies different patches:
+`infra/k8s/overlays/prod/` applies different patches:
 - Increases replicas (2-3 per service)
 - Adds `HorizontalPodAutoscaler` for chat-service
 - Changes Kong to `LoadBalancer` (cloud load balancer)
@@ -250,18 +250,18 @@ Kustomize lets you define a **base** configuration and then apply **patches** fo
 ### How It Works Under the Hood
 
 ```
-kubectl apply -k k8s/overlays/dev
+kubectl apply -k infra/k8s/overlays/dev
 ```
 
 This command:
-1. Reads `k8s/overlays/dev/kustomization.yaml`
+1. Reads `infra/k8s/overlays/dev/kustomization.yaml`
 2. Which references `../../base` (the base config)
 3. Merges the base with the dev patches
 4. Applies the merged result to the cluster
 
 You can see what the final merged YAML looks like:
 ```
-kubectl kustomize k8s/overlays/dev
+kubectl kustomize infra/k8s/overlays/dev
 ```
 
 ---

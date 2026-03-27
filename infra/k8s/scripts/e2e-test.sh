@@ -9,7 +9,7 @@
 #   Frontend        → HTML load
 #   Monitoring      → Grafana health, Prometheus targets
 #
-# Usage: bash k8s/scripts/e2e-test.sh [KONG_URL] [FRONTEND_URL] [GRAFANA_URL]
+# Usage: bash infra/k8s/scripts/e2e-test.sh [KONG_URL] [FRONTEND_URL] [GRAFANA_URL]
 # Defaults: http://localhost:30080  http://localhost:30000  http://localhost:30030
 
 set -euo pipefail

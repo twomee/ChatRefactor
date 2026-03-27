@@ -87,11 +87,11 @@ Use this for everyday development. It's the default.
 
 ```bash
 # Full setup from zero (creates cluster, installs infra, builds images, deploys)
-bash k8s/scripts/setup-local.sh
+bash infra/k8s/scripts/setup-local.sh
 # or: make k8s-setup-local
 
 # Deploy / re-deploy app only (infra already running)
-bash k8s/scripts/deploy.sh dev
+bash infra/k8s/scripts/deploy.sh dev
 # or: make k8s-deploy
 
 # After changing code in one service — rebuild + restart just that service
@@ -99,8 +99,8 @@ make k8s-redeploy SVC=auth-service
 # valid values: auth-service, chat-service, message-service, file-service, frontend, kong
 
 # Manual kubectl equivalent
-kubectl apply -k k8s/overlays/dev
-bash k8s/scripts/generate-secrets.sh   # always re-run after kustomize apply
+kubectl apply -k infra/k8s/overlays/dev
+bash infra/k8s/scripts/generate-secrets.sh   # always re-run after kustomize apply
 ```
 
 **Access:** Frontend → http://localhost:30000 | API → http://localhost:30080
@@ -113,12 +113,12 @@ Same config as staging (2 replicas per service) but uses your locally built imag
 
 ```bash
 # Deploy the staging overlay (images must already be loaded into kind)
-bash k8s/scripts/deploy.sh staging-kind
+bash infra/k8s/scripts/deploy.sh staging-kind
 # or: make k8s-deploy OVERLAY=staging-kind
 
 # Manual kubectl equivalent
-kubectl apply -k k8s/overlays/staging-kind
-bash k8s/scripts/generate-secrets.sh
+kubectl apply -k infra/k8s/overlays/staging-kind
+bash infra/k8s/scripts/generate-secrets.sh
 ```
 
 **What's different vs dev:** 2 replicas for every service instead of 1.
@@ -133,12 +133,12 @@ Full production config but using locally built images. Use this to validate the 
 
 ```bash
 # Deploy the prod overlay (images must already be loaded into kind)
-bash k8s/scripts/deploy.sh prod-kind
+bash infra/k8s/scripts/deploy.sh prod-kind
 # or: make k8s-deploy OVERLAY=prod-kind
 
 # Manual kubectl equivalent
-kubectl apply -k k8s/overlays/prod-kind
-bash k8s/scripts/generate-secrets.sh
+kubectl apply -k infra/k8s/overlays/prod-kind
+bash infra/k8s/scripts/generate-secrets.sh
 ```
 
 **What's different vs dev:**
@@ -168,8 +168,8 @@ docker push <your-dockerhub-user>/chatbox-auth-service:latest
 # ... repeat for all 5 services
 
 # Then deploy
-bash k8s/scripts/deploy.sh staging
-bash k8s/scripts/deploy.sh prod
+bash infra/k8s/scripts/deploy.sh staging
+bash infra/k8s/scripts/deploy.sh prod
 ```
 
 > **Note:** Your kubeconfig must point to the target cluster (`kubectl config current-context`).
@@ -202,10 +202,10 @@ make k8s-teardown        # Tear down everything and delete the kind cluster
 ### Infrastructure
 
 ```bash
-make k8s-infra-setup     # Install PostgreSQL + Redis via Helm, Kafka via manifest (reads k8s/secrets.env)
+make k8s-infra-setup     # Install PostgreSQL + Redis via Helm, Kafka via manifest (reads infra/k8s/secrets.env)
 make k8s-infra-teardown  # Uninstall Helm releases and Kafka (keeps the kind cluster and app running)
 make k8s-init-jobs       # Delete + re-run db-init and kafka-init jobs (creates databases and topics)
-make k8s-secrets         # Read k8s/secrets.env and create/update all K8s Secrets
+make k8s-secrets         # Read infra/k8s/secrets.env and create/update all K8s Secrets
 ```
 
 ---
@@ -308,8 +308,8 @@ kubectl cluster-info
 ### Step 2: Create Namespaces
 
 ```bash
-kubectl apply -f k8s/base/namespace.yaml       # chatbox namespace
-kubectl apply -f k8s/infra/namespace.yaml       # chatbox-infra + chatbox-monitoring
+kubectl apply -f infra/k8s/base/namespace.yaml       # chatbox namespace
+kubectl apply -f infra/k8s/infra/namespace.yaml       # chatbox-infra + chatbox-monitoring
 ```
 
 Verify:
@@ -326,12 +326,12 @@ helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
 
 # Load passwords from your secrets file (never hardcode them here)
-source k8s/secrets.env   # or k8s/base/secrets.env.example for defaults
+source infra/k8s/secrets.env   # or infra/k8s/base/secrets.env.example for defaults
 
 # Install PostgreSQL
 helm upgrade --install postgres bitnami/postgresql \
   --namespace chatbox-infra \
-  --values k8s/infra/helm-values/postgres.yaml \
+  --values infra/k8s/infra/helm-values/postgres.yaml \
   --version 18.5.14 \
   --set auth.postgresPassword="$POSTGRES_PASSWORD" \
   --set auth.password="$POSTGRES_PASSWORD" \
@@ -340,13 +340,13 @@ helm upgrade --install postgres bitnami/postgresql \
 # Install Redis
 helm upgrade --install redis bitnami/redis \
   --namespace chatbox-infra \
-  --values k8s/infra/helm-values/redis.yaml \
+  --values infra/k8s/infra/helm-values/redis.yaml \
   --version 25.3.9 \
   --set auth.password="$REDIS_PASSWORD" \
   --wait --timeout 120s
 
 # Install Kafka — plain manifest, NOT a Helm chart
-kubectl apply -f k8s/infra/kafka.yaml
+kubectl apply -f infra/k8s/infra/kafka.yaml
 kubectl rollout status deployment/kafka --namespace chatbox-infra --timeout=120s
 ```
 
@@ -359,10 +359,10 @@ kubectl get pods -n chatbox-infra
 ### Step 4: Apply Secrets
 
 ```bash
-bash k8s/scripts/generate-secrets.sh
+bash infra/k8s/scripts/generate-secrets.sh
 ```
 
-This creates K8s Secret objects from your environment variables. If you haven't created a `k8s/secrets.env` file, it uses the defaults from `k8s/base/secrets.env.example`.
+This creates K8s Secret objects from your environment variables. If you haven't created a `infra/k8s/secrets.env` file, it uses the defaults from `infra/k8s/base/secrets.env.example`.
 
 ### Step 5: Run Init Jobs
 
@@ -371,8 +371,8 @@ This creates K8s Secret objects from your environment variables. If you haven't 
 kubectl delete job db-init kafka-init --namespace chatbox --ignore-not-found
 
 # Apply init jobs (create 4 databases + tables, create Kafka topics)
-kubectl apply -f k8s/jobs/db-init-job.yaml
-kubectl apply -f k8s/jobs/kafka-init-job.yaml
+kubectl apply -f infra/k8s/jobs/db-init-job.yaml
+kubectl apply -f infra/k8s/jobs/kafka-init-job.yaml
 
 # Wait for completion
 kubectl wait --for=condition=complete job/db-init --namespace chatbox --timeout=120s
@@ -389,7 +389,7 @@ kubectl get jobs -n chatbox
 
 ```bash
 # Option A: script (builds all 5 and loads into kind)
-bash k8s/scripts/build-images.sh
+bash infra/k8s/scripts/build-images.sh
 
 # Option B: manually, one service at a time
 docker build -t auth-service:latest services/auth-service/
@@ -417,11 +417,11 @@ docker exec chatbox-control-plane crictl images | grep -E "auth|chat|message|fil
 ### Step 7: Deploy Application
 
 ```bash
-kubectl apply -k k8s/overlays/dev
+kubectl apply -k infra/k8s/overlays/dev
 
 # Re-apply secrets immediately after — the base manifests contain CHANGE_ME
 # placeholders that kustomize will have just overwritten your real secrets with
-bash k8s/scripts/generate-secrets.sh
+bash infra/k8s/scripts/generate-secrets.sh
 ```
 
 Verify:
@@ -611,8 +611,8 @@ kubectl get secret auth-service-secrets -n chatbox \
 kubectl get secret auth-admin-secret -n chatbox \
   -o jsonpath='{.data.ADMIN_USERNAME}' | base64 -d
 
-# Regenerate all secrets from k8s/secrets.env (safest way to update)
-bash k8s/scripts/generate-secrets.sh
+# Regenerate all secrets from infra/k8s/secrets.env (safest way to update)
+bash infra/k8s/scripts/generate-secrets.sh
 ```
 
 ---
@@ -633,8 +633,8 @@ kubectl logs job/kafka-init -n chatbox
 
 # Re-run jobs (must delete first — K8s won't re-run a completed job)
 kubectl delete job db-init kafka-init -n chatbox --ignore-not-found
-kubectl apply -f k8s/jobs/db-init-job.yaml
-kubectl apply -f k8s/jobs/kafka-init-job.yaml
+kubectl apply -f infra/k8s/jobs/db-init-job.yaml
+kubectl apply -f infra/k8s/jobs/kafka-init-job.yaml
 kubectl wait --for=condition=complete job/db-init --namespace chatbox --timeout=120s
 kubectl wait --for=condition=complete job/kafka-init --namespace chatbox --timeout=120s
 ```
@@ -755,7 +755,7 @@ kubectl rollout restart deployment/chat-service -n chatbox
 
 ```bash
 # Edit your secrets.env file, then regenerate:
-bash k8s/scripts/generate-secrets.sh
+bash infra/k8s/scripts/generate-secrets.sh
 
 # Restart affected services to pick up new values:
 kubectl rollout restart deployment/auth-service -n chatbox
@@ -902,8 +902,8 @@ kubectl logs job/kafka-init -n chatbox
 
 # Delete and re-run
 kubectl delete job db-init kafka-init -n chatbox --ignore-not-found
-kubectl apply -f k8s/jobs/db-init-job.yaml
-kubectl apply -f k8s/jobs/kafka-init-job.yaml
+kubectl apply -f infra/k8s/jobs/db-init-job.yaml
+kubectl apply -f infra/k8s/jobs/kafka-init-job.yaml
 ```
 
 ### Images Not Found
@@ -932,7 +932,7 @@ kubectl describe pod <pod-name> -n chatbox
 # Look for "Last State: Terminated, Reason: OOMKilled"
 
 # Fix: increase memory limits in the overlay
-# Edit k8s/overlays/dev/kustomization.yaml to add resource patches
+# Edit infra/k8s/overlays/dev/kustomization.yaml to add resource patches
 ```
 
 ### PVC Problems
@@ -978,7 +978,7 @@ This will:
 ### Remove Only App (Keep Infrastructure)
 
 ```bash
-kubectl delete -k k8s/overlays/dev
+kubectl delete -k infra/k8s/overlays/dev
 ```
 
 ### Remove Only Monitoring
@@ -1038,7 +1038,7 @@ See [Running via Makefile](#running-via-makefile) above for the full categorised
 ### Directory Structure
 
 ```
-k8s/
+infra/k8s/
 ├── base/                    # Default manifests (environment-agnostic)
 │   ├── kustomization.yaml   # Lists all resources
 │   ├── namespace.yaml       # chatbox namespace

@@ -27,7 +27,7 @@ make k8s-teardown         # Tear everything down and delete the kind cluster
 make k8s-infra-setup      # Install PostgreSQL, Redis, Kafka via Helm
 make k8s-infra-teardown   # Uninstall Helm releases (keeps kind cluster)
 make k8s-init-jobs        # Run db-init + kafka-init jobs (creates databases and topics)
-make k8s-secrets          # Generate K8s Secrets from k8s/secrets.env
+make k8s-secrets          # Generate K8s Secrets from infra/k8s/secrets.env
 ```
 
 ## Application
@@ -66,15 +66,15 @@ make k8s-prometheus         # Port-forward Prometheus → http://localhost:9090
 
 ## Kubernetes Scripts
 
-All scripts live in `k8s/scripts/`. Run them from the project root.
+All scripts live in `infra/k8s/scripts/`. Run them from the project root.
 
 ### Before You Run Any Script
 
 **1. Create your secrets file** (first time only):
 
 ```bash
-cp k8s/base/secrets.env.example k8s/secrets.env
-# Edit k8s/secrets.env with your passwords — never commit this file
+cp infra/k8s/base/secrets.env.example infra/k8s/secrets.env
+# Edit infra/k8s/secrets.env with your passwords — never commit this file
 ```
 
 The file contains:
@@ -87,7 +87,7 @@ ADMIN_USERNAME=admin                # Bootstrap admin user created on first depl
 ADMIN_PASSWORD=changeme             # Bootstrap admin password
 ```
 
-> If `k8s/secrets.env` is missing, scripts fall back to the insecure example defaults — fine for local dev, never for staging/prod.
+> If `infra/k8s/secrets.env` is missing, scripts fall back to the insecure example defaults — fine for local dev, never for staging/prod.
 
 **2. Install the WebSocket test dependency** (for `e2e-test.sh` only):
 
@@ -104,24 +104,24 @@ Without this, the WebSocket test in `e2e-test.sh` silently skips rather than fai
 
 | Script | What It Does | Usage |
 |--------|-------------|-------|
-| `setup-local.sh` | Full setup: creates kind cluster → installs Postgres/Redis/Kafka → generates secrets → runs init jobs → builds images → deploys app | `bash k8s/scripts/setup-local.sh` |
-| `teardown.sh` | Removes app, init jobs, Helm releases, monitoring, and deletes the kind cluster | `bash k8s/scripts/teardown.sh` |
-| `build-images.sh` | Builds Docker images for all 5 services and loads them into the kind cluster | `bash k8s/scripts/build-images.sh` |
-| `deploy.sh` | Applies a Kustomize overlay and waits for all 6 rollouts to complete | `bash k8s/scripts/deploy.sh [overlay]` |
-| `generate-secrets.sh` | Creates or updates all K8s Secrets from `k8s/secrets.env`. Reads the actual Redis password from the cluster to work around Bitnami's password-on-upgrade behavior | `bash k8s/scripts/generate-secrets.sh` |
-| `e2e-test.sh` | Full end-to-end functional test — 46 tests across every service, WebSocket, and monitoring. Requires `python3` + `pip install websockets` | `bash k8s/scripts/e2e-test.sh` |
+| `setup-local.sh` | Full setup: creates kind cluster → installs Postgres/Redis/Kafka → generates secrets → runs init jobs → builds images → deploys app | `bash infra/k8s/scripts/setup-local.sh` |
+| `teardown.sh` | Removes app, init jobs, Helm releases, monitoring, and deletes the kind cluster | `bash infra/k8s/scripts/teardown.sh` |
+| `build-images.sh` | Builds Docker images for all 5 services and loads them into the kind cluster | `bash infra/k8s/scripts/build-images.sh` |
+| `deploy.sh` | Applies a Kustomize overlay and waits for all 6 rollouts to complete | `bash infra/k8s/scripts/deploy.sh [overlay]` |
+| `generate-secrets.sh` | Creates or updates all K8s Secrets from `infra/k8s/secrets.env`. Reads the actual Redis password from the cluster to work around Bitnami's password-on-upgrade behavior | `bash infra/k8s/scripts/generate-secrets.sh` |
+| `e2e-test.sh` | Full end-to-end functional test — 46 tests across every service, WebSocket, and monitoring. Requires `python3` + `pip install websockets` | `bash infra/k8s/scripts/e2e-test.sh` |
 
 ### setup-local.sh
 
 ```bash
-bash k8s/scripts/setup-local.sh
+bash infra/k8s/scripts/setup-local.sh
 ```
 
 Runs 7 steps in order:
 1. Creates kind cluster `chatbox` with NodePorts 30000/30080/30030 — **idempotent**, skips if cluster already exists
 2. Creates namespaces: `chatbox`, `chatbox-infra`, `chatbox-monitoring`
 3. Installs PostgreSQL v18.5.14 + Redis v25.3.9 via Helm, Kafka via manifest
-4. Generates K8s Secrets from `k8s/secrets.env`
+4. Generates K8s Secrets from `infra/k8s/secrets.env`
 5. Runs `db-init` job (creates 4 databases + tables) and `kafka-init` job (creates topics)
 6. Builds all 5 Docker images and loads them into kind
 7. Deploys with the `dev` overlay + re-applies secrets (Kustomize overwrites them)
@@ -129,7 +129,7 @@ Runs 7 steps in order:
 ### teardown.sh
 
 ```bash
-bash k8s/scripts/teardown.sh
+bash infra/k8s/scripts/teardown.sh
 ```
 
 Runs 5 steps in order:
@@ -142,7 +142,7 @@ Runs 5 steps in order:
 ### build-images.sh
 
 ```bash
-bash k8s/scripts/build-images.sh
+bash infra/k8s/scripts/build-images.sh
 ```
 
 Builds all 5 images in sequence and loads each into the kind cluster:
@@ -157,20 +157,20 @@ Run this after code changes, then `make k8s-redeploy SVC=<name>` for a specific 
 ### deploy.sh
 
 ```bash
-bash k8s/scripts/deploy.sh           # defaults to dev overlay
-bash k8s/scripts/deploy.sh dev
-bash k8s/scripts/deploy.sh staging-kind   # staging config with local images
-bash k8s/scripts/deploy.sh prod-kind      # prod config with local images
-bash k8s/scripts/deploy.sh staging        # requires DockerHub images to exist
-bash k8s/scripts/deploy.sh prod           # requires DockerHub images to exist
+bash infra/k8s/scripts/deploy.sh           # defaults to dev overlay
+bash infra/k8s/scripts/deploy.sh dev
+bash infra/k8s/scripts/deploy.sh staging-kind   # staging config with local images
+bash infra/k8s/scripts/deploy.sh prod-kind      # prod config with local images
+bash infra/k8s/scripts/deploy.sh staging        # requires DockerHub images to exist
+bash infra/k8s/scripts/deploy.sh prod           # requires DockerHub images to exist
 ```
 
-Applies `kubectl apply -k k8s/overlays/<overlay>` then waits for all 6 deployments (`auth-service`, `chat-service`, `message-service`, `file-service`, `frontend`, `kong`) to finish rolling out.
+Applies `kubectl apply -k infra/k8s/overlays/<overlay>` then waits for all 6 deployments (`auth-service`, `chat-service`, `message-service`, `file-service`, `frontend`, `kong`) to finish rolling out.
 
 ### generate-secrets.sh
 
 ```bash
-bash k8s/scripts/generate-secrets.sh
+bash infra/k8s/scripts/generate-secrets.sh
 ```
 
 Creates or updates 6 K8s Secrets in the `chatbox` namespace:
@@ -184,10 +184,10 @@ Creates or updates 6 K8s Secrets in the `chatbox` namespace:
 
 ```bash
 # Run against the default local cluster
-bash k8s/scripts/e2e-test.sh
+bash infra/k8s/scripts/e2e-test.sh
 
 # Run against a custom endpoint (e.g. staging)
-bash k8s/scripts/e2e-test.sh http://staging.example.com http://staging.example.com:3000 http://grafana.example.com
+bash infra/k8s/scripts/e2e-test.sh http://staging.example.com http://staging.example.com:3000 http://grafana.example.com
 ```
 
 **Arguments (all optional):**
