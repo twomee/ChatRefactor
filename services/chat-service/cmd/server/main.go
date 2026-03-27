@@ -148,6 +148,29 @@ func main() {
 		logger.Info("file_events_consumer_started")
 	}
 
+	// auth.events consumer: force-closes stale WebSocket connections on logout.
+	// Handles cases where the client did not cleanly close the socket (network
+	// drop, browser crash, mobile backgrounding). The auth service publishes
+	// user_logged_out events; we react by closing all of that user's connections
+	// so the other party's UI updates immediately via the normal user_left flow.
+	var authEventsConsumer *kafka.Consumer
+	if len(brokers) > 0 && brokers[0] != "" {
+		authEventsConsumer = kafka.NewConsumer(brokers, "auth.events", "chat-auth-events",
+			func(_ context.Context, value map[string]interface{}) error {
+				if value["event_type"] != "user_logged_out" {
+					return nil
+				}
+				userID, ok := value["user_id"].(float64)
+				if !ok {
+					return nil
+				}
+				wsManager.ForceDisconnectUser(int(userID))
+				return nil
+			}, logger)
+		authEventsConsumer.Start(ctx)
+		logger.Info("auth_events_consumer_started")
+	}
+
 	// --- Handlers ---
 	healthH := handler.NewHealthHandler(dbPool, rdb, kafkaProducer, brokers)
 	roomH := handler.NewRoomHandler(roomStore, wsManager, authClient, logger)
@@ -226,6 +249,9 @@ func main() {
 	cancel()
 	if fileEventsConsumer != nil {
 		fileEventsConsumer.Stop()
+	}
+	if authEventsConsumer != nil {
+		authEventsConsumer.Stop()
 	}
 
 	// Gracefully close all WebSocket connections with code 1001 (GoingAway).
