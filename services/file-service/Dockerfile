@@ -34,10 +34,13 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 
-# Copy Prisma generated client from builder instead of regenerating.
-# This avoids installing the prisma CLI (devDep) and its transitive
-# dependencies (cross-spawn, glob, minimatch, tar) in the prod image.
+# Copy Prisma schema + generated client from builder.
+# Schema is needed for `prisma migrate deploy` in the K8s init container.
+# Generated client avoids installing the prisma CLI (devDep) in prod.
+COPY --from=builder /app/prisma ./prisma/
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 # Copy compiled JavaScript from build stage
 COPY --from=builder /app/dist ./dist/
