@@ -25,10 +25,21 @@
       "keepTime": false,
       "tags": [],
       "targetBlank": true,
-      "title": "Prometheus",
-      "tooltip": "Open Prometheus UI (requires port-forward to :9090 in K8s)",
+      "title": "Prometheus: Targets",
+      "tooltip": "View all scrape targets and their health",
       "type": "link",
-      "url": "http://localhost:9090"
+      "url": "http://localhost:9090/targets"
+    },
+    {
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Prometheus: Service Health",
+      "tooltip": "Query showing which services are UP",
+      "type": "link",
+      "url": "http://localhost:9090/graph?g0.expr=up%7Bnamespace%3D%22chatbox%22%7D&g0.tab=0&g0.range_input=1h"
     }
   ],
   "panels": [
