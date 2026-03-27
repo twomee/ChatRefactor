@@ -10,6 +10,7 @@ const initialState = {
   onlineUsers: {},
   admins: {},
   mutedUsers: {},
+  knownOfflineUsers: new Set(),
 };
 
 describe('chatReducer', () => {
@@ -176,6 +177,70 @@ describe('chatReducer', () => {
     it('is idempotent — returns same state if no unread', () => {
       const next = chatReducer(initialState, { type: 'CLEAR_UNREAD', roomId: 'r1' });
       expect(next).toBe(initialState);
+    });
+  });
+
+  describe('USER_JOINED_ROOM', () => {
+    it('updates online users for the room', () => {
+      const next = chatReducer(initialState, {
+        type: 'USER_JOINED_ROOM', roomId: 'r1', users: ['alice', 'bob'], username: 'bob',
+      });
+      expect(next.onlineUsers.r1).toEqual(['alice', 'bob']);
+    });
+
+    it('removes username from knownOfflineUsers', () => {
+      const state = { ...initialState, knownOfflineUsers: new Set(['bob']) };
+      const next = chatReducer(state, {
+        type: 'USER_JOINED_ROOM', roomId: 'r1', users: ['alice', 'bob'], username: 'bob',
+      });
+      expect(next.knownOfflineUsers.has('bob')).toBe(false);
+    });
+
+    it('updates admins and muted when provided', () => {
+      const next = chatReducer(initialState, {
+        type: 'USER_JOINED_ROOM', roomId: 'r1', users: ['alice'], admins: ['alice'], muted: [], username: 'alice',
+      });
+      expect(next.admins.r1).toEqual(['alice']);
+      expect(next.mutedUsers.r1).toEqual([]);
+    });
+  });
+
+  describe('USER_LEFT_ROOM', () => {
+    it('updates online users for the room', () => {
+      const state = { ...initialState, onlineUsers: { r1: ['alice', 'bob'] } };
+      const next = chatReducer(state, {
+        type: 'USER_LEFT_ROOM', roomId: 'r1', users: ['alice'], username: 'bob',
+      });
+      expect(next.onlineUsers.r1).toEqual(['alice']);
+    });
+
+    it('adds username to knownOfflineUsers when absent from all rooms', () => {
+      const state = { ...initialState, onlineUsers: { r1: ['alice', 'bob'] } };
+      const next = chatReducer(state, {
+        type: 'USER_LEFT_ROOM', roomId: 'r1', users: ['alice'], username: 'bob',
+      });
+      expect(next.knownOfflineUsers.has('bob')).toBe(true);
+    });
+
+    it('does NOT add username to knownOfflineUsers when still in another room', () => {
+      const state = {
+        ...initialState,
+        onlineUsers: { r1: ['alice', 'bob'], r2: ['bob'] },
+      };
+      const next = chatReducer(state, {
+        type: 'USER_LEFT_ROOM', roomId: 'r1', users: ['alice'], username: 'bob',
+      });
+      // bob is still in r2, so should not be offline
+      expect(next.knownOfflineUsers.has('bob')).toBe(false);
+    });
+
+    it('updates admins and muted when provided', () => {
+      const state = { ...initialState, onlineUsers: { r1: ['alice', 'bob'] } };
+      const next = chatReducer(state, {
+        type: 'USER_LEFT_ROOM', roomId: 'r1', users: ['alice'], admins: ['alice'], muted: [], username: 'bob',
+      });
+      expect(next.admins.r1).toEqual(['alice']);
+      expect(next.mutedUsers.r1).toEqual([]);
     });
   });
 

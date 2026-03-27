@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ContextMenu from '../ContextMenu';
@@ -75,10 +75,33 @@ describe('ContextMenu', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('is positioned at the provided x, y coordinates', () => {
-    const { container } = render(<ContextMenu {...defaultProps} />);
-    const menu = container.querySelector('.context-menu');
+  it('positions menu at the click coordinates when space is available', () => {
+    // Give the viewport plenty of room so clamping doesn't change the position.
+    // JSDOM's getBoundingClientRect returns 0-size, so vw - 0 - 8 >> x/y.
+    Object.defineProperty(window, 'innerWidth',  { writable: true, configurable: true, value: 1920 });
+    Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: 1080 });
+    render(<ContextMenu {...defaultProps} />);
+    const menu = document.querySelector('.context-menu');
     expect(menu.style.top).toBe('200px');
     expect(menu.style.left).toBe('100px');
+  });
+
+  it('clamps the menu to stay within the right/bottom viewport edges', () => {
+    // Mock getBoundingClientRect BEFORE render so useLayoutEffect sees it.
+    const getBCRSpy = vi.spyOn(Element.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ width: 160, height: 200, top: 0, left: 0, bottom: 0, right: 0, x: 0, y: 0, toJSON: () => {} });
+
+    Object.defineProperty(window, 'innerWidth',  { writable: true, configurable: true, value: 200 });
+    Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: 300 });
+
+    render(<ContextMenu {...defaultProps} x={180} y={270} />);
+    const menu = document.querySelector('.context-menu');
+
+    // x: Math.min(180, 200-160-8)=32 → Math.max(8, 32)=32
+    // y: Math.min(270, 300-200-8)=92 → Math.max(8, 92)=92
+    expect(parseInt(menu.style.left, 10)).toBeLessThan(180);
+    expect(parseInt(menu.style.top,  10)).toBeLessThan(270);
+
+    getBCRSpy.mockRestore();
   });
 });

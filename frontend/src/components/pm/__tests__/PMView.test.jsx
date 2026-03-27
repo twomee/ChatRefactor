@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import PMView from '../PMView';
 
 // Mock fileApi used by MessageList
@@ -9,58 +8,41 @@ vi.mock('../../../services/fileApi', () => ({
 }));
 
 describe('PMView', () => {
-  it('renders header with username and "Private conversation" label', () => {
-    render(<PMView username="alice" messages={[]} onSend={vi.fn()} />);
+  it('renders header with username', () => {
+    render(<PMView username="alice" messages={[]} />);
     expect(screen.getByText('alice')).toBeInTheDocument();
-    expect(screen.getByText('Private conversation')).toBeInTheDocument();
   });
 
   it('renders avatar initials from username', () => {
-    render(<PMView username="bob" messages={[]} onSend={vi.fn()} />);
+    render(<PMView username="bob" messages={[]} />);
     expect(screen.getByText('BO')).toBeInTheDocument();
   });
 
-  it('renders placeholder with username', () => {
-    render(<PMView username="alice" messages={[]} onSend={vi.fn()} />);
-    expect(screen.getByPlaceholderText('Message alice...')).toBeInTheDocument();
+  it('shows Online status when isOnline is true (default)', () => {
+    render(<PMView username="alice" messages={[]} />);
+    expect(screen.getByText('Online')).toBeInTheDocument();
+    expect(document.querySelector('.pm-status-dot.online')).toBeInTheDocument();
   });
 
-  it('send button is disabled when input is empty', () => {
-    render(<PMView username="alice" messages={[]} onSend={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /send/i })).toBeDisabled();
+  it('shows Offline status when isOnline is false', () => {
+    render(<PMView username="alice" messages={[]} isOnline={false} />);
+    expect(screen.getByText('Offline')).toBeInTheDocument();
+    expect(document.querySelector('.pm-status-dot.offline')).toBeInTheDocument();
   });
 
-  it('calls onSend with trimmed text when clicking Send', async () => {
-    const user = userEvent.setup();
-    const onSend = vi.fn();
-    render(<PMView username="alice" messages={[]} onSend={onSend} />);
-
-    await user.type(screen.getByPlaceholderText('Message alice...'), '  hello  ');
-    await user.click(screen.getByRole('button', { name: /send/i }));
-
-    expect(onSend).toHaveBeenCalledWith('hello');
+  it('shows offline banner when isOnline is false', () => {
+    render(<PMView username="alice" messages={[]} isOnline={false} />);
+    expect(screen.getByText(/alice is offline/i)).toBeInTheDocument();
   });
 
-  it('sends on Enter key press (not Shift+Enter)', async () => {
-    const user = userEvent.setup();
-    const onSend = vi.fn();
-    render(<PMView username="alice" messages={[]} onSend={onSend} />);
-
-    const input = screen.getByPlaceholderText('Message alice...');
-    await user.type(input, 'hello');
-    await user.keyboard('{Enter}');
-
-    expect(onSend).toHaveBeenCalledWith('hello');
+  it('does not show offline banner when isOnline is true', () => {
+    render(<PMView username="alice" messages={[]} isOnline={true} />);
+    expect(screen.queryByText(/is offline/i)).not.toBeInTheDocument();
   });
 
-  it('clears input after sending', async () => {
-    const user = userEvent.setup();
-    render(<PMView username="alice" messages={[]} onSend={vi.fn()} />);
-
-    const input = screen.getByPlaceholderText('Message alice...');
-    await user.type(input, 'hello');
-    await user.click(screen.getByRole('button', { name: /send/i }));
-
-    expect(input).toHaveValue('');
+  it('does not render an input or send button (input moved to parent panel)', () => {
+    render(<PMView username="alice" messages={[]} />);
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /send/i })).not.toBeInTheDocument();
   });
 });

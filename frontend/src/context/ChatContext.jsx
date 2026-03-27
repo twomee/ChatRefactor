@@ -12,6 +12,7 @@ const initialState = {
   onlineUsers: {},     // { roomId: [username] }
   admins: {},          // { roomId: [username] }
   mutedUsers: {},      // { roomId: [username] }
+  knownOfflineUsers: new Set(), // Set<username> — users we've positively seen go offline
 };
 
 export function chatReducer(state, action) {
@@ -73,6 +74,32 @@ export function chatReducer(state, action) {
           [action.roomId]: (state.mutedUsers[action.roomId] || []).filter(u => u !== action.username),
         },
       };
+
+    // ── Presence-aware room join/leave (atomically update onlineUsers + knownOfflineUsers) ──
+    case 'USER_JOINED_ROOM': {
+      const newOnlineUsers = { ...state.onlineUsers, [action.roomId]: action.users };
+      // User is confirmed online — remove from offline set
+      const nextOffline = new Set(state.knownOfflineUsers);
+      if (action.username) nextOffline.delete(action.username);
+      let next = { ...state, onlineUsers: newOnlineUsers, knownOfflineUsers: nextOffline };
+      if (action.admins !== undefined) next = { ...next, admins: { ...state.admins, [action.roomId]: action.admins } };
+      if (action.muted !== undefined) next = { ...next, mutedUsers: { ...state.mutedUsers, [action.roomId]: action.muted } };
+      return next;
+    }
+
+    case 'USER_LEFT_ROOM': {
+      const newOnlineUsers = { ...state.onlineUsers, [action.roomId]: action.users };
+      // Only mark offline if user is absent from every tracked room after this update
+      const nextOffline = new Set(state.knownOfflineUsers);
+      if (action.username) {
+        const stillOnline = Object.values(newOnlineUsers).some(list => list.includes(action.username));
+        if (!stillOnline) nextOffline.add(action.username);
+      }
+      let next = { ...state, onlineUsers: newOnlineUsers, knownOfflineUsers: nextOffline };
+      if (action.admins !== undefined) next = { ...next, admins: { ...state.admins, [action.roomId]: action.admins } };
+      if (action.muted !== undefined) next = { ...next, mutedUsers: { ...state.mutedUsers, [action.roomId]: action.muted } };
+      return next;
+    }
 
     // ── New actions ────────────────────────────────────────────────────────
     case 'JOIN_ROOM': {

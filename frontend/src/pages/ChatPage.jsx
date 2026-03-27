@@ -159,6 +159,13 @@ export default function ChatPage() {
       }))
     : [];
 
+  // isRecipientOnline is false only when we've positively observed the PM recipient
+  // leave every tracked room (knownOfflineUsers), avoiding false-positive offline banners
+  // for users who are online but not in any shared room.
+  const isRecipientOnline = pmState.activePM
+    ? !state.knownOfflineUsers.has(pmState.activePM)
+    : true;
+
   const showRoom = !!state.activeRoomId;
   const showPM = !showRoom && !!pmState.activePM;
 
@@ -268,8 +275,8 @@ export default function ChatPage() {
                 <PMView
                   username={pmState.activePM}
                   messages={pmMessages}
-                  onSend={handleSendPM}
                   onScrollToBottom={handlePMScrollBottom}
+                  isOnline={isRecipientOnline}
                 />
               )}
               {!showRoom && !showPM && (
@@ -294,6 +301,8 @@ export default function ChatPage() {
             <div style={{ padding: '0 12px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
               {showRoom ? (
                 <MessageInput onSend={handleSend} roomName={activeRoom?.name} roomId={state.activeRoomId} />
+              ) : showPM ? (
+                <MessageInput onSend={handleSendPM} roomName={pmState.activePM} isPM />
               ) : (
                 <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Select a conversation to type...</div>
               )}
