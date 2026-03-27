@@ -138,9 +138,11 @@ func (m *Manager) BroadcastRoom(roomID int, msg interface{}) {
 				if len(m.userConns[user.UserID]) == 0 {
 					delete(m.userConns, user.UserID)
 				}
+				metrics.WSConnectionsActive.WithLabelValues("room").Dec()
 			}
 			_ = c.Close()
 		}
+		metrics.WSActiveRooms.Set(float64(len(m.rooms)))
 		m.mu.Unlock()
 	}
 }
@@ -242,6 +244,10 @@ func (m *Manager) CloseUserConnsInRoom(roomID, userID int) {
 		delete(m.roomJoinOrder, roomID)
 	}
 
+	// Update metrics for removed connections.
+	metrics.WSConnectionsActive.WithLabelValues("room").Sub(float64(len(toClose)))
+	metrics.WSActiveRooms.Set(float64(len(m.rooms)))
+
 	m.mu.Unlock()
 
 	for _, conn := range toClose {
@@ -310,6 +316,10 @@ func (m *Manager) CloseAllInRoom(roomID int) {
 
 	delete(m.rooms, roomID)
 	delete(m.roomJoinOrder, roomID)
+
+	// Update metrics for removed connections.
+	metrics.WSConnectionsActive.WithLabelValues("room").Sub(float64(len(toClose)))
+	metrics.WSActiveRooms.Set(float64(len(m.rooms)))
 
 	m.mu.Unlock()
 

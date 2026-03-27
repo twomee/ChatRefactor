@@ -257,7 +257,7 @@ data:
                 "type": "prometheus",
                 "uid": "${DS_PROMETHEUS}"
               },
-              "expr": "sum(rate(http_requests_total{job=~\"auth-service|chat-service|message-service|file-service\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=~\"auth-service|chat-service|message-service|file-service\"}[5m])) * 100",
+              "expr": "((sum(rate(http_requests_total{job=~\"auth-service|chat-service|message-service\",status=~\"5..\"}[5m])) or vector(0)) + (sum(rate(http_requests_total{job=\"file-service\",status_code=~\"5..\"}[5m])) or vector(0))) / sum(rate(http_requests_total{job=~\"auth-service|chat-service|message-service|file-service\"}[5m])) * 100",
               "legendFormat": "Error Rate",
               "refId": "A"
             }

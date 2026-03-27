@@ -57,8 +57,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(rate(http_requests_total{job=\"chat-service\"}[5m])) by (handler)",
-          "legendFormat": "{{handler}}",
+          "expr": "sum(rate(http_requests_total{job=\"chat-service\"}[5m])) by (path)",
+          "legendFormat": "{{path}}",
           "refId": "A"
         }
       ],
