@@ -1,5 +1,5 @@
 // types/kafka.types.ts — Kafka event type definitions
-// Matches contracts/events/file.uploaded.schema.json
+// Matches services/contracts/events/file.uploaded.schema.json
 
 /** file.uploaded event produced to file.events topic */
 export interface FileUploadedEvent {
