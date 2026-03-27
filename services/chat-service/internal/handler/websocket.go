@@ -248,8 +248,19 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 		_, _ = h.store.AddAdmin(ctx, roomID, userID)
 	}
 
-	// Handle join: broadcast, send history.
+	// Handle join: broadcast user_join and update room state.
 	h.handleJoin(ctx, conn, roomID, userID, username, token)
+
+	// Send message history asynchronously so readLoop can start immediately.
+	// Starting readLoop first closes the eviction window: when a new connection
+	// arrives and calls CloseUserConnsInRoom, the old connection's readLoop is
+	// already running and will detect the close naturally (via a read error),
+	// triggering a clean handleDisconnect rather than a silent eviction that
+	// re-triggers the reconnect loop. The 3-second HTTP timeout in sendHistory
+	// was the root cause of the K8s reconnect storm — it kept connections
+	// registered in the manager maps long enough for the client's 1-second
+	// retry to arrive and self-sustain the eviction cycle.
+	go h.sendHistory(conn, roomID, token)
 
 	// Blocking read loop -- runs until the client disconnects.
 	h.readLoop(conn, roomID, userID, username)

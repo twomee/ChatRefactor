@@ -17,8 +17,9 @@ import (
 // is cancelled silently — no leave/join messages, no state changes.
 const reconnectGrace = 10 * time.Second
 
-// handleJoin broadcasts the user_join event and sends message history to
-// the newly connected client.
+// handleJoin broadcasts the user_join event and updates room state for the
+// newly connected client. Message history is sent separately (see sendHistory
+// in websocket.go) so it does not block readLoop from starting.
 func (h *WSHandler) handleJoin(ctx context.Context, conn *websocket.Conn, roomID, userID int, username, token string) {
 	// Check if this is a reconnect (pending leave exists).
 	leaveKey := fmt.Sprintf("%d:%d", roomID, userID)
@@ -69,8 +70,6 @@ func (h *WSHandler) handleJoin(ctx context.Context, conn *websocket.Conn, roomID
 		h.produceEvent(ctx, "user_joined", roomID, userID, username)
 	}
 
-	// Send message history to the newly joined connection.
-	h.sendHistory(conn, roomID, token)
 }
 
 // handleDisconnect cleans up the connection and schedules a delayed leave

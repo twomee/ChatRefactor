@@ -102,6 +102,13 @@ data:
             strip_path: false
       - name: chat-service-ws
         url: http://chat-service:8003
+        # WebSocket connections are long-lived — set generous timeouts so Kong
+        # does not close idle connections between ping/pong frames (default 60 s
+        # would kill connections faster than the 30 s ping interval + 10 s pong
+        # wait = 40 s read deadline on the server side).
+        read_timeout: 86400000    # 24 h in ms — never time out an idle WS conn
+        write_timeout: 86400000   # 24 h in ms
+        connect_timeout: 60000    # 60 s — reasonable upstream connect timeout
         routes:
           - name: chat-ws-routes
             paths: [/ws]
