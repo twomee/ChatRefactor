@@ -6,103 +6,104 @@
 
 :root {
   /* ── Color Palette ────────────────────────────────────────────────── */
-  --primary:        #3b82f6;
-  --primary-hover:  #2563eb;
-  --primary-light:  rgba(59, 130, 246, 0.12);
-  --primary-border: rgba(59, 130, 246, 0.3);
+  --primary:        #2563eb;
+  --primary-hover:  #1d4ed8;
+  --primary-light:  rgba(37, 99, 235, 0.15);
+  --primary-border: rgba(37, 99, 235, 0.3);
 
-  --accent:         #6366f1;
-  --accent-hover:   #4f46e5;
-  --accent-light:   rgba(99, 102, 241, 0.12);
-  --accent-border:  rgba(99, 102, 241, 0.3);
+  --accent:         #0ea5e9;
+  --accent-hover:   #0284c7;
+  --accent-light:   rgba(14, 165, 233, 0.15);
+  --accent-border:  rgba(14, 165, 233, 0.3);
 
-  --success:        #22c55e;
+  --success:        #10b981;
   --danger:         #ef4444;
   --danger-hover:   #dc2626;
   --danger-light:   rgba(239, 68, 68, 0.1);
   --warning:        #f59e0b;
 
   /* ── Surface Colors ───────────────────────────────────────────────── */
-  --bg:             #f1f5f9;
-  --surface:        #ffffff;
-  --surface-hover:  #f8fafc;
-  --surface-active: #dbeafe;
-  --surface-raised: #ffffff;
+  --bg:             #040e1c;
+  --surface:        rgba(255, 255, 255, 0.08); /* Extreme glass transparency */
+  --surface-hover:  rgba(255, 255, 255, 0.15);
+  --surface-active: rgba(255, 255, 255, 0.2);
+  --surface-raised: rgba(255, 255, 255, 0.12);
 
   /* ── Text Colors ──────────────────────────────────────────────────── */
-  --text:           #1e293b;
-  --text-secondary: #64748b;
+  --text:           #f8fafc;
+  --text-secondary: #cbd5e1;
   --text-muted:     #94a3b8;
-  --text-inverse:   #ffffff;
+  --text-inverse:   #0f172a;
 
   /* ── Border & Shadow ──────────────────────────────────────────────── */
-  --border:         #e2e8f0;
-  --border-light:   #f1f5f9;
-  --ring:           rgba(59, 130, 246, 0.4);
-  --shadow-sm:      0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow:         0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md:      0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg:      0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-xl:      0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --border:         rgba(255, 255, 255, 0.12);
+  --border-light:   rgba(255, 255, 255, 0.06);
+  --ring:           rgba(37, 99, 235, 0.4);
+  --shadow-sm:      0 2px 4px rgba(0, 0, 0, 0.05);
+  --shadow:         0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md:      0 8px 24px -4px rgba(0, 0, 0, 0.08), 0 4px 8px -4px rgba(0, 0, 0, 0.06);
+  --shadow-lg:      0 12px 32px -4px rgba(0, 0, 0, 0.1), 0 8px 16px -8px rgba(0, 0, 0, 0.08);
+  --shadow-xl:      0 20px 40px -8px rgba(0, 0, 0, 0.12);
+  --glass-shadow:   0 8px 32px 0 rgba(31, 38, 135, 0.07);
 
   /* ── Typography ───────────────────────────────────────────────────── */
   --font:           'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --mono:           'SF Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
 
   /* ── Radius ───────────────────────────────────────────────────────── */
-  --radius-sm:      6px;
-  --radius:         8px;
-  --radius-md:      12px;
-  --radius-lg:      16px;
-  --radius-xl:      20px;
+  --radius-sm:      8px;
+  --radius:         12px;
+  --radius-md:      16px;
+  --radius-lg:      24px;
+  --radius-xl:      32px;
   --radius-full:    9999px;
 
   /* ── Spacing ──────────────────────────────────────────────────────── */
-  --sidebar-width:  260px;
-  --userlist-width: 220px;
-  --header-height:  60px;
+  --header-height:  64px;
 
   /* ── Transitions ──────────────────────────────────────────────────── */
-  --transition:     150ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition:     250ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --transition-slow: 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 /* ── Dark Mode ──────────────────────────────────────────────────────── */
 @media (prefers-color-scheme: dark) {
   :root {
-    --primary:        #60a5fa;
-    --primary-hover:  #3b82f6;
-    --primary-light:  rgba(96, 165, 250, 0.15);
-    --primary-border: rgba(96, 165, 250, 0.3);
+    --primary:        #3b82f6;
+    --primary-hover:  #60a5fa;
+    --primary-light:  rgba(59, 130, 246, 0.2);
+    --primary-border: rgba(59, 130, 246, 0.4);
 
-    --accent:         #818cf8;
-    --accent-hover:   #6366f1;
-    --accent-light:   rgba(129, 140, 248, 0.15);
-    --accent-border:  rgba(129, 140, 248, 0.3);
+    --accent:         #38bdf8;
+    --accent-hover:   #7dd3fc;
+    --accent-light:   rgba(56, 189, 248, 0.2);
+    --accent-border:  rgba(56, 189, 248, 0.4);
 
-    --danger-light:   rgba(239, 68, 68, 0.15);
+    --danger-light:   rgba(239, 68, 68, 0.2);
 
-    --bg:             #0f172a;
-    --surface:        #1e293b;
-    --surface-hover:  #253346;
-    --surface-active: #1e3a5f;
-    --surface-raised: #1e293b;
+    --bg:             #040e1c;
+    --surface:        rgba(10, 15, 30, 0.25);
+    --surface-hover:  rgba(30, 41, 59, 0.4);
+    --surface-active: rgba(30, 58, 138, 0.3);
+    --surface-raised: rgba(15, 23, 42, 0.35);
 
-    --text:           #e2e8f0;
-    --text-secondary: #94a3b8;
-    --text-muted:     #64748b;
+    --text:           #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted:     #94a3b8;
     --text-inverse:   #0f172a;
 
-    --border:         #334155;
-    --border-light:   #1e293b;
+    --border:         rgba(255, 255, 255, 0.08);
+    --border-light:   rgba(255, 255, 255, 0.03);
 
-    --shadow-sm:      0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow:         0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-md:      0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-    --shadow-lg:      0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
-    --shadow-xl:      0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+    --shadow-sm:      0 2px 4px rgba(0, 0, 0, 0.3);
+    --shadow:         0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md:      0 8px 24px -4px rgba(0, 0, 0, 0.5), 0 4px 8px -4px rgba(0, 0, 0, 0.4);
+    --shadow-lg:      0 12px 32px -4px rgba(0, 0, 0, 0.5), 0 8px 16px -8px rgba(0, 0, 0, 0.4);
+    --shadow-xl:      0 20px 40px -8px rgba(0, 0, 0, 0.6);
+    --glass-shadow:   0 8px 32px 0 rgba(0, 0, 0, 0.4);
   }
 }
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Global Reset & Base
@@ -123,10 +124,43 @@ html {
 
 body {
   font-family: var(--font);
-  background: var(--bg);
+  /* Static moderate-azure — login page, and the resting state after animation */
+  background-color: #06192e;
+  background-image: linear-gradient(
+    -45deg,
+    #06192e 0%,
+    #0b3868 35%,
+    #0078a8 68%,
+    #054e6a 100%
+  );
+  background-size: 100% 100%;          /* static — no animation */
   color: var(--text);
   line-height: 1.5;
   min-height: 100vh;
+}
+
+/* ── One-shot aurora on chat / admin pages ─────────────────────────────── */
+/* Added via useEffect on mount, removed on unmount                         */
+body.page-active {
+  background-image: linear-gradient(
+    -45deg,
+    #040e1c,
+    #004e9e,
+    #0098c4,
+    #044668,
+    #040e1c,
+    #0068b0,
+    #00b8d2,
+    #044e6a
+  );
+  background-size: 400% 400%;
+  /* plays once, animation-fill-mode keeps the end state (azure resting) */
+  animation: aurora-enter 3s ease-in-out 1 forwards;
+}
+
+@keyframes aurora-enter {
+  0%   { background-position: 0% 0%; }
+  100% { background-position: 20% 55%; } /* rests on the medium-azure region */
 }
 
 #root {
@@ -171,9 +205,19 @@ button, .btn {
   font-size: 0.8125rem;
   font-weight: 500;
   line-height: 1.4;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: linear-gradient(
+    140deg,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
   color: var(--text);
   cursor: pointer;
   transition: all var(--transition);
@@ -182,8 +226,16 @@ button, .btn {
 }
 
 button:hover {
-  background: var(--surface-hover);
-  border-color: var(--text-muted);
+  background: linear-gradient(
+    140deg,
+    rgba(255, 255, 255, 0.24) 0%,
+    rgba(255, 255, 255, 0.10) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.10);
 }
 
 button:active {

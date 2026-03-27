@@ -57,13 +57,9 @@ export default function UserList({
               {getInitials(u)}
               <span className="user-online-dot" />
             </div>
-            <div className="user-item-info">
-              <div className="user-item-name">{u}</div>
-              {isAdmin(u) && <div className="user-item-role">Admin</div>}
-              {isMuted(u) && <div className="user-item-role" style={{ color: 'var(--danger)' }}>Muted</div>}
-            </div>
-            {isAdmin(u) && <span className="user-admin-star" title="Room admin">&#9733;</span>}
-            {isMuted(u) && <span className="user-muted-icon" title="Muted">&#128263;</span>}
+            <div className="user-item-name">{u}</div>
+            {isAdmin(u) && <div className="user-item-role">Admin</div>}
+            {isMuted(u) && <div className="user-item-role" style={{ color: 'var(--danger)' }}>Muted</div>}
           </div>
         ))}
       </div>

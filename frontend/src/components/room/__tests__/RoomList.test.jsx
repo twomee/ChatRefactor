@@ -10,7 +10,7 @@ const rooms = [
 ];
 
 describe('RoomList', () => {
-  it('separates rooms into "Your Rooms" and "Available" sections', () => {
+  it('separates rooms into "Channels" and "Available to Join" sections', () => {
     render(
       <RoomList
         rooms={rooms}
@@ -21,8 +21,8 @@ describe('RoomList', () => {
         onSelect={vi.fn()}
       />,
     );
-    expect(screen.getByText('Your Rooms')).toBeInTheDocument();
-    expect(screen.getByText('Available')).toBeInTheDocument();
+    expect(screen.getByText('Channels')).toBeInTheDocument();
+    expect(screen.getByText('Available to Join')).toBeInTheDocument();
   });
 
   it('shows joined rooms with exit button', () => {
@@ -36,7 +36,7 @@ describe('RoomList', () => {
         onSelect={vi.fn()}
       />,
     );
-    // "general" should appear in Your Rooms with an exit button
+    // "general" should appear in Channels with an exit button
     expect(screen.getByText('general')).toBeInTheDocument();
     expect(screen.getByTitle('Exit room')).toBeInTheDocument();
   });
