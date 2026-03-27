@@ -10,7 +10,7 @@ export default function PMList({ threads = {}, pmUnread = {}, activePM, onSelect
 
   return (
     <div>
-      <div className="section-title">Private Messages</div>
+      <div className="section-title">Direct Messages</div>
       {usernames.length === 0 && (
         <div className="section-empty">No conversations yet</div>
       )}

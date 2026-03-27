@@ -15,7 +15,7 @@ export default function RoomList({
     <div>
       {/* YOUR ROOMS */}
       <div>
-        <div className="section-title">Your Rooms</div>
+        <div className="section-title">Channels</div>
         {joined.length === 0 && (
           <div className="section-empty">No rooms joined yet</div>
         )}
@@ -49,7 +49,7 @@ export default function RoomList({
 
       {/* AVAILABLE */}
       <div style={{ marginTop: 16 }}>
-        <div className="section-title">Available</div>
+        <div className="section-title">Available to Join</div>
         {available.length === 0 && (
           <div className="section-empty">No other rooms</div>
         )}

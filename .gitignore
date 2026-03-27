@@ -1,3 +1,4 @@
+.worktrees/
 .env
 k8s/secrets.env
 k8s/secrets.env.local

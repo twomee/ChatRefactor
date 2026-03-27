@@ -6,7 +6,7 @@ import PMList from '../PMList';
 describe('PMList', () => {
   it('shows section title', () => {
     render(<PMList onSelectPM={vi.fn()} />);
-    expect(screen.getByText('Private Messages')).toBeInTheDocument();
+    expect(screen.getByText('Direct Messages')).toBeInTheDocument();
   });
 
   it('shows empty state when no threads exist', () => {
