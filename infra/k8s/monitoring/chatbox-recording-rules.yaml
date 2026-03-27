@@ -1,0 +1,92 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: chatbox-recording-rules
+  namespace: chatbox-monitoring
+  labels:
+    app.kubernetes.io/part-of: chatbox
+    release: monitoring
+spec:
+  groups:
+    - name: chatbox.service_health
+      interval: 30s
+      rules:
+        # Is each service up?
+        - record: chatbox:service_up
+          expr: up{namespace="chatbox"}
+
+        # Request rate per service (5m window)
+        - record: chatbox:http_request_rate5m
+          expr: sum(rate(http_requests_total{namespace="chatbox"}[5m])) by (job)
+
+        # Error rate per service — 5xx responses as % of total
+        - record: chatbox:http_error_rate5m
+          expr: |
+            sum(rate(http_requests_total{namespace="chatbox", status=~"5.."}[5m])) by (job)
+            /
+            sum(rate(http_requests_total{namespace="chatbox"}[5m])) by (job)
+
+        # p99 latency per service
+        - record: chatbox:http_p99_latency5m
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(http_request_duration_seconds_bucket{namespace="chatbox"}[5m])) by (job, le)
+            )
+
+        # p95 latency per service
+        - record: chatbox:http_p95_latency5m
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(http_request_duration_seconds_bucket{namespace="chatbox"}[5m])) by (job, le)
+            )
+
+    - name: chatbox.websocket
+      interval: 30s
+      rules:
+        # Total active WebSocket connections
+        - record: chatbox:ws_connections_active_total
+          expr: sum(ws_connections_active{namespace="chatbox"})
+
+        # Active rooms
+        - record: chatbox:ws_active_rooms
+          expr: ws_active_rooms{namespace="chatbox"}
+
+    - name: chatbox.kafka
+      interval: 30s
+      rules:
+        # Kafka produce rate (chat + file services)
+        - record: chatbox:kafka_produce_rate5m
+          expr: sum(rate(kafka_produce_total{namespace="chatbox"}[5m])) by (job, topic)
+
+        # Kafka consume rate (message service)
+        - record: chatbox:kafka_consume_rate5m
+          expr: sum(rate(kafka_messages_consumed_total{namespace="chatbox"}[5m])) by (job, topic)
+
+        # Message persistence rate
+        - record: chatbox:messages_persisted_rate5m
+          expr: sum(rate(messages_persisted_total{namespace="chatbox"}[5m])) by (type)
+
+        # DLQ rate — should be near zero
+        - record: chatbox:kafka_dlq_rate5m
+          expr: sum(rate(messages_dlq_total{namespace="chatbox"}[5m]))
+
+    - name: chatbox.auth
+      interval: 30s
+      rules:
+        # Login success rate
+        - record: chatbox:auth_login_rate5m
+          expr: sum(rate(auth_logins_total{namespace="chatbox"}[5m])) by (status)
+
+        # Registration rate
+        - record: chatbox:auth_registration_rate5m
+          expr: sum(rate(auth_registrations_total{namespace="chatbox"}[5m])) by (status)
+
+    - name: chatbox.infrastructure
+      interval: 30s
+      rules:
+        # DB pool utilization per service
+        - record: chatbox:db_pool_utilization
+          expr: |
+            db_pool_checked_out{namespace="chatbox"}
+            /
+            db_pool_size{namespace="chatbox"}
