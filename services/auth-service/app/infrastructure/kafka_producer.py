@@ -14,6 +14,7 @@ import json
 from datetime import datetime, timezone
 
 from app.core.logging import get_logger
+from app.infrastructure.metrics import kafka_events_produced_total
 
 logger = get_logger("kafka_producer")
 
@@ -79,9 +80,11 @@ async def produce_event(event_type: str, data: dict) -> bool:
         }
         key = data.get("username", str(data.get("user_id", "")))
         await _producer.send_and_wait(AUTH_EVENTS_TOPIC, key=key, value=event)
+        kafka_events_produced_total.labels(topic="auth.events", status="success").inc()
         logger.info("auth_event_produced", event_type=event_type, key=key)
         return True
     except Exception as e:
+        kafka_events_produced_total.labels(topic="auth.events", status="failed").inc()
         logger.warning("kafka_produce_failed", event_type=event_type, error=str(e))
         return False
 

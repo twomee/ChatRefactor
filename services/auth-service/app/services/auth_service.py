@@ -15,6 +15,11 @@ from app.core.logging import get_logger
 from app.core.security import create_access_token, hash_password, verify_password
 from app.dal import user_dal
 from app.infrastructure.kafka_producer import produce_event
+from app.infrastructure.metrics import (
+    auth_logins_total,
+    auth_logouts_total,
+    auth_registrations_total,
+)
 from app.schemas.auth import TokenResponse, UserLogin, UserRegister
 
 logger = get_logger("services.auth")
@@ -30,12 +35,14 @@ async def register(db: Session, body: UserRegister) -> dict:
         raise HTTPException(status_code=400, detail="Username and password required")
 
     if user_dal.get_by_username(db, body.username):
+        auth_registrations_total.labels(status="duplicate").inc()
         raise HTTPException(status_code=409, detail="Username already taken")
 
     user = user_dal.create(
         db, username=body.username.strip(), password_hash=hash_password(body.password)
     )
     logger.info("user_registered", username=user.username, user_id=user.id)
+    auth_registrations_total.labels(status="success").inc()
 
     # Fire-and-forget Kafka event — don't fail registration if Kafka is down
     await produce_event(
@@ -53,10 +60,12 @@ async def login(db: Session, body: UserLogin) -> TokenResponse:
     user = user_dal.get_by_username(db, body.username)
     if not user or not verify_password(body.password, user.password_hash):
         logger.warning("login_failed", username=body.username)
+        auth_logins_total.labels(status="invalid_credentials").inc()
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     token = create_access_token({"sub": str(user.id), "username": user.username})
     logger.info("user_logged_in", username=user.username, user_id=user.id)
+    auth_logins_total.labels(status="success").inc()
 
     # Fire-and-forget Kafka event
     await produce_event(
@@ -98,6 +107,7 @@ async def logout(user_info: dict, token: str) -> dict:
             ) from exc
 
     logger.info("user_logged_out", username=username, user_id=user_id)
+    auth_logouts_total.labels(status="success").inc()
 
     # Fire-and-forget Kafka event
     await produce_event("user_logged_out", {"user_id": user_id, "username": username})

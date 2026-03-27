@@ -6,6 +6,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
+
+	"github.com/twomee/chatbox/chat-service/internal/metrics"
 )
 
 // ConnectLobby registers a lobby WebSocket connection.
@@ -20,6 +22,9 @@ func (m *Manager) ConnectLobby(conn *websocket.Conn, user UserInfo) {
 		m.userConns[user.UserID] = make(map[*websocket.Conn]bool)
 	}
 	m.userConns[user.UserID][conn] = true
+
+	metrics.WSConnectionsActive.WithLabelValues("lobby").Inc()
+	metrics.WSConnectionsTotal.WithLabelValues("lobby").Inc()
 
 	m.logger.Info("ws_lobby_connect",
 		zap.Int("user_id", user.UserID),
@@ -44,6 +49,8 @@ func (m *Manager) DisconnectLobby(conn *websocket.Conn) {
 	if len(m.userConns[user.UserID]) == 0 {
 		delete(m.userConns, user.UserID)
 	}
+
+	metrics.WSConnectionsActive.WithLabelValues("lobby").Dec()
 
 	m.logger.Info("ws_lobby_disconnect", zap.Int("user_id", user.UserID))
 }

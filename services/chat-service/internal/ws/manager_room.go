@@ -6,6 +6,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
+
+	"github.com/twomee/chatbox/chat-service/internal/metrics"
 )
 
 // ConnectRoom registers a connection in a room.
@@ -37,6 +39,10 @@ func (m *Manager) ConnectRoom(roomID int, conn *websocket.Conn, user UserInfo) {
 	if !found {
 		m.roomJoinOrder[roomID] = append(m.roomJoinOrder[roomID], user.UserID)
 	}
+
+	metrics.WSConnectionsActive.WithLabelValues("room").Inc()
+	metrics.WSConnectionsTotal.WithLabelValues("room").Inc()
+	metrics.WSActiveRooms.Set(float64(len(m.rooms)))
 
 	m.logger.Info("ws_room_connect",
 		zap.Int("room_id", roomID),
@@ -88,6 +94,9 @@ func (m *Manager) DisconnectRoom(roomID int, conn *websocket.Conn) {
 		delete(m.rooms, roomID)
 		delete(m.roomJoinOrder, roomID)
 	}
+
+	metrics.WSConnectionsActive.WithLabelValues("room").Dec()
+	metrics.WSActiveRooms.Set(float64(len(m.rooms)))
 
 	m.logger.Info("ws_room_disconnect",
 		zap.Int("room_id", roomID),

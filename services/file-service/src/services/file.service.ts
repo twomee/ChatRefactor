@@ -27,6 +27,7 @@ import {
 } from "../utils/format.util.js";
 import { produceFileUploadedEvent } from "../kafka/events.js";
 import { logger } from "../kafka/logger.js";
+import { filesUploadedTotal, fileUploadSizeBytes, filesDownloadedTotal } from "../middleware/metrics.middleware.js";
 import type { FileUploadResult, FileRecord, FileMetadataResponse } from "../types/file.types.js";
 
 const prisma = new PrismaClient();
@@ -44,83 +45,97 @@ export async function uploadFile(
   senderUsername: string,
   roomId: number
 ): Promise<FileUploadResult> {
-  // 1. Sanitize filename (strip path components, null bytes, leading dots)
-  const { cleanName, extension } = sanitizeFilename(originalFilename);
+  try {
+    // 1. Sanitize filename (strip path components, null bytes, leading dots)
+    const { cleanName, extension } = sanitizeFilename(originalFilename);
 
-  // 2. Validate extension against allowlist
-  validateExtension(extension);
+    // 2. Validate extension against allowlist
+    validateExtension(extension);
 
-  // 3. Validate file size
-  validateFileSize(fileBuffer.length);
+    // 3. Validate file size
+    validateFileSize(fileBuffer.length);
 
-  // 3b. Validate MIME type matches claimed extension (magic byte check)
-  await validateMimeType(fileBuffer, extension);
+    // 3b. Validate MIME type matches claimed extension (magic byte check)
+    await validateMimeType(fileBuffer, extension);
 
-  // 4. Generate unique stored filename with UUID prefix
-  const storedName = `${uuidv4().replace(/-/g, "")}_${cleanName}`;
-  const destPath = path.join(config.uploadDir, storedName);
+    // 4. Generate unique stored filename with UUID prefix
+    const storedName = `${uuidv4().replace(/-/g, "")}_${cleanName}`;
+    const destPath = path.join(config.uploadDir, storedName);
 
-  // 5. Safety check: ensure resolved path is inside upload directory
-  //    Prevents any path traversal that survived sanitization
-  const resolvedDest = path.resolve(destPath);
-  const resolvedUploadDir = path.resolve(config.uploadDir);
-  if (!resolvedDest.startsWith(resolvedUploadDir + path.sep) && resolvedDest !== resolvedUploadDir) {
-    logger.error("Path traversal blocked during upload", {
-      attemptedPath: destPath,
-      originalFilename,
+    // 5. Safety check: ensure resolved path is inside upload directory
+    //    Prevents any path traversal that survived sanitization
+    const resolvedDest = path.resolve(destPath);
+    const resolvedUploadDir = path.resolve(config.uploadDir);
+    if (!resolvedDest.startsWith(resolvedUploadDir + path.sep) && resolvedDest !== resolvedUploadDir) {
+      logger.error("Path traversal blocked during upload", {
+        attemptedPath: destPath,
+        originalFilename,
+      });
+      throw new FileValidationError("Invalid filename", 400);
+    }
+
+    // 6. Ensure upload directory exists
+    fs.mkdirSync(config.uploadDir, { recursive: true });
+
+    // 7. Write file to disk
+    fs.writeFileSync(destPath, fileBuffer);
+
+    // 8. Save metadata to database
+    const record = await prisma.file.create({
+      data: {
+        originalName: cleanName,
+        storedPath: destPath,
+        fileSize: fileBuffer.length,
+        senderId,
+        senderName: senderUsername,
+        roomId,
+      },
     });
-    throw new FileValidationError("Invalid filename", 400);
-  }
 
-  // 6. Ensure upload directory exists
-  fs.mkdirSync(config.uploadDir, { recursive: true });
-
-  // 7. Write file to disk
-  fs.writeFileSync(destPath, fileBuffer);
-
-  // 8. Save metadata to database
-  const record = await prisma.file.create({
-    data: {
-      originalName: cleanName,
-      storedPath: destPath,
-      fileSize: fileBuffer.length,
-      senderId,
-      senderName: senderUsername,
-      roomId,
-    },
-  });
-
-  logger.info("File uploaded", {
-    fileId: record.id,
-    filename: cleanName,
-    size: fileBuffer.length,
-    roomId,
-    senderId,
-  });
-
-  // 9. Produce Kafka event (fire-and-forget — don't block the upload response)
-  produceFileUploadedEvent({
-    file_id: record.id,
-    filename: cleanName,
-    size: fileBuffer.length,
-    from: senderUsername,
-    room_id: roomId,
-    timestamp: new Date().toISOString(),
-  }).catch((err) => {
-    logger.warn("Failed to produce file.uploaded event", {
+    logger.info("File uploaded", {
       fileId: record.id,
-      error: err instanceof Error ? err.message : String(err),
+      filename: cleanName,
+      size: fileBuffer.length,
+      roomId,
+      senderId,
     });
-  });
 
-  return {
-    id: record.id,
-    originalName: record.originalName,
-    fileSize: record.fileSize,
-    senderId: record.senderId,
-    roomId: record.roomId,
-    uploadedAt: record.uploadedAt,
-  };
+    // 9. Produce Kafka event (fire-and-forget — don't block the upload response)
+    produceFileUploadedEvent({
+      file_id: record.id,
+      filename: cleanName,
+      size: fileBuffer.length,
+      from: senderUsername,
+      room_id: roomId,
+      timestamp: new Date().toISOString(),
+    }).catch((err) => {
+      logger.warn("Failed to produce file.uploaded event", {
+        fileId: record.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+
+    // Track successful upload metrics
+    filesUploadedTotal.inc({ status: "success" });
+    fileUploadSizeBytes.observe(fileBuffer.length);
+
+    return {
+      id: record.id,
+      originalName: record.originalName,
+      fileSize: record.fileSize,
+      senderId: record.senderId,
+      roomId: record.roomId,
+      uploadedAt: record.uploadedAt,
+    };
+  } catch (error) {
+    // Track upload failure metrics
+    if (error instanceof FileValidationError) {
+      filesUploadedTotal.inc({ status: "validation_error" });
+    } else {
+      filesUploadedTotal.inc({ status: "error" });
+    }
+    throw error;
+  }
 }
 
 /**
@@ -132,41 +147,48 @@ export async function uploadFile(
  * Returns the file record with the stored path, or throws an error.
  */
 export async function getFile(fileId: number): Promise<FileRecord> {
-  const record = await prisma.file.findUnique({ where: { id: fileId } });
+  try {
+    const record = await prisma.file.findUnique({ where: { id: fileId } });
 
-  if (!record) {
-    throw new FileValidationError("File not found", 404);
-  }
+    if (!record) {
+      throw new FileValidationError("File not found", 404);
+    }
 
-  // SECURITY: Verify stored path is inside upload directory
-  const resolvedStored = path.resolve(record.storedPath);
-  const resolvedUploadDir = path.resolve(config.uploadDir);
-  if (!resolvedStored.startsWith(resolvedUploadDir + path.sep) && resolvedStored !== resolvedUploadDir) {
-    logger.error("Path traversal detected on download", {
-      fileId,
+    // SECURITY: Verify stored path is inside upload directory
+    const resolvedStored = path.resolve(record.storedPath);
+    const resolvedUploadDir = path.resolve(config.uploadDir);
+    if (!resolvedStored.startsWith(resolvedUploadDir + path.sep) && resolvedStored !== resolvedUploadDir) {
+      logger.error("Path traversal detected on download", {
+        fileId,
+        storedPath: record.storedPath,
+      });
+      throw new FileValidationError("Access denied", 403);
+    }
+
+    // Verify file exists on disk
+    if (!fs.existsSync(record.storedPath)) {
+      logger.warn("File missing on disk", {
+        fileId,
+        storedPath: record.storedPath,
+      });
+      throw new FileValidationError("File not found on disk", 404);
+    }
+
+    filesDownloadedTotal.inc({ status: "success" });
+
+    return {
+      id: record.id,
+      originalName: record.originalName,
       storedPath: record.storedPath,
-    });
-    throw new FileValidationError("Access denied", 403);
+      fileSize: record.fileSize,
+      senderId: record.senderId,
+      roomId: record.roomId,
+      uploadedAt: record.uploadedAt,
+    };
+  } catch (error) {
+    filesDownloadedTotal.inc({ status: "error" });
+    throw error;
   }
-
-  // Verify file exists on disk
-  if (!fs.existsSync(record.storedPath)) {
-    logger.warn("File missing on disk", {
-      fileId,
-      storedPath: record.storedPath,
-    });
-    throw new FileValidationError("File not found on disk", 404);
-  }
-
-  return {
-    id: record.id,
-    originalName: record.originalName,
-    storedPath: record.storedPath,
-    fileSize: record.fileSize,
-    senderId: record.senderId,
-    roomId: record.roomId,
-    uploadedAt: record.uploadedAt,
-  };
 }
 
 /**

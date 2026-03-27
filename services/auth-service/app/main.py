@@ -13,6 +13,7 @@ Includes:
   - Global exception handler with structured logging
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -30,6 +31,7 @@ from app.infrastructure.kafka_producer import (
     init_producer,
     is_kafka_available,
 )
+from app.infrastructure.metrics import db_pool_checked_out, db_pool_overflow, db_pool_size
 from app.middleware.correlation import CorrelationIdMiddleware
 from app.routers import auth
 
@@ -86,16 +88,43 @@ async def lifespan(app: FastAPI):
     # Start Kafka producer (gracefully degrades if Kafka is unavailable)
     await init_producer()
 
+    # Background task: periodically update DB pool gauges for Prometheus
+    async def _collect_pool_stats():
+        while True:
+            try:
+                pool = engine.pool
+                db_pool_size.set(pool.size())
+                db_pool_checked_out.set(pool.checkedout())
+                db_pool_overflow.set(pool.overflow())
+            except Exception:
+                pass
+            await asyncio.sleep(15)
+
+    pool_stats_task = asyncio.create_task(_collect_pool_stats())
+
     logger.info("auth_service_started")
     yield
 
     # ── Shutdown ─────────────────────────────────────────────────────
     logger.info("auth_service_shutting_down")
+    pool_stats_task.cancel()
+    try:
+        await pool_stats_task
+    except asyncio.CancelledError:
+        pass
     await close_producer()
     logger.info("auth_service_shutdown_complete")
 
 
 app = FastAPI(title="cHATBOX Auth Service", version="1.0.0", lifespan=lifespan)
+
+# ── Prometheus metrics ────────────────────────────────────────────────
+from prometheus_fastapi_instrumentator import Instrumentator
+
+instrumentator = Instrumentator(
+    excluded_handlers=["/health", "/ready", "/metrics"],
+)
+instrumentator.instrument(app).expose(app, include_in_schema=False)
 
 # ── Middleware ──────────────────────────────────────────────────────────
 app.add_middleware(CorrelationIdMiddleware)

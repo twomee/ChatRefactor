@@ -17,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/twomee/chatbox/chat-service/internal/delivery"
 	"github.com/twomee/chatbox/chat-service/internal/handler"
 	"github.com/twomee/chatbox/chat-service/internal/kafka"
+	"github.com/twomee/chatbox/chat-service/internal/metrics"
 	"github.com/twomee/chatbox/chat-service/internal/middleware"
 	"github.com/twomee/chatbox/chat-service/internal/store"
 	"github.com/twomee/chatbox/chat-service/internal/ws"
@@ -63,6 +65,23 @@ func main() {
 			logger.Fatal("db_ping_failed", zap.Error(err))
 		}
 		logger.Info("database_connected")
+
+		// Periodically collect DB pool stats for Prometheus.
+		go func() {
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					stat := dbPool.Stat()
+					metrics.DBPoolActiveConns.Set(float64(stat.AcquiredConns()))
+					metrics.DBPoolIdleConns.Set(float64(stat.IdleConns()))
+					metrics.DBPoolTotalConns.Set(float64(stat.TotalConns()))
+				}
+			}
+		}()
 	} else {
 		logger.Warn("database_not_configured")
 	}
@@ -144,10 +163,12 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(middleware.Correlation())
+	r.Use(middleware.PrometheusMetrics())
 
 	// Public endpoints.
 	r.GET("/health", healthH.Health)
 	r.GET("/ready", healthH.Ready)
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// WebSocket endpoints (auth via query param, not middleware).
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)

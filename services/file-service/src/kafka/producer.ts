@@ -8,6 +8,7 @@
 import { Kafka, Producer, logLevel } from "kafkajs";
 import { config } from "../config/env.config.js";
 import { logger } from "./logger.js";
+import { kafkaProduceTotal } from "../middleware/metrics.middleware.js";
 
 let producer: Producer | null = null;
 let kafkaAvailable = false;
@@ -68,8 +69,10 @@ export async function produce(
         },
       ],
     });
+    kafkaProduceTotal.inc({ topic, status: "success" });
     return true;
   } catch (error) {
+    kafkaProduceTotal.inc({ topic, status: "failed" });
     logger.warn("Kafka produce failed", {
       topic,
       key,

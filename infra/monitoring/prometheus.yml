@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: auth-service
+    static_configs:
+      - targets: ["auth-service:8001"]
+    metrics_path: /metrics
+
+  - job_name: chat-service
+    static_configs:
+      - targets: ["chat-service:8003"]
+    metrics_path: /metrics
+
+  - job_name: message-service
+    static_configs:
+      - targets: ["message-service:8004"]
+    metrics_path: /metrics
+
+  - job_name: file-service
+    static_configs:
+      - targets: ["file-service:8005"]
+    metrics_path: /metrics
+
+  - job_name: kong
+    static_configs:
+      - targets: ["kong:8100"]
+    metrics_path: /metrics
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
