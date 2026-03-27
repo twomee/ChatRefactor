@@ -31,7 +31,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -106,7 +106,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "sum(rate(http_requests_total{job=\"file-service\"}[5m])) by (route)",
               "legendFormat": "{{route}}",
@@ -119,7 +119,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -194,7 +194,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "histogram_quantile(0.5, sum(rate(http_request_duration_seconds_bucket{job=\"file-service\"}[5m])) by (le))",
               "legendFormat": "p50",
@@ -203,7 +203,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"file-service\"}[5m])) by (le))",
               "legendFormat": "p95",
@@ -212,7 +212,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job=\"file-service\"}[5m])) by (le))",
               "legendFormat": "p99",
@@ -237,7 +237,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -328,7 +328,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "sum(rate(files_uploaded_total[5m])) by (status)",
               "legendFormat": "{{status}}",
@@ -341,7 +341,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -416,7 +416,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "histogram_quantile(0.5, sum(rate(file_upload_size_bytes_bucket[5m])) by (le))",
               "legendFormat": "p50 Upload Size",
@@ -425,7 +425,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "histogram_quantile(0.95, sum(rate(file_upload_size_bytes_bucket[5m])) by (le))",
               "legendFormat": "p95 Upload Size",
@@ -438,7 +438,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -529,7 +529,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "sum(rate(files_downloaded_total[5m])) by (status)",
               "legendFormat": "{{status}}",
@@ -542,7 +542,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -617,7 +617,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "sum(rate(kafka_produce_total{job=\"file-service\"}[5m])) by (status)",
               "legendFormat": "{{status}}",
@@ -642,7 +642,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -725,7 +725,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "nodejs_eventloop_lag_seconds{job=\"file-service\"}",
               "legendFormat": "Event Loop Lag",
@@ -738,7 +738,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -813,7 +813,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "process_resident_memory_bytes{job=\"file-service\"}",
               "legendFormat": "RSS Memory",
@@ -826,7 +826,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -901,7 +901,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "nodejs_active_handles_total{job=\"file-service\"}",
               "legendFormat": "Active Handles",

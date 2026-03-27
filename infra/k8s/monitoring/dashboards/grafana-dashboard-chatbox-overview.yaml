@@ -31,7 +31,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -95,7 +95,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "up{job=~\"auth-service|chat-service|message-service|file-service\"}",
               "legendFormat": "{{job}}",
@@ -108,7 +108,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -183,7 +183,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "sum(rate(http_requests_total{job=~\"auth-service|chat-service|message-service|file-service\"}[5m])) by (job)",
               "legendFormat": "{{job}}",
@@ -196,7 +196,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -255,7 +255,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "((sum(rate(http_requests_total{job=~\"auth-service|chat-service|message-service\",status=~\"5..\"}[5m])) or vector(0)) + (sum(rate(http_requests_total{job=\"file-service\",status_code=~\"5..\"}[5m])) or vector(0))) / sum(rate(http_requests_total{job=~\"auth-service|chat-service|message-service|file-service\"}[5m])) * 100",
               "legendFormat": "Error Rate",
@@ -268,7 +268,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -343,7 +343,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=~\"auth-service|chat-service|message-service|file-service\"}[5m])) by (le, job))",
               "legendFormat": "{{job}} p95",
@@ -368,7 +368,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -412,7 +412,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "sum(ws_connections_active)",
               "legendFormat": "Active Connections",
@@ -425,7 +425,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -469,7 +469,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "ws_active_rooms",
               "legendFormat": "Active Rooms",
@@ -482,7 +482,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -557,7 +557,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "sum(rate(messages_persisted_total[5m]))",
               "legendFormat": "Messages/sec",
@@ -570,7 +570,7 @@ data:
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
@@ -645,7 +645,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "sum(rate(auth_registrations_total{status=\"success\"}[5m])) * 60",
               "legendFormat": "Registrations/min",
@@ -654,7 +654,7 @@ data:
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
+                "uid": "prometheus"
               },
               "expr": "sum(rate(auth_logins_total{status=\"success\"}[5m])) * 60",
               "legendFormat": "Logins/min",
