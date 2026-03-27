@@ -12,6 +12,11 @@ spec:
   selector:
     app.kubernetes.io/name: kong
   ports:
-    - port: 80
+    - name: http
+      port: 80
       targetPort: 8000
+      protocol: TCP
+    - name: metrics
+      port: 8100
+      targetPort: 8100
       protocol: TCP

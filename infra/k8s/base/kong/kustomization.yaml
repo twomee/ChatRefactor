@@ -5,3 +5,4 @@ resources:
   - service.yaml
   - serviceaccount.yaml
   - configmap.yaml
+  - servicemonitor.yaml

@@ -17,3 +17,10 @@ primary:
     limits:
       cpu: 250m
       memory: 256Mi
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: chatbox-infra
+    interval: 15s

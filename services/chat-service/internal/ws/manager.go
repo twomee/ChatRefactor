@@ -20,6 +20,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
+
+	"github.com/twomee/chatbox/chat-service/internal/metrics"
 )
 
 // UserInfo holds identity data attached to a WebSocket connection.
@@ -120,6 +122,9 @@ func (m *Manager) TotalConnections() int {
 func (m *Manager) CloseAll() {
 	m.mu.Lock()
 
+	roomConnCount := len(m.connUser)
+	lobbyConnCount := len(m.lobbyConns)
+
 	var allConns []*websocket.Conn
 	for conn := range m.connUser {
 		allConns = append(allConns, conn)
@@ -135,6 +140,11 @@ func (m *Manager) CloseAll() {
 	m.lobbyConns = make(map[*websocket.Conn]UserInfo)
 	m.connMu = make(map[*websocket.Conn]*sync.Mutex)
 	m.roomJoinOrder = make(map[int][]int)
+
+	// Reset metrics gauges to reflect cleared state.
+	metrics.WSConnectionsActive.WithLabelValues("room").Sub(float64(roomConnCount))
+	metrics.WSConnectionsActive.WithLabelValues("lobby").Sub(float64(lobbyConnCount))
+	metrics.WSActiveRooms.Set(0)
 
 	m.mu.Unlock()
 

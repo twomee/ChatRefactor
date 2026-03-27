@@ -7,6 +7,18 @@ grafana:
     type: NodePort
     nodePort: 30030
   adminPassword: admin
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: chatbox-monitoring
+  # Persist Grafana DB (starred dashboards, user preferences) across pod restarts
+  persistence:
+    enabled: true
+    size: 1Gi
+  # Set ChatBox - Service Overview as the default home dashboard
+  grafana.ini:
+    dashboards:
+      default_home_dashboard_path: /tmp/dashboards/chatbox-overview.json
 
 prometheus:
   prometheusSpec:
@@ -19,6 +31,16 @@ prometheus:
           resources:
             requests:
               storage: 10Gi
+    # Watch ServiceMonitors in chatbox and chatbox-infra namespaces
+    serviceMonitorNamespaceSelector:
+      matchLabels:
+        app.kubernetes.io/part-of: chatbox
+    podMonitorNamespaceSelector:
+      matchLabels:
+        app.kubernetes.io/part-of: chatbox
+    # Match ALL ServiceMonitors (not just release=monitoring)
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
 
 alertmanager:
   enabled: false

@@ -13,6 +13,8 @@ import (
 
 	kafkago "github.com/segmentio/kafka-go"
 	"go.uber.org/zap"
+
+	"github.com/twomee/chatbox/chat-service/internal/metrics"
 )
 
 // MessageWriter is the interface for writing Kafka messages. This allows
@@ -57,6 +59,7 @@ func (p *Producer) Produce(ctx context.Context, topic, key string, value []byte)
 		Value: value,
 	}
 	if err := p.writer.WriteMessages(ctx, msg); err != nil {
+		metrics.KafkaProduceTotal.WithLabelValues(topic, "error").Inc()
 		p.logger.Error("kafka_produce_failed",
 			zap.String("topic", topic),
 			zap.String("key", key),
@@ -64,6 +67,7 @@ func (p *Producer) Produce(ctx context.Context, topic, key string, value []byte)
 		)
 		return fmt.Errorf("kafka produce to %s: %w", topic, err)
 	}
+	metrics.KafkaProduceTotal.WithLabelValues(topic, "success").Inc()
 	p.logger.Debug("kafka_produced",
 		zap.String("topic", topic),
 		zap.String("key", key),

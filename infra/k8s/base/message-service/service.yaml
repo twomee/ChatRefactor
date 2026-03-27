@@ -12,6 +12,7 @@ spec:
   selector:
     app.kubernetes.io/name: message-service
   ports:
-    - port: 8004
+    - name: http
+      port: 8004
       targetPort: 8004
       protocol: TCP

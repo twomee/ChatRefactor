@@ -21,4 +21,8 @@ primary:
     max_connections = 200
 
 metrics:
-  enabled: false
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: chatbox-infra
+    interval: 30s

@@ -18,9 +18,16 @@
 #   - Auth Service integration with circuit breaker for username resolution
 #   - Graceful shutdown via asyncio.Event
 import asyncio
+import time
 from datetime import datetime, timezone
 
 from app.core.logging import get_logger
+from app.infrastructure.metrics import (
+    kafka_consume_duration_seconds,
+    kafka_messages_consumed_total,
+    messages_dlq_total,
+    messages_persisted_total,
+)
 from app.infrastructure.auth_client import get_user_by_username
 from app.infrastructure.kafka_producer import (
     TOPIC_MESSAGES,
@@ -103,9 +110,18 @@ class MessagePersistenceConsumer:
         """Process a single message with retry + DLQ routing."""
         for attempt in range(1, MAX_RETRIES + 1):
             try:
+                start = time.time()
                 await self._process(msg.topic, msg.value)
+                duration = time.time() - start
+                kafka_consume_duration_seconds.labels(topic=msg.topic).observe(duration)
+                kafka_messages_consumed_total.labels(
+                    topic=msg.topic, status="success"
+                ).inc()
                 return
             except Exception as e:
+                kafka_messages_consumed_total.labels(
+                    topic=msg.topic, status="retry"
+                ).inc()
                 logger.warning(
                     "consumer_process_failed",
                     topic=msg.topic,
@@ -172,6 +188,7 @@ class MessagePersistenceConsumer:
             sent_at=sent_at,
         )
         if inserted:
+            messages_persisted_total.labels(type="room").inc()
             logger.debug("message_persisted", msg_id=msg_id, room_id=room_id)
 
     async def _persist_private_message(self, db, value: dict):
@@ -230,6 +247,7 @@ class MessagePersistenceConsumer:
             sent_at=sent_at,
         )
         if inserted:
+            messages_persisted_total.labels(type="private").inc()
             logger.debug(
                 "pm_persisted",
                 msg_id=msg_id,
@@ -239,6 +257,8 @@ class MessagePersistenceConsumer:
 
     async def _send_to_dlq(self, msg):
         """Route a failed message to the Dead Letter Queue with error context."""
+        messages_dlq_total.inc()
+        kafka_messages_consumed_total.labels(topic=msg.topic, status="dlq").inc()
         dlq_payload = {
             "original_topic": msg.topic,
             "original_key": msg.key,

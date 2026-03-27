@@ -31,6 +31,9 @@ spec:
           ports:
             - containerPort: 8000
               protocol: TCP
+            - containerPort: 8100
+              name: metrics
+              protocol: TCP
           env:
             - name: KONG_DATABASE
               value: "off"
@@ -40,6 +43,8 @@ spec:
               value: "0.0.0.0:8000"
             - name: KONG_ADMIN_LISTEN
               value: "off"
+            - name: KONG_STATUS_LISTEN
+              value: "0.0.0.0:8100"
             - name: KONG_LOG_LEVEL
               value: "info"
             - name: KONG_PREFIX

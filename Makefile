@@ -112,7 +112,7 @@ k8s-port-forward: ## Port-forward Kong and Frontend (background)
 # --- Monitoring ---
 
 .PHONY: k8s-monitoring-setup
-k8s-monitoring-setup: ## Install Prometheus + Grafana via Helm
+k8s-monitoring-setup: ## Install full monitoring stack: Prometheus, Grafana, dashboards, exporters
 	@echo "Installing monitoring stack..."
 	@helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>/dev/null || true
 	@helm repo update
@@ -122,8 +122,17 @@ k8s-monitoring-setup: ## Install Prometheus + Grafana via Helm
 		--values infra/k8s/infra/helm-values/monitoring.yaml \
 		--version 82.14.1 \
 		--wait --timeout 300s
+	@echo "Applying Grafana dashboards..."
+	@kubectl apply -f infra/k8s/monitoring/dashboards/ -n chatbox-monitoring
+	@echo "Deploying Kafka exporter..."
+	@kubectl apply -f infra/k8s/infra/kafka-exporter.yaml
+	@echo "Applying recording rules..."
+	@kubectl apply -f infra/k8s/monitoring/chatbox-recording-rules.yaml
 	@echo ""
-	@echo "Grafana: http://localhost:30030 (admin/admin)"
+	@echo "Monitoring stack ready!"
+	@echo "  Grafana:    http://localhost:30030 (admin/admin)"
+	@echo "  Prometheus: make k8s-prometheus"
+	@echo "  Dashboards: 7 provisioned in ChatBox folder"
 
 .PHONY: k8s-grafana
 k8s-grafana: ## Print Grafana URL

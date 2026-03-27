@@ -6,6 +6,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
+
+	"github.com/twomee/chatbox/chat-service/internal/metrics"
 )
 
 // ConnectRoom registers a connection in a room.
@@ -37,6 +39,10 @@ func (m *Manager) ConnectRoom(roomID int, conn *websocket.Conn, user UserInfo) {
 	if !found {
 		m.roomJoinOrder[roomID] = append(m.roomJoinOrder[roomID], user.UserID)
 	}
+
+	metrics.WSConnectionsActive.WithLabelValues("room").Inc()
+	metrics.WSConnectionsTotal.WithLabelValues("room").Inc()
+	metrics.WSActiveRooms.Set(float64(len(m.rooms)))
 
 	m.logger.Info("ws_room_connect",
 		zap.Int("room_id", roomID),
@@ -89,6 +95,9 @@ func (m *Manager) DisconnectRoom(roomID int, conn *websocket.Conn) {
 		delete(m.roomJoinOrder, roomID)
 	}
 
+	metrics.WSConnectionsActive.WithLabelValues("room").Dec()
+	metrics.WSActiveRooms.Set(float64(len(m.rooms)))
+
 	m.logger.Info("ws_room_disconnect",
 		zap.Int("room_id", roomID),
 		zap.Int("user_id", user.UserID),
@@ -129,9 +138,11 @@ func (m *Manager) BroadcastRoom(roomID int, msg interface{}) {
 				if len(m.userConns[user.UserID]) == 0 {
 					delete(m.userConns, user.UserID)
 				}
+				metrics.WSConnectionsActive.WithLabelValues("room").Dec()
 			}
 			_ = c.Close()
 		}
+		metrics.WSActiveRooms.Set(float64(len(m.rooms)))
 		m.mu.Unlock()
 	}
 }
@@ -233,6 +244,10 @@ func (m *Manager) CloseUserConnsInRoom(roomID, userID int) {
 		delete(m.roomJoinOrder, roomID)
 	}
 
+	// Update metrics for removed connections.
+	metrics.WSConnectionsActive.WithLabelValues("room").Sub(float64(len(toClose)))
+	metrics.WSActiveRooms.Set(float64(len(m.rooms)))
+
 	m.mu.Unlock()
 
 	for _, conn := range toClose {
@@ -301,6 +316,10 @@ func (m *Manager) CloseAllInRoom(roomID int) {
 
 	delete(m.rooms, roomID)
 	delete(m.roomJoinOrder, roomID)
+
+	// Update metrics for removed connections.
+	metrics.WSConnectionsActive.WithLabelValues("room").Sub(float64(len(toClose)))
+	metrics.WSActiveRooms.Set(float64(len(m.rooms)))
 
 	m.mu.Unlock()
 

@@ -11,6 +11,7 @@
 #   - CorrelationIdMiddleware (request tracing via X-Request-ID)
 #   - Health endpoints (/health liveness, /ready readiness)
 #   - Global exception handler with structured logging
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -21,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.core.config import APP_ENV, SECRET_KEY
 from app.core.database import engine
 from app.core.logging import get_logger, setup_logging
+from app.infrastructure.metrics import db_pool_checked_out, db_pool_size
 from app.infrastructure.kafka_producer import (
     close_producer,
     init_producer,
@@ -28,6 +30,7 @@ from app.infrastructure.kafka_producer import (
 )
 from app.middleware.correlation import CorrelationIdMiddleware
 from app.routers import messages
+from prometheus_fastapi_instrumentator import Instrumentator
 
 setup_logging()
 logger = get_logger("main")
@@ -66,11 +69,30 @@ async def lifespan(app):
     except Exception:
         logger.warning("kafka_consumer_failed_to_start")
 
+    # Background task: periodically update DB pool gauges for Prometheus
+    async def _collect_pool_stats():
+        while True:
+            try:
+                pool = engine.pool
+                db_pool_size.set(pool.size())
+                db_pool_checked_out.set(pool.checkedout())
+            except Exception:
+                pass
+            await asyncio.sleep(15)
+
+    pool_stats_task = asyncio.create_task(_collect_pool_stats())
+
     logger.info("message_service_started")
     yield
 
     # ── Shutdown ─────────────────────────────────────────────────────
     logger.info("message_service_shutting_down")
+
+    pool_stats_task.cancel()
+    try:
+        await pool_stats_task
+    except asyncio.CancelledError:
+        pass
 
     await persistence_consumer.stop()
     await close_producer()
@@ -79,6 +101,12 @@ async def lifespan(app):
 
 
 app = FastAPI(title="cHATBOX Message Service", version="1.0.0", lifespan=lifespan)
+
+# ── Prometheus metrics ────────────────────────────────────────────────
+instrumentator = Instrumentator(
+    excluded_handlers=["/health", "/ready", "/metrics"],
+)
+instrumentator.instrument(app).expose(app, include_in_schema=False)
 
 # ── Middleware ──────────────────────────────────────────────────────
 app.add_middleware(CorrelationIdMiddleware)

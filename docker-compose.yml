@@ -84,6 +84,7 @@ services:
       KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
       KONG_PROXY_LISTEN: 0.0.0.0:8000
       KONG_ADMIN_LISTEN: "off"
+      KONG_STATUS_LISTEN: "0.0.0.0:8100"
       KONG_LOG_LEVEL: info
     volumes:
       - ./infra/kong/kong.yml:/etc/kong/kong.yml:ro

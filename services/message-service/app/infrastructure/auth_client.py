@@ -21,6 +21,10 @@ import httpx
 
 from app.core.config import AUTH_SERVICE_URL
 from app.core.logging import get_logger
+from app.infrastructure.metrics import (
+    auth_service_call_duration_seconds,
+    auth_service_calls_total,
+)
 
 logger = get_logger("auth_client")
 
@@ -94,6 +98,7 @@ async def get_user_by_username(username: str) -> dict | None:
     safe_username = quote(username, safe="")
     url = f"{AUTH_SERVICE_URL}/auth/users/by-username/{safe_username}"
     last_error = None
+    start = time.time()
 
     for attempt in range(1, MAX_RETRIES + 1):
         try:
@@ -102,9 +107,13 @@ async def get_user_by_username(username: str) -> dict | None:
 
             if response.status_code == 200:
                 _record_success()
+                auth_service_call_duration_seconds.observe(time.time() - start)
+                auth_service_calls_total.labels(status="success").inc()
                 return response.json()
             elif response.status_code == 404:
                 _record_success()
+                auth_service_call_duration_seconds.observe(time.time() - start)
+                auth_service_calls_total.labels(status="success").inc()
                 return None
             else:
                 last_error = f"Auth service returned {response.status_code}"
@@ -126,6 +135,8 @@ async def get_user_by_username(username: str) -> dict | None:
 
     # All retries exhausted
     _record_failure()
+    auth_service_call_duration_seconds.observe(time.time() - start)
+    auth_service_calls_total.labels(status="error").inc()
     raise ConnectionError(
         f"Auth service unreachable after {MAX_RETRIES} attempts: {last_error}"
     )

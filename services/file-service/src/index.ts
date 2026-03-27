@@ -13,6 +13,7 @@ import fs from "node:fs";
 
 import { config } from "./config/env.config.js";
 import { correlationMiddleware } from "./middleware/correlation.middleware.js";
+import { metricsMiddleware, register } from "./middleware/metrics.middleware.js";
 import {
   livenessHandler,
   readinessHandler,
@@ -34,10 +35,19 @@ app.use(express.json());
 // Correlation ID middleware — must be before routes so every request gets an ID
 app.use(correlationMiddleware);
 
+// Prometheus metrics middleware — tracks HTTP RED metrics for all routes
+app.use(metricsMiddleware);
+
 // ── Health endpoints (no auth required) ────────────────────────────────────
 // Registered before auth middleware so Kubernetes probes don't need tokens
 app.get("/health", livenessHandler);
 app.get("/ready", readinessHandler);
+
+// ── Prometheus metrics endpoint ──────────────────────────────────────────
+app.get("/metrics", async (_req, res) => {
+  res.set("Content-Type", register.contentType);
+  res.end(await register.metrics());
+});
 
 // ── Multer setup for file uploads ──────────────────────────────────────────
 // memoryStorage: keeps file in buffer (not on disk) until service validates it.
