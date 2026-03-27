@@ -86,14 +86,18 @@ Every backend service exposes a `/metrics` endpoint in Prometheus text format. P
 
 ## Running in Docker Compose
 
-### Start monitoring alongside the app
+Monitoring is an optional add-on via a separate compose file. The app works without it.
+
+### Start with monitoring
 
 ```bash
-# Start everything (app + monitoring)
 docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up --build -d
+```
 
-# Wait for all services to be healthy
-docker compose -f docker-compose.yml -f docker-compose.monitoring.yml ps
+### Start without monitoring
+
+```bash
+docker compose up -d
 ```
 
 ### Access points
@@ -102,97 +106,124 @@ docker compose -f docker-compose.yml -f docker-compose.monitoring.yml ps
 |---------|-----|-------------|
 | Grafana | http://localhost:3001 | admin / admin |
 | Prometheus | http://localhost:9090 | — |
-| Auth metrics | http://localhost:8001/metrics | — |
-| Chat metrics | http://localhost:8003/metrics | — |
-| Message metrics | http://localhost:8004/metrics | — |
-| File metrics | http://localhost:8005/metrics | — |
-| Kong metrics | http://localhost:8100/metrics | — |
+| App (Kong) | http://localhost | — |
 
-### Verify it works
+Service metrics are only accessible from inside the Docker network (Prometheus scrapes them). They are not exposed to the host.
+
+### Verify
 
 ```bash
-# Check that services expose metrics
-curl -s http://localhost:8001/metrics | head -5
-curl -s http://localhost:8003/metrics | head -5
+# All 6 targets should show "up"
+curl -s http://localhost:9090/api/v1/targets | \
+  python3 -c "import sys,json; [print(f'{t[\"scrapeUrl\"]:50s} {t[\"health\"]}') for t in json.load(sys.stdin)['data']['activeTargets']]"
 
-# Check Prometheus targets
-curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool | grep -A2 '"health"'
-
-# Generate some traffic
-curl -X POST http://localhost/auth/register \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"monitor-test","password":"testpass123"}'
-
-curl -X POST http://localhost/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"monitor-test","password":"testpass123"}'
+# Generate traffic and check Grafana
+curl -X POST http://localhost/auth/register -H 'Content-Type: application/json' -d '{"username":"test","password":"test123"}'
+# Open http://localhost:3001 > Dashboards > ChatBox
 ```
 
-Then open Grafana at http://localhost:3001, navigate to **Dashboards > ChatBox**, and open the Service Overview dashboard.
-
-### Stop monitoring
+### Stop
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.monitoring.yml down -v
 ```
 
-To run the app without monitoring: `docker compose up -d` (uses only docker-compose.yml).
+---
 
 ## Running in Kubernetes
 
-### Prerequisites
-- Kind cluster running (`make k8s-setup-local`)
-- kube-prometheus-stack installed (`make k8s-monitoring-setup`)
+Monitoring works in all K8s environments (dev, staging, prod). The ServiceMonitors are in the base manifests and are inherited by every overlay via Kustomize.
 
-### Deploy monitoring components
+### Environment overview
+
+| Environment | Overlay | Grafana Access | Notes |
+|-------------|---------|----------------|-------|
+| **Dev** (Kind) | `infra/k8s/overlays/dev` | NodePort :30030 | Local cluster, short retention (7d) |
+| **Staging** | `infra/k8s/overlays/staging` | Port-forward or Ingress | 2 replicas per service, mirrors prod dashboards |
+| **Prod** | `infra/k8s/overlays/prod` | LoadBalancer or Ingress | HPA, PDB, higher resources |
+
+### Dev environment (Kind cluster)
+
+This is the most common workflow for local development.
 
 ```bash
-# 1. Upgrade kube-prometheus-stack with updated Helm values
-#    (enables cross-namespace ServiceMonitor discovery)
+# 1. Set up the full local cluster (creates kind cluster + infra + deploys services)
+make k8s-setup-local
+
+# 2. Install monitoring (Prometheus + Grafana + dashboards + Kafka exporter)
 make k8s-monitoring-setup
 
-# 2. Apply Grafana dashboard ConfigMaps
-kubectl apply -f infra/k8s/monitoring/dashboards/ -n chatbox-monitoring
+# 3. Verify everything is running
+make k8s-status
+kubectl get pods -n chatbox-monitoring
 
-# 3. Deploy Kafka exporter
-kubectl apply -f infra/k8s/infra/kafka-exporter.yaml
+# 4. Access Grafana
+#    Kind NodePort — no port-forward needed
+open http://localhost:30030    # admin / admin
 
-# 4. Upgrade Postgres and Redis with metrics enabled
-#    (re-run helm upgrade with updated values files)
-helm upgrade postgres oci://registry-1.docker.io/bitnamicharts/postgresql \
-  -n chatbox-infra -f infra/k8s/infra/helm-values/postgres.yaml \
-  --set auth.postgresPassword=<your-password>
-
-helm upgrade redis oci://registry-1.docker.io/bitnamicharts/redis \
-  -n chatbox-infra -f infra/k8s/infra/helm-values/redis.yaml \
-  --set auth.password=<your-password>
+# 5. Access Prometheus (requires port-forward)
+make k8s-prometheus            # http://localhost:9090
 ```
 
-### Verify
+### Staging environment
 
 ```bash
-# Check ServiceMonitors are created
-kubectl get servicemonitors -n chatbox
-kubectl get servicemonitors -n chatbox-infra
+# 1. Deploy services with staging overlay (2 replicas each)
+make k8s-deploy OVERLAY=staging
 
-# Check Prometheus targets (port-forward first)
-kubectl port-forward -n chatbox-monitoring \
-  svc/monitoring-kube-prometheus-prometheus 9090:9090 &
+# 2. Install monitoring (same command — works for any cluster)
+make k8s-monitoring-setup
 
-# Open http://localhost:9090/targets
-# All chatbox service targets should show "UP"
-
-# Access Grafana
-# Kind: http://localhost:30030 (NodePort)
-# Or port-forward: kubectl port-forward -n chatbox-monitoring svc/monitoring-grafana 3001:80
+# 3. Access Grafana via port-forward (no NodePort in staging)
+kubectl port-forward -n chatbox-monitoring svc/monitoring-grafana 3001:80
+open http://localhost:3001     # admin / admin
 ```
 
-### Access points (Kind cluster)
+### Production environment
 
-| Service | URL |
-|---------|-----|
-| Grafana | http://localhost:30030 |
-| Prometheus | Port-forward :9090 |
+```bash
+# 1. Deploy services with prod overlay (HPA, PDB, LoadBalancer)
+make k8s-deploy OVERLAY=prod
+
+# 2. Install monitoring
+make k8s-monitoring-setup
+
+# 3. Access Grafana
+#    Option A: Port-forward (temporary)
+kubectl port-forward -n chatbox-monitoring svc/monitoring-grafana 3001:80
+
+#    Option B: Expose via Ingress (recommended for prod)
+#    Add an Ingress resource for monitoring-grafana in your prod overlay
+```
+
+For production, you should also:
+- Change `adminPassword` in `infra/k8s/infra/helm-values/monitoring.yaml` to a strong password (or use a K8s Secret)
+- Increase Prometheus storage (`storageSpec.resources.requests.storage`) to 50Gi+
+- Increase retention from 7d to 30d+
+- Enable AlertManager with alert rules for the key metrics listed below
+
+### Verify (any environment)
+
+```bash
+# Check ServiceMonitors exist (should show 5: auth, chat, message, file, kong)
+kubectl get servicemonitors -n chatbox
+
+# Check Prometheus targets are UP
+make k8s-prometheus   # port-forward to :9090
+# Open http://localhost:9090/targets — all chatbox targets should show "up"
+
+# Check Grafana dashboards are loaded
+# Open Grafana > Dashboards > ChatBox folder — 7 dashboards
+```
+
+### What `make k8s-monitoring-setup` does
+
+Single command that:
+1. Installs/upgrades kube-prometheus-stack via Helm (Prometheus + Grafana)
+2. Applies all 7 Grafana dashboard ConfigMaps
+3. Deploys the Kafka exporter for consumer lag monitoring
+
+Infrastructure metrics (Postgres, Redis) are enabled via the Helm values in `infra/k8s/infra/helm-values/postgres.yaml` and `redis.yaml` — they activate when you run `make k8s-infra-setup`.
 
 ## Dashboards
 
