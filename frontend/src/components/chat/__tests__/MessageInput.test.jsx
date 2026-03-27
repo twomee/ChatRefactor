@@ -1,9 +1,16 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MessageInput from '../MessageInput';
+import * as fileApi from '../../../services/fileApi';
+
+vi.mock('../../../services/fileApi');
 
 describe('MessageInput', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('renders input and send button', () => {
     render(<MessageInput onSend={vi.fn()} />);
     expect(screen.getByPlaceholderText('Type a message...')).toBeInTheDocument();
@@ -54,5 +61,37 @@ describe('MessageInput', () => {
     await user.click(screen.getByRole('button', { name: /send/i }));
 
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('calls uploadFile when a file is selected', async () => {
+    fileApi.uploadFile.mockResolvedValue({});
+    const user = userEvent.setup();
+    render(<MessageInput onSend={vi.fn()} roomId="room-1" />);
+
+    const file = new File(['hello'], 'hello.txt', { type: 'text/plain' });
+    const fileInput = document.querySelector('input[type="file"]');
+    await user.upload(fileInput, file);
+
+    await waitFor(() => expect(fileApi.uploadFile).toHaveBeenCalledWith('room-1', file, expect.any(Function)));
+  });
+
+  it('shows upload error when uploadFile rejects', async () => {
+    fileApi.uploadFile.mockRejectedValue({ response: { data: { error: 'Upload failed' } } });
+    const user = userEvent.setup();
+    render(<MessageInput onSend={vi.fn()} roomId="room-1" />);
+
+    const file = new File(['hello'], 'hello.txt', { type: 'text/plain' });
+    const fileInput = document.querySelector('input[type="file"]');
+    await user.upload(fileInput, file);
+
+    await waitFor(() => expect(screen.getByText('Upload failed')).toBeInTheDocument());
+  });
+
+  it('does nothing when file input is cleared without selecting a file', async () => {
+    render(<MessageInput onSend={vi.fn()} roomId="room-1" />);
+    // Simulate change event with no files selected
+    const fileInput = document.querySelector('input[type="file"]');
+    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(fileApi.uploadFile).not.toHaveBeenCalled();
   });
 });
