@@ -1,0 +1,66 @@
+groups:
+  - name: chatbox.service_health
+    interval: 30s
+    rules:
+      - record: chatbox:service_up
+        expr: up{job=~"auth-service|chat-service|message-service|file-service|kong"}
+
+      - record: chatbox:http_request_rate5m
+        expr: sum(rate(http_requests_total[5m])) by (job)
+
+      - record: chatbox:http_error_rate5m
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m])) by (job)
+          /
+          sum(rate(http_requests_total[5m])) by (job)
+
+      - record: chatbox:http_p99_latency5m
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (job, le)
+          )
+
+      - record: chatbox:http_p95_latency5m
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (job, le)
+          )
+
+  - name: chatbox.websocket
+    interval: 30s
+    rules:
+      - record: chatbox:ws_connections_active_total
+        expr: sum(ws_connections_active)
+
+      - record: chatbox:ws_active_rooms
+        expr: ws_active_rooms
+
+  - name: chatbox.kafka
+    interval: 30s
+    rules:
+      - record: chatbox:kafka_produce_rate5m
+        expr: sum(rate(kafka_produce_total[5m])) by (job, topic)
+
+      - record: chatbox:kafka_consume_rate5m
+        expr: sum(rate(kafka_messages_consumed_total[5m])) by (job, topic)
+
+      - record: chatbox:messages_persisted_rate5m
+        expr: sum(rate(messages_persisted_total[5m])) by (type)
+
+      - record: chatbox:kafka_dlq_rate5m
+        expr: sum(rate(messages_dlq_total[5m]))
+
+  - name: chatbox.auth
+    interval: 30s
+    rules:
+      - record: chatbox:auth_login_rate5m
+        expr: sum(rate(auth_logins_total[5m])) by (status)
+
+      - record: chatbox:auth_registration_rate5m
+        expr: sum(rate(auth_registrations_total[5m])) by (status)
+
+  - name: chatbox.infrastructure
+    interval: 30s
+    rules:
+      - record: chatbox:db_pool_utilization
+        expr: db_pool_checked_out / db_pool_size

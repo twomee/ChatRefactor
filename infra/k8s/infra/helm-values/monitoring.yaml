@@ -11,6 +11,10 @@ grafana:
     dashboards:
       enabled: true
       searchNamespace: chatbox-monitoring
+  # Persist Grafana DB (starred dashboards, user preferences) across pod restarts
+  persistence:
+    enabled: true
+    size: 1Gi
   # Set ChatBox - Service Overview as the default home dashboard
   grafana.ini:
     dashboards:

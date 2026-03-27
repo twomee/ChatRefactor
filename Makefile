@@ -126,6 +126,8 @@ k8s-monitoring-setup: ## Install full monitoring stack: Prometheus, Grafana, das
 	@kubectl apply -f infra/k8s/monitoring/dashboards/ -n chatbox-monitoring
 	@echo "Deploying Kafka exporter..."
 	@kubectl apply -f infra/k8s/infra/kafka-exporter.yaml
+	@echo "Applying recording rules..."
+	@kubectl apply -f infra/k8s/monitoring/chatbox-recording-rules.yaml
 	@echo ""
 	@echo "Monitoring stack ready!"
 	@echo "  Grafana:    http://localhost:30030 (admin/admin)"
