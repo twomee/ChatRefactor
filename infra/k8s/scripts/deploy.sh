@@ -3,8 +3,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-K8S_DIR="$PROJECT_ROOT/k8s"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+K8S_DIR="$PROJECT_ROOT/infra/k8s"
 OVERLAY="${1:-dev}"
 
 echo "Deploying with overlay: $OVERLAY"

@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROJECT_ROOT="$(cd "$K8S_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$K8S_DIR/../.." && pwd)"
 
 # Load secrets from file
 SECRETS_FILE="$K8S_DIR/secrets.env"
