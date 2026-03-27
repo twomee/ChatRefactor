@@ -11,6 +11,10 @@ grafana:
     dashboards:
       enabled: true
       searchNamespace: chatbox-monitoring
+  # Set ChatBox - Service Overview as the default home dashboard
+  grafana.ini:
+    dashboards:
+      default_home_dashboard_path: /tmp/dashboards/chatbox-overview.json
 
 prometheus:
   prometheusSpec:
