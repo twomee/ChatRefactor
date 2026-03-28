@@ -9,7 +9,8 @@
 # get_current_user returns a dict (not a User ORM object) with the JWT claims.
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError
 
 from app.core.config import ALGORITHM, SECRET_KEY
 from app.core.logging import get_logger
@@ -32,12 +33,12 @@ def decode_token(token: str) -> dict | None:
     """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
+        sub = payload.get("sub")
         username = payload.get("username")
-        if user_id is None or username is None:
+        if sub is None or username is None:
             return None
-        return payload
-    except JWTError:
+        return {"user_id": int(sub), "username": username}
+    except (PyJWTError, ValueError):
         return None
 
 
@@ -55,12 +56,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     Returns a dict with user_id and username from the JWT payload, NOT a User ORM object.
     This avoids a DB lookup on every authenticated request.
     """
-    payload = decode_token(token)
-    if payload is None:
+    user_info = decode_token(token)
+    if user_info is None:
         raise _credentials_exception
-    try:
-        user_id = int(payload["sub"])
-    except (ValueError, TypeError):
-        _auth_logger.warning("invalid_sub_claim", sub=payload.get("sub"))
-        raise _credentials_exception
-    return {"user_id": user_id, "username": payload["username"]}
+    return user_info

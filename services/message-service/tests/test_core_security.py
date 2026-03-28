@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
-from jose import jwt
+import jwt
 
 from app.core.config import ALGORITHM, SECRET_KEY
 from app.core.security import decode_token, get_current_user
@@ -21,8 +21,8 @@ from app.core.security import decode_token, get_current_user
 class TestDecodeToken:
     """Tests for the decode_token function."""
 
-    def test_valid_token_returns_payload(self):
-        """Should return the full JWT payload for a valid token."""
+    def test_valid_token_returns_user_info(self):
+        """Should return a dict with user_id and username for a valid token."""
         payload = {
             "sub": "1",
             "username": "testuser",
@@ -33,7 +33,7 @@ class TestDecodeToken:
         result = decode_token(token)
 
         assert result is not None
-        assert result["sub"] == "1"
+        assert result["user_id"] == 1
         assert result["username"] == "testuser"
 
     def test_expired_token_returns_none(self):
