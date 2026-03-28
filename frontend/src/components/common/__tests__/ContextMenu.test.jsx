@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ContextMenu from '../ContextMenu';
@@ -72,6 +72,27 @@ describe('ContextMenu', () => {
 
     await user.click(screen.getByText('Make Admin'));
     expect(onPromote).toHaveBeenCalledWith('bob');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('does not show "Send private message" when onStartPM is not provided', () => {
+    render(<ContextMenu {...defaultProps} />);
+    expect(screen.queryByText('Send private message')).not.toBeInTheDocument();
+  });
+
+  it('shows "Send private message" when onStartPM is provided', () => {
+    render(<ContextMenu {...defaultProps} onStartPM={vi.fn()} />);
+    expect(screen.getByText('Send private message')).toBeInTheDocument();
+  });
+
+  it('calls onStartPM and onClose when clicking "Send private message"', async () => {
+    const user = userEvent.setup();
+    const onStartPM = vi.fn();
+    const onClose = vi.fn();
+    render(<ContextMenu {...defaultProps} onStartPM={onStartPM} onClose={onClose} />);
+
+    await user.click(screen.getByText('Send private message'));
+    expect(onStartPM).toHaveBeenCalledWith('bob');
     expect(onClose).toHaveBeenCalled();
   });
 

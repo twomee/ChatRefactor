@@ -152,6 +152,30 @@ describe('chatReducer', () => {
       const next = chatReducer(initialState, { type: 'EXIT_ROOM', roomId: 'nonexistent' });
       expect(next).toBe(initialState);
     });
+
+    it('clears knownOfflineUsers when leaving the last joined room', () => {
+      const state = {
+        ...initialState,
+        joinedRooms: new Set(['r1']),
+        onlineUsers: { r1: ['alice'] },
+        knownOfflineUsers: new Set(['bob']),
+      };
+      const next = chatReducer(state, { type: 'EXIT_ROOM', roomId: 'r1' });
+      expect(next.joinedRooms.size).toBe(0);
+      expect(next.knownOfflineUsers.size).toBe(0);
+    });
+
+    it('preserves knownOfflineUsers when still joined to other rooms', () => {
+      const state = {
+        ...initialState,
+        joinedRooms: new Set(['r1', 'r2']),
+        onlineUsers: { r1: ['alice'], r2: ['charlie'] },
+        knownOfflineUsers: new Set(['bob']),
+      };
+      const next = chatReducer(state, { type: 'EXIT_ROOM', roomId: 'r1' });
+      expect(next.joinedRooms.has('r2')).toBe(true);
+      expect(next.knownOfflineUsers.has('bob')).toBe(true);
+    });
   });
 
   describe('INCREMENT_UNREAD', () => {
