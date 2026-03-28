@@ -40,7 +40,9 @@ SECRET_KEY = _raw_secret if _raw_secret else secrets.token_urlsafe(64)
 # In dev/test, falls back to a credential-free placeholder so SQLAlchemy can parse it.
 # Developers should set the real value via .env file (see .env.example).
 _raw_db_url = _require_env("DATABASE_URL")
-DATABASE_URL = _raw_db_url if _raw_db_url else "postgresql://localhost:5432/chatbox_auth"
+DATABASE_URL = (
+    _raw_db_url if _raw_db_url else "postgresql://localhost:5432/chatbox_auth"
+)
 
 ADMIN_USERNAME = _require_env("ADMIN_USERNAME")
 ADMIN_PASSWORD = _require_env("ADMIN_PASSWORD")
