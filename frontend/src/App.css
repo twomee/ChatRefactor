@@ -786,6 +786,48 @@
   margin-left: 4px;
 }
 
+/* Inline image previews */
+.msg-file-content {
+  margin: 2px 0;
+}
+
+.msg-image-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.msg-inline-image {
+  max-width: 400px;
+  max-height: 300px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+  display: block;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.msg-inline-image:hover {
+  opacity: 0.92;
+  transform: scale(1.01);
+}
+
+.msg-image-filename {
+  font-size: 0.72rem;
+  color: var(--text-muted, rgba(255, 255, 255, 0.45));
+  margin-top: 2px;
+}
+
+.msg-image-fallback {
+  display: none;
+}
+
+.msg-image-fallback.show-fallback {
+  display: block;
+}
+
 /* Private message */
 .msg-private {
   background: var(--accent-light);
