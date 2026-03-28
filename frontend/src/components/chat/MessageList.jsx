@@ -1,5 +1,6 @@
 // src/components/MessageList.jsx
 import { useEffect, useRef, useCallback } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { formatSize } from '../../utils/formatting';
 import { downloadFile } from '../../services/fileApi';
 
@@ -8,7 +9,25 @@ function getInitials(name) {
   return name.slice(0, 2).toUpperCase();
 }
 
+function renderMessageText(text, currentUser) {
+  if (!text) return text;
+  const parts = text.split(/(@\w+)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('@')) {
+      const isSelf = part.toLowerCase() === `@${currentUser?.toLowerCase()}`;
+      return (
+        <span key={i} className={`mention ${isSelf ? 'mention-self' : ''}`}>
+          {part}
+        </span>
+      );
+    }
+    return part;
+  });
+}
+
 export default function MessageList({ messages, onScrollToBottom }) {
+  const { user } = useAuth();
+  const currentUser = user?.username;
   const endRef = useRef(null);
   const containerRef = useRef(null);
 
@@ -92,7 +111,7 @@ export default function MessageList({ messages, onScrollToBottom }) {
             <div className="msg-avatar">{getInitials(msg.from)}</div>
             <div className="msg-body">
               <span className="msg-author">{msg.from}</span>
-              <div className="msg-text">{msg.text}</div>
+              <div className="msg-text">{renderMessageText(msg.text, currentUser)}</div>
             </div>
           </div>
         );

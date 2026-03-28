@@ -7,6 +7,11 @@ vi.mock('../../../services/fileApi', () => ({
   downloadFile: vi.fn(),
 }));
 
+// Mock useAuth so MessageList (rendered by PMView) can access user context
+vi.mock('../../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { username: 'testuser' }, token: 'fake-token' }),
+}));
+
 describe('PMView', () => {
   it('renders header with username', () => {
     render(<PMView username="alice" messages={[]} />);
