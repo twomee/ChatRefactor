@@ -46,17 +46,20 @@ func (h *WSHandler) handlePrivateMessage(ctx context.Context, conn *websocket.Co
 		return
 	}
 
-	pm := map[string]interface{}{
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	// WebSocket payload uses "from"/"to" for frontend rendering.
+	wsPM := map[string]interface{}{
 		"type":      "private_message",
 		"from":      username,
 		"to":        to,
 		"text":      text,
 		"room_id":   roomID,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"timestamp": now,
 	}
 
 	// Send to target.
-	h.manager.SendToUserInRoom(roomID, targetID, pm)
+	h.manager.SendToUserInRoom(roomID, targetID, wsPM)
 
 	// Echo back to sender with "self": true so frontend can distinguish.
 	selfPM := map[string]interface{}{
@@ -65,13 +68,24 @@ func (h *WSHandler) handlePrivateMessage(ctx context.Context, conn *websocket.Co
 		"to":        to,
 		"text":      text,
 		"room_id":   roomID,
-		"timestamp": pm["timestamp"],
+		"timestamp": now,
 		"self":      true,
 	}
 	h.manager.SendToUserInRoom(roomID, userID, selfPM)
 
-	// Produce to Kafka for persistence.
-	payload, _ := json.Marshal(pm)
+	// Kafka payload uses "sender"/"recipient" to match what the
+	// message-service persistence consumer expects.
+	kafkaPayload := map[string]interface{}{
+		"type":      "private_message",
+		"msg_id":    fmt.Sprintf("pm-%d-%d-%d", roomID, userID, time.Now().UnixNano()),
+		"sender":    username,
+		"sender_id": userID,
+		"recipient": to,
+		"text":      text,
+		"room_id":   roomID,
+		"timestamp": now,
+	}
+	payload, _ := json.Marshal(kafkaPayload)
 	if err := h.delivery.DeliverPM(ctx, userID, payload); err != nil {
 		h.logger.Warn("kafka_pm_deliver_failed", zap.Error(err))
 	}

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -69,15 +70,7 @@ func (h *PMHandler) SendPM(c *gin.Context) {
 		return
 	}
 
-	pm := model.PrivateMessage{
-		Type:       "private_message",
-		FromUserID: senderID.(int),
-		FromUser:   senderName.(string),
-		ToUserID:   recipient.ID,
-		ToUser:     recipient.Username,
-		Content:    req.Content,
-		Timestamp:  time.Now().UTC(),
-	}
+	now := time.Now().UTC()
 
 	// Build WebSocket message matching the format the frontend expects.
 	wsMsg := map[string]interface{}{
@@ -85,7 +78,7 @@ func (h *PMHandler) SendPM(c *gin.Context) {
 		"from":      senderName.(string),
 		"to":        recipient.Username,
 		"text":      req.Content,
-		"timestamp": pm.Timestamp.Format(time.RFC3339),
+		"timestamp": now.Format(time.RFC3339),
 	}
 
 	// Try live delivery via lobby WebSocket.
@@ -93,8 +86,18 @@ func (h *PMHandler) SendPM(c *gin.Context) {
 	// immediately after the REST call succeeds (ChatPage.jsx).
 	delivered := h.manager.SendPersonal(recipient.ID, wsMsg)
 
-	// Always produce to Kafka for persistence regardless of live delivery.
-	payload, _ := json.Marshal(pm)
+	// Kafka payload uses "sender"/"recipient" field names to match what the
+	// message-service persistence consumer expects.
+	kafkaPayload := map[string]interface{}{
+		"type":      "private_message",
+		"msg_id":    fmt.Sprintf("pm-%d-%d-%d", senderID.(int), recipient.ID, now.UnixNano()),
+		"sender":    senderName.(string),
+		"sender_id": senderID.(int),
+		"recipient": recipient.Username,
+		"text":      req.Content,
+		"timestamp": now.Format(time.RFC3339),
+	}
+	payload, _ := json.Marshal(kafkaPayload)
 	if err := h.delivery.DeliverPM(c.Request.Context(), senderID.(int), payload); err != nil {
 		h.logger.Warn("pm_kafka_deliver_failed", zap.Error(err))
 	}

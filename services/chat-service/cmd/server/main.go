@@ -201,10 +201,12 @@ func main() {
 
 	// --- HTTP Server with graceful shutdown ---
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Port),
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		Addr:        fmt.Sprintf(":%d", cfg.Port),
+		Handler:     r,
+		ReadTimeout: 15 * time.Second,
+		// WriteTimeout disabled (0) because this server handles long-lived
+		// WebSocket connections. Ping/pong handles dead connection detection.
+		WriteTimeout: 0,
 		IdleTimeout:  60 * time.Second,
 	}
 
