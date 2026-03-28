@@ -15,6 +15,8 @@ class MessageResponse(BaseModel):
     content: str
     is_private: bool
     sent_at: datetime
+    edited_at: datetime | None = None
+    is_deleted: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -34,5 +36,7 @@ class MessageHistoryResponse(BaseModel):
     content: str
     is_private: bool
     sent_at: datetime
+    edited_at: datetime | None = None
+    is_deleted: bool = False
 
     model_config = {"from_attributes": True}
