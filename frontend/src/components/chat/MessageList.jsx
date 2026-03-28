@@ -2,6 +2,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { formatSize } from '../../utils/formatting';
 import { downloadFile } from '../../services/fileApi';
+import MarkdownMessage from './MarkdownMessage';
 
 function getInitials(name) {
   if (!name) return '?';
@@ -81,7 +82,7 @@ export default function MessageList({ messages, onScrollToBottom }) {
               <div className="msg-avatar">{getInitials(msg.isSelf ? msg.to : msg.from)}</div>
               <div className="msg-body">
                 <div className="msg-private-label">{label}</div>
-                <div className="msg-text">{msg.text}</div>
+                <div className="msg-text"><span className="msg-text-content"><MarkdownMessage text={msg.text} /></span></div>
               </div>
             </div>
           );
@@ -92,7 +93,7 @@ export default function MessageList({ messages, onScrollToBottom }) {
             <div className="msg-avatar">{getInitials(msg.from)}</div>
             <div className="msg-body">
               <span className="msg-author">{msg.from}</span>
-              <div className="msg-text">{msg.text}</div>
+              <div className="msg-text"><span className="msg-text-content"><MarkdownMessage text={msg.text} /></span></div>
             </div>
           </div>
         );
