@@ -1,5 +1,5 @@
 // src/context/AuthContext.jsx
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { ping } from '../services/authApi';
 
 const AuthContext = createContext(null);
@@ -20,25 +20,32 @@ export function AuthProvider({ children }) {
     }
   });
 
-  // Re-register with backend on every app load so logged_in_users survives server restarts
+  const logout = useCallback(() => {
+    setToken(null);
+    setUser(null);
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
+  }, []);
+
+  // Re-register with backend on every app load so logged_in_users survives server restarts.
+  // If the token is rejected (401), force logout so stale sessions don't get stuck
+  // in a "reconnecting" loop (e.g., after a server rebuild changes SECRET_KEY).
   useEffect(() => {
     if (token) {
-      ping().catch(() => {});
+      ping().catch((err) => {
+        if (err?.response?.status === 401) {
+          console.warn('Session token rejected by server — forcing logout');
+          logout();
+        }
+      });
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [token, logout]);
 
   function login(tokenStr, userData) {
     setToken(tokenStr);
     setUser(userData);
     sessionStorage.setItem('token', tokenStr);
     sessionStorage.setItem('user', JSON.stringify(userData));
-  }
-
-  function logout() {
-    setToken(null);
-    setUser(null);
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('user');
   }
 
   return (
