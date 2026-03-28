@@ -47,6 +47,7 @@ export function useMultiRoomChat() {
   const retryCountsRef = useRef(new Map());     // roomId → attempt number
   const lobbyRetryRef = useRef(0);
   const lastMsgTimeRef = useRef(new Map());     // roomId → ISO timestamp
+  const closingAllRef = useRef(false);          // true during disconnectAll to suppress reconnects
 
   // Keep refs in sync with latest state
   useEffect(() => { activeRoomIdRef.current = state.activeRoomId; }, [state.activeRoomId]);
@@ -287,7 +288,8 @@ export function useMultiRoomChat() {
       // Unexpected closure — auto-reconnect with exponential backoff.
       // Reconnect both when the connection was open (server went down mid-session)
       // AND when a retry failed to open (server still starting up).
-      else if (getJoinedRooms(username).includes(roomId)) {
+      // Skip if disconnectAll() was called (logout in progress).
+      else if (!closingAllRef.current && getJoinedRooms(username).includes(roomId)) {
         const attempt = (retryCountsRef.current.get(roomId) || 0) + 1;
         retryCountsRef.current.set(roomId, attempt);
         // If the connection never opened, use a fixed 5s delay (server probably starting)
@@ -329,6 +331,8 @@ export function useMultiRoomChat() {
 
   // ── disconnectAll (logout) — close ALL sockets (rooms + lobby) ──
   const disconnectAll = useCallback(() => {
+    // Prevent onclose handlers from scheduling reconnections
+    closingAllRef.current = true;
     // Close all room sockets
     socketsRef.current.forEach(ws => ws.close());
     socketsRef.current.clear();
