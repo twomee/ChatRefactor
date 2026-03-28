@@ -41,7 +41,7 @@ export const config = {
   ),
 
   // JWT — must match Auth Service secret exactly
-  secretKey: requireEnv("SECRET_KEY"),
+  secretKey: requireEnv("SECRET_KEY", "dev-secret-change-in-production"),
   algorithm: "HS256" as const,
 
   // File storage
@@ -60,7 +60,9 @@ export const config = {
     ".txt", ".pdf", ".csv", ".md", ".log",
     ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
     // Images
-    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg",
+    ".png", ".jpg", ".jpeg", ".gif", ".webp",
+    // NOTE: .svg intentionally excluded — SVG files can contain embedded
+    // JavaScript and are an XSS vector if served with image/svg+xml MIME type
     // Audio/Video
     ".mp4", ".mp3", ".wav", ".ogg",
     // Archives
