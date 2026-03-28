@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/gorilla/websocket"
@@ -21,6 +22,23 @@ func (h *WSHandler) handleAddReaction(ctx context.Context, conn *websocket.Conn,
 	}
 	if emoji == "" {
 		h.sendError(conn, "emoji is required for reactions")
+		return
+	}
+	if len(emoji) > 32 {
+		h.sendError(conn, "emoji too long")
+		return
+	}
+
+	// Check if user is muted.
+	muted, _ := h.store.IsMuted(ctx, roomID, userID)
+	if muted {
+		h.sendError(conn, "You are muted in this room")
+		return
+	}
+
+	// Rate limiting.
+	key := fmt.Sprintf("reaction:%d:user:%d", roomID, userID)
+	if !h.limiter.allow(key) {
 		return
 	}
 
@@ -62,6 +80,16 @@ func (h *WSHandler) handleRemoveReaction(ctx context.Context, conn *websocket.Co
 	}
 	if emoji == "" {
 		h.sendError(conn, "emoji is required for reactions")
+		return
+	}
+	if len(emoji) > 32 {
+		h.sendError(conn, "emoji too long")
+		return
+	}
+
+	// Rate limiting.
+	key := fmt.Sprintf("reaction:%d:user:%d", roomID, userID)
+	if !h.limiter.allow(key) {
 		return
 	}
 

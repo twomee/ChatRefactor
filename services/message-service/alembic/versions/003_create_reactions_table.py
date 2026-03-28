@@ -1,6 +1,6 @@
 """Create reactions table for emoji reactions on messages
 
-Revision ID: 004
+Revision ID: 003
 Revises: 002
 Create Date: 2026-03-28
 """
@@ -9,7 +9,7 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "004"
+revision: str = "003"
 down_revision: Union[str, Sequence[str], None] = "002"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

@@ -271,7 +271,7 @@ class MessagePersistenceConsumer:
         username = value.get("username")
         emoji = value.get("emoji")
 
-        if not all([msg_id, user_id, username, emoji]):
+        if any(v is None for v in [msg_id, user_id, username, emoji]):
             logger.warning("add_reaction_missing_fields", value=value)
             return
 
@@ -288,7 +288,7 @@ class MessagePersistenceConsumer:
         user_id = value.get("user_id")
         emoji = value.get("emoji")
 
-        if not all([msg_id, user_id, emoji]):
+        if any(v is None for v in [msg_id, user_id, emoji]):
             logger.warning("remove_reaction_missing_fields", value=value)
             return
 

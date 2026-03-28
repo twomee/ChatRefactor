@@ -15,13 +15,13 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.dal import reaction_dal
-from app.schemas.message import MessageResponse
+from app.schemas.message import MessageResponse, MessageWithReactionsResponse
 from app.services import message_service
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 
 
-@router.get("/rooms/{room_id}", response_model=list[MessageResponse])
+@router.get("/rooms/{room_id}", response_model=list[MessageWithReactionsResponse])
 def get_room_messages(
     room_id: int,
     since: datetime = Query(
@@ -41,7 +41,7 @@ def get_room_messages(
     return _enrich_with_reactions(db, messages)
 
 
-@router.get("/rooms/{room_id}/history", response_model=list[MessageResponse])
+@router.get("/rooms/{room_id}/history", response_model=list[MessageWithReactionsResponse])
 def get_room_history(
     room_id: int,
     limit: int = Query(50, ge=1, le=200),

@@ -19,6 +19,20 @@ class MessageResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ReactionResponse(BaseModel):
+    """A single emoji reaction on a message."""
+
+    emoji: str
+    username: str
+    user_id: int
+
+
+class MessageWithReactionsResponse(MessageResponse):
+    """Message response enriched with emoji reactions."""
+
+    reactions: list[ReactionResponse] = []
+
+
 class MessageHistoryResponse(BaseModel):
     """Extended message response with sender_name resolved from sender_id.
 
