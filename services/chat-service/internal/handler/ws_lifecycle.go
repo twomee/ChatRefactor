@@ -281,6 +281,12 @@ func (h *WSHandler) sendHistory(conn *websocket.Conn, roomID int, token string) 
 		if mid, ok := m["message_id"]; ok {
 			msg["msg_id"] = mid
 		}
+		if editedAt, ok := m["edited_at"]; ok && editedAt != nil {
+			msg["edited_at"] = editedAt
+		}
+		if isDeleted, ok := m["is_deleted"]; ok {
+			msg["is_deleted"] = isDeleted
+		}
 		transformed = append(transformed, msg)
 	}
 
