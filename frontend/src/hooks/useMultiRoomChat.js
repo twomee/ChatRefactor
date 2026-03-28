@@ -284,11 +284,14 @@ export function useMultiRoomChat() {
         retryCountsRef.current.delete(roomId);
         updateConnectionStatus();
       }
-      // Unexpected closure — auto-reconnect with exponential backoff
-      else if (wasOpen && getJoinedRooms(username).includes(roomId)) {
+      // Unexpected closure — auto-reconnect with exponential backoff.
+      // Reconnect both when the connection was open (server went down mid-session)
+      // AND when a retry failed to open (server still starting up).
+      else if (getJoinedRooms(username).includes(roomId)) {
         const attempt = (retryCountsRef.current.get(roomId) || 0) + 1;
         retryCountsRef.current.set(roomId, attempt);
-        const delay = getBackoffDelay(attempt - 1);
+        // If the connection never opened, use a fixed 5s delay (server probably starting)
+        const delay = wasOpen ? getBackoffDelay(attempt - 1) : 5000;
 
         reconnectingRoomsRef.current.add(roomId);
         updateConnectionStatus();
