@@ -11,7 +11,13 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => sessionStorage.getItem('token'));
   const [user, setUser] = useState(() => {
     const raw = sessionStorage.getItem('user');
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      sessionStorage.removeItem('user');
+      return null;
+    }
   });
 
   // Re-register with backend on every app load so logged_in_users survives server restarts

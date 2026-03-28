@@ -13,7 +13,16 @@ export default function MessageList({ messages, onScrollToBottom }) {
   const containerRef = useRef(null);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = containerRef.current;
+    if (!el) {
+      endRef.current?.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    // Only auto-scroll if user is near the bottom (within 150px)
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+    if (isNearBottom) {
+      endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   const handleScroll = useCallback(() => {

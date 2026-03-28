@@ -2,7 +2,12 @@
 
 export function getJoinedRooms(username) {
   const key = `chatbox_joined_rooms_${username ?? 'anonymous'}`;
-  return JSON.parse(localStorage.getItem(key) || '[]');
+  try {
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch {
+    localStorage.removeItem(key);
+    return [];
+  }
 }
 
 export function addJoinedRoom(username, roomId) {
