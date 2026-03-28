@@ -281,6 +281,9 @@ func (h *WSHandler) sendHistory(conn *websocket.Conn, roomID int, token string) 
 		if mid, ok := m["message_id"]; ok {
 			msg["msg_id"] = mid
 		}
+		if reactions, ok := m["reactions"]; ok {
+			msg["reactions"] = reactions
+		}
 		transformed = append(transformed, msg)
 	}
 

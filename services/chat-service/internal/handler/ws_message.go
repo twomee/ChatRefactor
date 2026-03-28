@@ -91,6 +91,10 @@ func (h *WSHandler) readLoop(conn *websocket.Conn, roomID, userID int, username 
 			h.handlePromote(ctx, conn, roomID, userID, username, incoming.Target)
 		case "private_message":
 			h.handlePrivateMessage(ctx, conn, roomID, userID, username, incoming.To, incoming.Text)
+		case "add_reaction":
+			h.handleAddReaction(ctx, conn, roomID, userID, username, incoming)
+		case "remove_reaction":
+			h.handleRemoveReaction(ctx, conn, roomID, userID, username, incoming)
 		default:
 			h.sendError(conn, "Unknown message type")
 		}
