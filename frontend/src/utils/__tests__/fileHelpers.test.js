@@ -19,8 +19,11 @@ describe('isImageFile', () => {
     expect(isImageFile('photo.jpeg')).toBe(true);
     expect(isImageFile('animation.gif')).toBe(true);
     expect(isImageFile('image.webp')).toBe(true);
-    expect(isImageFile('icon.svg')).toBe(true);
-    expect(isImageFile('bitmap.bmp')).toBe(true);
+  });
+
+  it('excludes svg and bmp (unsupported for inline rendering)', () => {
+    expect(isImageFile('icon.svg')).toBe(false);
+    expect(isImageFile('bitmap.bmp')).toBe(false);
   });
 
   it('is case-insensitive', () => {

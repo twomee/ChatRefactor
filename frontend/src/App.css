@@ -806,7 +806,7 @@
   transition: opacity 0.15s, transform 0.15s;
   display: block;
   object-fit: contain;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--surface);
 }
 
 .msg-inline-image:hover {
@@ -815,9 +815,16 @@
 }
 
 .msg-image-filename {
-  font-size: 0.72rem;
-  color: var(--text-muted, rgba(255, 255, 255, 0.45));
+  font-size: 0.75rem;
+  color: var(--text-muted);
   margin-top: 2px;
+}
+
+.msg-image-loading {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  padding: 8px 0;
+  font-style: italic;
 }
 
 .msg-image-fallback {

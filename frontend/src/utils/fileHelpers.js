@@ -1,7 +1,10 @@
 // src/utils/fileHelpers.js — File type detection utilities
 
+// Note: .svg excluded because backend serves application/octet-stream
+// which prevents inline SVG rendering in <img> tags.
+// .bmp excluded — very rare and typically very large files.
 const IMAGE_EXTENSIONS = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp',
+  '.png', '.jpg', '.jpeg', '.gif', '.webp',
 ]);
 
 /**
