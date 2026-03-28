@@ -142,6 +142,23 @@ export function chatReducer(state, action) {
         unreadCounts: { ...state.unreadCounts, [action.roomId]: 0 },
       };
 
+    // ── PM delivery status feedback ────────────────────────────────────────
+    // Used when the PM send endpoint returns live_delivered: false,
+    // indicating the recipient is offline (even if not in any shared room).
+    case 'MARK_USER_OFFLINE': {
+      if (state.knownOfflineUsers.has(action.username)) return state;
+      const next = new Set(state.knownOfflineUsers);
+      next.add(action.username);
+      return { ...state, knownOfflineUsers: next };
+    }
+
+    case 'MARK_USER_ONLINE': {
+      if (!state.knownOfflineUsers.has(action.username)) return state;
+      const next = new Set(state.knownOfflineUsers);
+      next.delete(action.username);
+      return { ...state, knownOfflineUsers: next };
+    }
+
     default:
       return state;
   }

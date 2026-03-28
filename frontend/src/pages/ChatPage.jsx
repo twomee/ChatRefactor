@@ -111,12 +111,20 @@ export default function ChatPage() {
   async function handleSendPM(text) {
     if (!pmState.activePM) return;
     try {
-      await pmApi.sendPM(pmState.activePM, text);
+      const result = await pmApi.sendPM(pmState.activePM, text);
       pmDispatch({
         type: 'ADD_PM_MESSAGE',
         username: pmState.activePM,
         message: { from: user.username, text, isSelf: true, to: pmState.activePM },
       });
+
+      // Use the server's live_delivered flag to update online/offline status.
+      // This is more reliable than knownOfflineUsers for users not in shared rooms.
+      if (result.live_delivered === false) {
+        dispatch({ type: 'MARK_USER_OFFLINE', username: pmState.activePM });
+      } else if (result.live_delivered === true) {
+        dispatch({ type: 'MARK_USER_ONLINE', username: pmState.activePM });
+      }
     } catch (e) {
       window.alert(e.response?.data?.detail || 'Could not send message');
     }
@@ -254,6 +262,7 @@ export default function ChatPage() {
                   pmUnread={pmState.pmUnread}
                   activePM={pmState.activePM}
                   onSelectPM={handleSelectPM}
+                  knownOfflineUsers={state.knownOfflineUsers}
                 />
               </div>
             </aside>
