@@ -206,6 +206,25 @@ export function useMultiRoomChat() {
         break;
       }
 
+      case 'typing':
+        dispatch({
+          type: 'SET_TYPING',
+          roomId: msg.room_id,
+          username: msg.username,
+          isTyping: true,
+        });
+        // Auto-clear after 3 seconds — if the sender stops typing (or
+        // disconnects) we don't want a stale indicator lingering.
+        setTimeout(() => {
+          dispatch({
+            type: 'SET_TYPING',
+            roomId: msg.room_id,
+            username: msg.username,
+            isTyping: false,
+          });
+        }, 3000);
+        break;
+
       case 'error':
         window.alert(msg.detail);
         break;
@@ -349,6 +368,14 @@ export function useMultiRoomChat() {
     }
   }, []);
 
+  // ── sendTyping — notify the room that the current user is typing ──
+  const sendTyping = useCallback((roomId) => {
+    const ws = socketsRef.current.get(roomId);
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'typing' }));
+    }
+  }, []);
+
   // ── Initial room list fetch (once on mount) ─────────────────────────
   useEffect(() => {
     listRooms().then(res => {
@@ -420,5 +447,5 @@ export function useMultiRoomChat() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { joinRoom, exitRoom, exitAllRooms, disconnectAll, sendMessage, connectionStatus };
+  return { joinRoom, exitRoom, exitAllRooms, disconnectAll, sendMessage, sendTyping, connectionStatus };
 }

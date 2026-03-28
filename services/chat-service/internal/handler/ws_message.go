@@ -91,6 +91,8 @@ func (h *WSHandler) readLoop(conn *websocket.Conn, roomID, userID int, username 
 			h.handlePromote(ctx, conn, roomID, userID, username, incoming.Target)
 		case "private_message":
 			h.handlePrivateMessage(ctx, conn, roomID, userID, username, incoming.To, incoming.Text)
+		case "typing":
+			h.handleTyping(conn, roomID, username)
 		default:
 			h.sendError(conn, "Unknown message type")
 		}
@@ -152,4 +154,16 @@ func (h *WSHandler) handleMessage(ctx context.Context, conn *websocket.Conn, roo
 	if err := h.delivery.DeliverChat(ctx, roomID, payload); err != nil {
 		h.logger.Warn("kafka_chat_deliver_failed", zap.Error(err))
 	}
+}
+
+// handleTyping broadcasts a typing indicator to all other connections in the
+// room. Typing events are ephemeral — they are NOT persisted to Kafka or the
+// database. The frontend auto-clears stale indicators after a short timeout.
+func (h *WSHandler) handleTyping(conn *websocket.Conn, roomID int, username string) {
+	typingPayload := map[string]interface{}{
+		"type":     "typing",
+		"room_id":  roomID,
+		"username": username,
+	}
+	h.manager.BroadcastRoomExcept(roomID, conn, typingPayload)
 }
