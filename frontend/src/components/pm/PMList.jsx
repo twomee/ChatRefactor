@@ -5,7 +5,7 @@ function getInitials(name) {
   return name.slice(0, 2).toUpperCase();
 }
 
-export default function PMList({ threads = {}, pmUnread = {}, activePM, onSelectPM, knownOfflineUsers = new Set() }) {
+export default function PMList({ threads = {}, pmUnread = {}, activePM, onSelectPM }) {
   const usernames = Object.keys(threads);
 
   return (
@@ -23,13 +23,7 @@ export default function PMList({ threads = {}, pmUnread = {}, activePM, onSelect
             className={`pm-item ${isActive ? 'active' : ''}`}
             onClick={() => onSelectPM(username)}
           >
-            <div className="pm-avatar" style={{ position: 'relative' }}>
-              {getInitials(username)}
-              <span
-                className={`pm-status-dot ${knownOfflineUsers.has(username) ? 'offline' : 'online'}`}
-                style={{ position: 'absolute', bottom: -1, right: -1, width: 8, height: 8, borderRadius: '50%', border: '1.5px solid var(--glass-bg)' }}
-              />
-            </div>
+            <div className="pm-avatar">{getInitials(username)}</div>
             <span className="pm-name">{username}</span>
             {unread > 0 && (
               <span className="pm-badge">

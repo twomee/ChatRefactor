@@ -66,14 +66,6 @@ func (h *LobbyHandler) HandleLobbyWS(c *gin.Context) {
 	user := ws.UserInfo{UserID: userID, Username: username}
 	h.manager.ConnectLobby(conn, user)
 
-	// Send the current online users list immediately so the frontend can
-	// seed its presence state for PM contacts (who may not share a room).
-	onlineUsers := h.manager.GetLobbyUsernames()
-	_ = h.manager.SendToConn(conn, map[string]interface{}{
-		"type":  "presence_sync",
-		"users": onlineUsers,
-	})
-
 	// Hold connection open — the lobby is primarily for server -> client push.
 	// Read loop just keeps the connection alive and detects disconnection.
 	for {

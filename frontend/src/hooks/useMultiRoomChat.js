@@ -209,15 +209,6 @@ export function useMultiRoomChat() {
         window.alert(msg.detail);
         break;
 
-      // presence_sync is sent by the server on lobby connect with the current
-      // list of all online users. Use it to mark PM contacts as offline if
-      // they're not in the online list.
-      case 'presence_sync': {
-        const onlineSet = new Set(msg.users || []);
-        dispatch({ type: 'PRESENCE_SYNC', onlineUsers: onlineSet });
-        break;
-      }
-
       default:
         break;
     }
@@ -420,11 +411,6 @@ export function useMultiRoomChat() {
 
   // ── Mount: restore joined rooms from localStorage ──────────────────
   useEffect(() => {
-    // Clear stale presence data from previous sessions. After a page refresh
-    // or server restart, knownOfflineUsers is stale — real presence will be
-    // rebuilt from user_join/user_left WebSocket events as rooms reconnect.
-    dispatch({ type: 'CLEAR_OFFLINE_USERS' });
-
     const saved = getJoinedRooms(username);
     saved.forEach(roomId => joinRoom(roomId));
 
