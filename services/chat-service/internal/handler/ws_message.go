@@ -129,12 +129,14 @@ func (h *WSHandler) handleMessage(ctx context.Context, conn *websocket.Conn, roo
 	now := time.Now().UTC()
 
 	broadcast := map[string]interface{}{
-		"type":      "message",
-		"from":      username,
-		"text":      text,
-		"room_id":   roomID,
-		"msg_id":    msgID,
-		"timestamp": now.Format(time.RFC3339),
+		"type":         "message",
+		"from":         username,
+		"text":         text,
+		"room_id":      roomID,
+		"msg_id":       msgID,
+		"timestamp":    now.Format(time.RFC3339),
+		"mentions":     parseMentions(text),
+		"mention_room": isRoomMention(text),
 	}
 	h.manager.BroadcastRoom(roomID, broadcast)
 

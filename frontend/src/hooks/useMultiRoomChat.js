@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { WS_BASE } from '../config/constants';
 import { listRooms, getMessagesSince } from '../services/roomApi';
 import { getJoinedRooms, addJoinedRoom, removeJoinedRoom } from '../utils/storage';
+import { requestNotificationPermission, sendBrowserNotification } from '../utils/notifications';
 
 // ── Exponential backoff helper ──────────────────────────────────────────────
 const BACKOFF_BASE_MS = 1000;
@@ -118,6 +119,15 @@ export function useMultiRoomChat() {
           dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
         }
         trackTimestamp(msg.room_id);
+
+        // Send browser notification when the current user is @mentioned.
+        const currentUsername = user?.username;
+        if (currentUsername && (msg.mentions?.includes(currentUsername.toLowerCase()) || msg.mention_room)) {
+          sendBrowserNotification(
+            `@${msg.from} mentioned you`,
+            msg.text.substring(0, 100)
+          );
+        }
         break;
       }
 
@@ -433,6 +443,7 @@ export function useMultiRoomChat() {
 
   // ── Mount: restore joined rooms from localStorage ──────────────────
   useEffect(() => {
+    requestNotificationPermission();
     const saved = getJoinedRooms(username);
     saved.forEach(roomId => joinRoom(roomId));
 

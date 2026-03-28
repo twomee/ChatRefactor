@@ -7,6 +7,11 @@ vi.mock('../../../services/fileApi', () => ({
   downloadFile: vi.fn(),
 }));
 
+// Mock useAuth so MessageList can access user context in tests
+vi.mock('../../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { username: 'testuser' }, token: 'fake-token' }),
+}));
+
 describe('MessageList', () => {
   it('renders nothing for empty message list', () => {
     const { container } = render(<MessageList messages={[]} />);
@@ -52,5 +57,27 @@ describe('MessageList', () => {
     const messages = [{ from: 'bob', text: 'hi' }];
     render(<MessageList messages={messages} />);
     expect(screen.getByText('BO')).toBeInTheDocument();
+  });
+
+  it('highlights @mentions in regular messages', () => {
+    const messages = [{ from: 'alice', text: 'Hey @bob check this out' }];
+    const { container } = render(<MessageList messages={messages} />);
+    const mention = container.querySelector('.mention');
+    expect(mention).toBeInTheDocument();
+    expect(mention.textContent).toBe('@bob');
+  });
+
+  it('highlights self-mention with mention-self class', () => {
+    const messages = [{ from: 'alice', text: 'Hey @testuser look at this' }];
+    const { container } = render(<MessageList messages={messages} />);
+    const mention = container.querySelector('.mention-self');
+    expect(mention).toBeInTheDocument();
+    expect(mention.textContent).toBe('@testuser');
+  });
+
+  it('does not highlight mentions in system messages', () => {
+    const messages = [{ isSystem: true, text: '@alice joined the room' }];
+    const { container } = render(<MessageList messages={messages} />);
+    expect(container.querySelector('.mention')).toBeNull();
   });
 });
