@@ -142,6 +142,48 @@ export function chatReducer(state, action) {
         unreadCounts: { ...state.unreadCounts, [action.roomId]: 0 },
       };
 
+    // ── Emoji Reactions ──────────────────────────────────────────────────────
+    case 'ADD_REACTION': {
+      const roomMsgs = state.messages[action.roomId] || [];
+      return {
+        ...state,
+        messages: {
+          ...state.messages,
+          [action.roomId]: roomMsgs.map(msg =>
+            msg.msg_id === action.msgId
+              ? {
+                  ...msg,
+                  reactions: [
+                    ...(msg.reactions || []),
+                    { emoji: action.emoji, username: action.username, user_id: action.userId },
+                  ],
+                }
+              : msg
+          ),
+        },
+      };
+    }
+
+    case 'REMOVE_REACTION': {
+      const roomMsgs = state.messages[action.roomId] || [];
+      return {
+        ...state,
+        messages: {
+          ...state.messages,
+          [action.roomId]: roomMsgs.map(msg =>
+            msg.msg_id === action.msgId
+              ? {
+                  ...msg,
+                  reactions: (msg.reactions || []).filter(
+                    r => !(r.emoji === action.emoji && r.username === action.username)
+                  ),
+                }
+              : msg
+          ),
+        },
+      };
+    }
+
     default:
       return state;
   }

@@ -69,7 +69,7 @@ export function useMultiRoomChat() {
           dispatch({
             type: 'ADD_MESSAGE',
             roomId: m.room_id,
-            message: { from: m.sender, text: m.content },
+            message: { from: m.sender, text: m.content, msg_id: m.message_id },
           });
         }
       }
@@ -113,7 +113,7 @@ export function useMultiRoomChat() {
           }
           seenMsgIdsRef.current.add(msg.msg_id);
         }
-        dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { from: msg.from, text: msg.text } });
+        dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { from: msg.from, text: msg.text, msg_id: msg.msg_id } });
         if (msg.room_id !== activeRoomIdRef.current) {
           dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
         }
@@ -205,6 +205,27 @@ export function useMultiRoomChat() {
         window.alert(msg.detail || 'Room was closed');
         break;
       }
+
+      case 'reaction_added':
+        dispatch({
+          type: 'ADD_REACTION',
+          roomId: msg.room_id,
+          msgId: msg.msg_id,
+          emoji: msg.emoji,
+          username: msg.username,
+          userId: msg.user_id,
+        });
+        break;
+
+      case 'reaction_removed':
+        dispatch({
+          type: 'REMOVE_REACTION',
+          roomId: msg.room_id,
+          msgId: msg.msg_id,
+          emoji: msg.emoji,
+          username: msg.username,
+        });
+        break;
 
       case 'error':
         window.alert(msg.detail);
