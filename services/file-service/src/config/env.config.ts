@@ -31,11 +31,8 @@ export const config = {
   nodeEnv: NODE_ENV,
   port: parseInt(process.env.PORT || "8005", 10),
 
-  // Database
-  databaseUrl: requireEnv(
-    "DATABASE_URL",
-    "postgresql://chatbox:chatbox_pass@localhost:5432/chatbox_files"
-  ),
+  // Database — required in all environments. Set via .env file (see .env.example).
+  databaseUrl: requireEnv("DATABASE_URL"),
 
   // Kafka
   kafkaBootstrapServers: requireEnv(
