@@ -38,10 +38,11 @@ const (
 	// pingInterval is how often the server sends a WebSocket ping frame.
 	// If the client doesn't respond with a pong within pongWait, the
 	// connection is considered dead and closed.
-	pingInterval = 30 * time.Second
+	// 15s interval + 5s pong wait = dead connections detected within ~20s.
+	pingInterval = 15 * time.Second
 
 	// pongWait is how long to wait for a pong response before closing.
-	pongWait = 10 * time.Second
+	pongWait = 5 * time.Second
 )
 
 // IncomingMessage is the generic envelope parsed from the WebSocket client.

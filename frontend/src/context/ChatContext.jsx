@@ -159,6 +159,11 @@ export function chatReducer(state, action) {
       return { ...state, knownOfflineUsers: next };
     }
 
+    // Reset stale presence on page load / reconnect
+    case 'CLEAR_OFFLINE_USERS':
+      if (state.knownOfflineUsers.size === 0) return state;
+      return { ...state, knownOfflineUsers: new Set() };
+
     default:
       return state;
   }

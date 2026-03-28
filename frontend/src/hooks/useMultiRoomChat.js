@@ -405,6 +405,11 @@ export function useMultiRoomChat() {
 
   // ── Mount: restore joined rooms from localStorage ──────────────────
   useEffect(() => {
+    // Clear stale presence data from previous sessions. After a page refresh
+    // or server restart, knownOfflineUsers is stale — real presence will be
+    // rebuilt from user_join/user_left WebSocket events as rooms reconnect.
+    dispatch({ type: 'CLEAR_OFFLINE_USERS' });
+
     const saved = getJoinedRooms(username);
     saved.forEach(roomId => joinRoom(roomId));
 
