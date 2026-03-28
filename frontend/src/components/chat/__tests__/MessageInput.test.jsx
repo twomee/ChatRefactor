@@ -95,6 +95,36 @@ describe('MessageInput', () => {
     expect(fileApi.uploadFile).not.toHaveBeenCalled();
   });
 
+  describe('onTyping callback', () => {
+    it('fires onTyping when the user types', async () => {
+      const user = userEvent.setup();
+      const onTyping = vi.fn();
+      render(<MessageInput onSend={vi.fn()} onTyping={onTyping} />);
+
+      await user.type(screen.getByPlaceholderText('Type a message...'), 'h');
+      expect(onTyping).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fire onTyping again within the debounce window', async () => {
+      const user = userEvent.setup();
+      const onTyping = vi.fn();
+      render(<MessageInput onSend={vi.fn()} onTyping={onTyping} />);
+
+      // Type multiple characters quickly — onTyping should only fire once
+      // because the 2-second debounce timer is still active.
+      await user.type(screen.getByPlaceholderText('Type a message...'), 'hello');
+      expect(onTyping).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fire onTyping when callback is not provided', async () => {
+      const user = userEvent.setup();
+      // Render without onTyping — should not throw.
+      render(<MessageInput onSend={vi.fn()} />);
+      await user.type(screen.getByPlaceholderText('Type a message...'), 'hello');
+      // No assertion needed — just verify it doesn't throw.
+    });
+  });
+
   describe('isPM mode', () => {
     it('hides file attachment input and button when isPM is true', () => {
       render(<MessageInput onSend={vi.fn()} roomName="alice" isPM />);

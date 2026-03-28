@@ -92,7 +92,7 @@ func (h *WSHandler) readLoop(conn *websocket.Conn, roomID, userID int, username 
 		case "private_message":
 			h.handlePrivateMessage(ctx, conn, roomID, userID, username, incoming.To, incoming.Text)
 		case "typing":
-			h.handleTyping(conn, roomID, username)
+			h.handleTyping(conn, roomID, userID, username)
 		default:
 			h.sendError(conn, "Unknown message type")
 		}
@@ -159,7 +159,17 @@ func (h *WSHandler) handleMessage(ctx context.Context, conn *websocket.Conn, roo
 // handleTyping broadcasts a typing indicator to all other connections in the
 // room. Typing events are ephemeral — they are NOT persisted to Kafka or the
 // database. The frontend auto-clears stale indicators after a short timeout.
-func (h *WSHandler) handleTyping(conn *websocket.Conn, roomID int, username string) {
+//
+// Rate limited using the same limiter as handleMessage with a "typing:" key
+// prefix. If a user exceeds the rate limit, the event is silently dropped
+// (no error sent to the client) to avoid noise.
+func (h *WSHandler) handleTyping(conn *websocket.Conn, roomID, userID int, username string) {
+	// Rate limit typing events to prevent abuse.
+	key := fmt.Sprintf("typing:%d:user:%d", roomID, userID)
+	if !h.limiter.allow(key) {
+		return // silently drop — no error to client
+	}
+
 	typingPayload := map[string]interface{}{
 		"type":     "typing",
 		"room_id":  roomID,

@@ -1,5 +1,5 @@
 // src/components/MessageInput.jsx
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { uploadFile } from '../../services/fileApi';
 
 export default function MessageInput({ onSend, roomName, roomId, isPM = false, onTyping }) {
@@ -9,6 +9,16 @@ export default function MessageInput({ onSend, roomName, roomId, isPM = false, o
   const [uploadError, setUploadError] = useState('');
   const fileRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+
+  // Clean up the typing debounce timer on unmount to prevent firing into
+  // an unmounted component (React memory-leak warning).
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
 
   function handleChange(e) {
     setText(e.target.value);

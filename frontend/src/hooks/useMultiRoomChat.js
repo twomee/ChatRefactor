@@ -48,6 +48,7 @@ export function useMultiRoomChat() {
   const lobbyRetryRef = useRef(0);
   const lastMsgTimeRef = useRef(new Map());     // roomId → ISO timestamp
   const closingAllRef = useRef(false);          // true during disconnectAll to suppress reconnects
+  const typingTimersRef = useRef(new Map());    // "roomId:username" → timeout ID for typing auto-clear
 
   // Keep refs in sync with latest state
   useEffect(() => { activeRoomIdRef.current = state.activeRoomId; }, [state.activeRoomId]);
@@ -206,24 +207,30 @@ export function useMultiRoomChat() {
         break;
       }
 
-      case 'typing':
+      case 'typing': {
         dispatch({
           type: 'SET_TYPING',
           roomId: msg.room_id,
           username: msg.username,
           isTyping: true,
         });
-        // Auto-clear after 3 seconds — if the sender stops typing (or
-        // disconnects) we don't want a stale indicator lingering.
-        setTimeout(() => {
+        // Track timeouts per user so repeated typing events cancel the
+        // previous timer instead of accumulating orphaned timeouts.
+        const key = `${msg.room_id}:${msg.username}`;
+        const prevTimer = typingTimersRef.current.get(key);
+        if (prevTimer) clearTimeout(prevTimer);
+        const timerId = setTimeout(() => {
           dispatch({
             type: 'SET_TYPING',
             roomId: msg.room_id,
             username: msg.username,
             isTyping: false,
           });
+          typingTimersRef.current.delete(key);
         }, 3000);
+        typingTimersRef.current.set(key, timerId);
         break;
+      }
 
       case 'error':
         window.alert(msg.detail);
@@ -443,6 +450,10 @@ export function useMultiRoomChat() {
       retryCountsRef.current.clear();
       reconnectingRoomsRef.current.clear();
       lastMsgTimeRef.current.clear();
+      // Clear all pending typing auto-clear timers to prevent firing into
+      // an unmounted component.
+      typingTimersRef.current.forEach(timer => clearTimeout(timer));
+      typingTimersRef.current.clear();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

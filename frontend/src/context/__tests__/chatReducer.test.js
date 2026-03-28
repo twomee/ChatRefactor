@@ -10,6 +10,7 @@ const initialState = {
   onlineUsers: {},
   admins: {},
   mutedUsers: {},
+  typingUsers: {},
   knownOfflineUsers: new Set(),
 };
 
@@ -265,6 +266,43 @@ describe('chatReducer', () => {
       });
       expect(next.admins.r1).toEqual(['alice']);
       expect(next.mutedUsers.r1).toEqual([]);
+    });
+  });
+
+  describe('SET_TYPING', () => {
+    it('adds a user to the typing map for a room', () => {
+      const next = chatReducer(initialState, {
+        type: 'SET_TYPING', roomId: 'r1', username: 'alice', isTyping: true,
+      });
+      expect(next.typingUsers.r1).toBeDefined();
+      expect(next.typingUsers.r1.alice).toEqual(expect.any(Number));
+    });
+
+    it('removes a user from the typing map when isTyping is false', () => {
+      const state = {
+        ...initialState,
+        typingUsers: { r1: { alice: Date.now(), bob: Date.now() } },
+      };
+      const next = chatReducer(state, {
+        type: 'SET_TYPING', roomId: 'r1', username: 'alice', isTyping: false,
+      });
+      expect(next.typingUsers.r1.alice).toBeUndefined();
+      expect(next.typingUsers.r1.bob).toEqual(expect.any(Number));
+    });
+
+    it('handles setting typing on a room with no existing typing state', () => {
+      const next = chatReducer(initialState, {
+        type: 'SET_TYPING', roomId: 'r2', username: 'bob', isTyping: true,
+      });
+      expect(next.typingUsers.r2.bob).toEqual(expect.any(Number));
+    });
+
+    it('handles clearing typing for a user not currently in the map', () => {
+      const next = chatReducer(initialState, {
+        type: 'SET_TYPING', roomId: 'r1', username: 'ghost', isTyping: false,
+      });
+      // Should not crash; ghost was never typing so map is still empty-ish
+      expect(next.typingUsers.r1.ghost).toBeUndefined();
     });
   });
 
