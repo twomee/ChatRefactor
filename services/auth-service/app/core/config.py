@@ -41,7 +41,9 @@ SECRET_KEY = _raw_secret if _raw_secret else secrets.token_urlsafe(64)
 # Developers should set the real value via .env file (see .env.example).
 _raw_db_url = _require_env("DATABASE_URL")
 DATABASE_URL = (
-    _raw_db_url if _raw_db_url else "postgresql://chatbox:chatbox_pass@localhost:5432/chatbox_auth"
+    _raw_db_url
+    if _raw_db_url
+    else "postgresql://chatbox:chatbox_pass@localhost:5432/chatbox_auth"
 )
 
 ADMIN_USERNAME = _require_env("ADMIN_USERNAME")

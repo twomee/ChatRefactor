@@ -28,7 +28,9 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         # Read correlation ID from header, or generate a new one
         # Validate format to prevent log injection via crafted headers
         raw_id = request.headers.get("X-Request-ID", "")
-        correlation_id = raw_id if _CORRELATION_ID_PATTERN.match(raw_id) else str(uuid.uuid4())
+        correlation_id = (
+            raw_id if _CORRELATION_ID_PATTERN.match(raw_id) else str(uuid.uuid4())
+        )
 
         # Bind to structlog context so all log lines in this request include it
         structlog.contextvars.clear_contextvars()

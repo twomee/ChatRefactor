@@ -13,7 +13,7 @@
 // It does NOT know about Express request/response objects.
 
 import fs from "node:fs";
-import { writeFile, unlink } from "node:fs/promises";
+import { mkdir, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { v4 as uuidv4 } from "uuid";
 import { PrismaClient } from "@prisma/client";
@@ -75,10 +75,13 @@ export async function uploadFile(
       throw new FileValidationError("Invalid filename", 400);
     }
 
-    // 6. Write file to disk (async to avoid blocking the event loop)
+    // 6. Ensure upload directory exists (async to avoid blocking the event loop)
+    await mkdir(config.uploadDir, { recursive: true });
+
+    // 7. Write file to disk
     await writeFile(destPath, fileBuffer);
 
-    // 7. Save metadata to database. If DB insert fails, clean up the orphaned file.
+    // 8. Save metadata to database. If DB insert fails, clean up the orphaned file.
     let record;
     try {
       record = await prisma.file.create({
