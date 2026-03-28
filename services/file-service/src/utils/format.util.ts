@@ -154,16 +154,18 @@ export async function validateMimeType(
 export function validateSvgContent(buffer: Buffer): void {
   const content = buffer.toString("utf-8").toLowerCase();
 
-  // Patterns that indicate embedded scripting in SVG files
+  // Patterns that indicate embedded scripting in SVG files.
+  // Case-insensitive flag is defense-in-depth — content is already lowercased
+  // above, but the flag ensures safety even if .toLowerCase() is removed later.
   const dangerousPatterns = [
-    /<script[\s>]/,           // <script> tags
-    /\bon\w+\s*=/,            // Event handlers: onload=, onclick=, onerror=, etc.
-    /javascript\s*:/,         // javascript: protocol in href/xlink:href
-    /data\s*:\s*text\/html/,  // data: URIs with HTML content
-    /<iframe[\s>]/,           // Embedded iframes
-    /<object[\s>]/,           // Embedded objects
-    /<embed[\s>]/,            // Embedded content
-    /<foreignobject[\s>]/,    // foreignObject can contain arbitrary HTML
+    /<script[\s>]/i,           // <script> tags
+    /\bon\w+\s*=/i,            // Event handlers: onload=, onclick=, onerror=, etc.
+    /javascript\s*:/i,         // javascript: protocol in href/xlink:href
+    /data\s*:\s*text\/html/i,  // data: URIs with HTML content
+    /<iframe[\s>]/i,           // Embedded iframes
+    /<object[\s>]/i,           // Embedded objects
+    /<embed[\s>]/i,            // Embedded content
+    /<foreignobject[\s>]/i,    // foreignObject can contain arbitrary HTML
   ];
 
   for (const pattern of dangerousPatterns) {
