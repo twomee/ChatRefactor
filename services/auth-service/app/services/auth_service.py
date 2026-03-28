@@ -29,7 +29,9 @@ logger = get_logger("services.auth")
 async def register(db: Session, body: UserRegister) -> dict:
     """Register a new user.
 
-    Flow: validate -> check duplicate -> hash password -> persist -> produce event.
+    Flow: check duplicate -> hash password -> persist -> produce event.
+    Input validation (username format, password length) is handled by the
+    Pydantic schema (UserRegister) before this function is called.
     The Kafka event is fire-and-forget: registration succeeds even if Kafka is down.
     """
     if user_dal.get_by_username(db, body.username):
@@ -100,7 +102,8 @@ async def logout(user_info: dict, token: str) -> dict:
     """Log out a user by blacklisting their token in Redis.
 
     Flow: blacklist token -> produce event -> return message.
-    If Redis is down in production, return 503 (token can't be revoked).
+    If Redis is down in production or staging, return 503 (token can't be revoked).
+    In dev, degrades gracefully (logs error, returns success with degraded metric).
     """
     username = user_info["username"]
     user_id = user_info["user_id"]

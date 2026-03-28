@@ -95,7 +95,12 @@ export async function uploadFile(
         },
       });
     } catch (dbError) {
-      await unlink(destPath).catch(() => {});
+      await unlink(destPath).catch((unlinkErr) => {
+        logger.warn("Failed to clean up orphaned file after DB error", {
+          destPath,
+          error: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+        });
+      });
       throw dbError;
     }
 

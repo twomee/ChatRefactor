@@ -1,5 +1,6 @@
 // config/env.config.ts — Typed environment configuration with fail-fast in production
 
+import crypto from "node:crypto";
 import dotenv from "dotenv";
 import path from "node:path";
 
@@ -40,8 +41,11 @@ export const config = {
     "localhost:29092"
   ),
 
-  // JWT — must match Auth Service secret exactly
-  secretKey: requireEnv("SECRET_KEY", "dev-secret-change-in-production"),
+  // JWT — must match Auth Service secret exactly.
+  // In dev, generate a random key per process to avoid using a predictable default.
+  // This means the file-service won't validate auth-service tokens in dev unless
+  // SECRET_KEY is explicitly set in .env (which it should be for local dev).
+  secretKey: requireEnv("SECRET_KEY") || crypto.randomBytes(48).toString("base64url"),
   algorithm: "HS256" as const,
 
   // File storage

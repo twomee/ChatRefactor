@@ -201,13 +201,14 @@ func main() {
 
 	// --- HTTP Server with graceful shutdown ---
 	srv := &http.Server{
-		Addr:        fmt.Sprintf(":%d", cfg.Port),
-		Handler:     r,
-		ReadTimeout: 15 * time.Second,
-		// WriteTimeout disabled (0) because this server handles long-lived
-		// WebSocket connections. Ping/pong handles dead connection detection.
-		WriteTimeout: 0,
+		Addr:         fmt.Sprintf(":%d", cfg.Port),
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
+		// Note: WriteTimeout applies to REST endpoints only. WebSocket
+		// connections are exempt because gorilla/websocket calls Hijack(),
+		// which removes the connection from http.Server timeout management.
 	}
 
 	go func() {
