@@ -113,7 +113,7 @@ export function useMultiRoomChat() {
           }
           seenMsgIdsRef.current.add(msg.msg_id);
         }
-        dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { from: msg.from, text: msg.text } });
+        dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { from: msg.from, text: msg.text, msg_id: msg.msg_id } });
         if (msg.room_id !== activeRoomIdRef.current) {
           dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
         }
@@ -151,6 +151,24 @@ export function useMultiRoomChat() {
           dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
         }
         trackTimestamp(msg.room_id);
+        break;
+
+      case 'message_edited':
+        dispatch({
+          type: 'EDIT_MESSAGE',
+          roomId: msg.room_id,
+          msgId: msg.msg_id,
+          text: msg.text,
+          edited_at: msg.edited_at,
+        });
+        break;
+
+      case 'message_deleted':
+        dispatch({
+          type: 'DELETE_MESSAGE',
+          roomId: msg.room_id,
+          msgId: msg.msg_id,
+        });
         break;
 
       case 'kicked': {

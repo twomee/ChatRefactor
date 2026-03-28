@@ -142,6 +142,34 @@ export function chatReducer(state, action) {
         unreadCounts: { ...state.unreadCounts, [action.roomId]: 0 },
       };
 
+    case 'EDIT_MESSAGE': {
+      const roomMsgs = state.messages[action.roomId];
+      if (!roomMsgs) return state;
+      const updated = roomMsgs.map(m =>
+        m.msg_id === action.msgId
+          ? { ...m, text: action.text, edited_at: action.edited_at }
+          : m
+      );
+      return {
+        ...state,
+        messages: { ...state.messages, [action.roomId]: updated },
+      };
+    }
+
+    case 'DELETE_MESSAGE': {
+      const roomMsgs = state.messages[action.roomId];
+      if (!roomMsgs) return state;
+      const updated = roomMsgs.map(m =>
+        m.msg_id === action.msgId
+          ? { ...m, text: '[deleted]', is_deleted: true }
+          : m
+      );
+      return {
+        ...state,
+        messages: { ...state.messages, [action.roomId]: updated },
+      };
+    }
+
     default:
       return state;
   }
