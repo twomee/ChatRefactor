@@ -21,6 +21,10 @@ func (h *WSHandler) handlePrivateMessage(ctx context.Context, conn *websocket.Co
 		h.sendError(conn, "Message text cannot be empty")
 		return
 	}
+	if len(text) > maxContentLength {
+		h.sendError(conn, "Message too long")
+		return
+	}
 
 	// Cannot PM yourself.
 	if to == username {

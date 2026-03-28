@@ -36,16 +36,13 @@ def _require_env(key: str) -> str:
 # In dev, generate a random key per process to avoid signing tokens with an empty string.
 _raw_secret = _require_env("SECRET_KEY")
 SECRET_KEY = _raw_secret if _raw_secret else secrets.token_urlsafe(64)
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://chatbox:chatbox_pass@localhost:5432/chatbox_auth",
+# DATABASE_URL is required in prod (_require_env exits if missing).
+# In dev/test, falls back to a credential-free placeholder so SQLAlchemy can parse it.
+# Developers should set the real value via .env file (see .env.example).
+_raw_db_url = _require_env("DATABASE_URL")
+DATABASE_URL = (
+    _raw_db_url if _raw_db_url else "postgresql://localhost:5432/chatbox_auth"
 )
-if not DATABASE_URL and APP_ENV == "prod":
-    print(
-        "FATAL: Required environment variable 'DATABASE_URL' is not set.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
 
 ADMIN_USERNAME = _require_env("ADMIN_USERNAME")
 ADMIN_PASSWORD = _require_env("ADMIN_PASSWORD")

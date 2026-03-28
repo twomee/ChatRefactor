@@ -29,6 +29,13 @@ export const app = express();
 // CORS — allow all origins (Kong gateway handles CORS in production)
 app.use(cors());
 
+// SECURITY: Global security headers — defense-in-depth even behind Kong
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  next();
+});
+
 // Parse JSON bodies (for non-multipart requests)
 app.use(express.json());
 
@@ -64,6 +71,28 @@ app.use("/files/upload", upload.single("file"));
 
 // ── File routes (all require auth) ─────────────────────────────────────────
 app.use("/files", fileRouter);
+
+// ── Global error handler ──────────────────────────────────────────────────
+// SECURITY: Catch-all error handler to prevent Express from leaking stack
+// traces. Express's default error handler includes stack traces when
+// NODE_ENV !== 'production', but we suppress them unconditionally.
+app.use(
+  (
+    err: Error,
+    _req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction
+  ) => {
+    logger.error("Unhandled Express error", {
+      error: err.message,
+      stack: err.stack,
+    });
+
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
 
 // ── Startup & shutdown ─────────────────────────────────────────────────────
 

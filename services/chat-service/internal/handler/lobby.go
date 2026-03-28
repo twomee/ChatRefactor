@@ -43,6 +43,12 @@ func (h *LobbyHandler) HandleLobbyWS(c *gin.Context) {
 		return
 	}
 
+	// Enforce per-user connection limit to prevent resource exhaustion.
+	if h.manager.UserConnectionCount(userID) >= maxConnectionsPerUser {
+		c.JSON(http.StatusTooManyRequests, gin.H{"detail": "too many connections"})
+		return
+	}
+
 	up := newUpgrader()
 	conn, err := up.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {

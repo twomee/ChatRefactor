@@ -14,6 +14,7 @@ Includes:
 """
 
 import asyncio
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -50,14 +51,15 @@ async def lifespan(app: FastAPI):
     # ── Startup ──────────────────────────────────────────────────────
     logger.info("auth_service_starting", env=APP_ENV)
 
-    # ── Security warnings ────────────────────────────────────────────
+    # ── Security gates — block startup with insecure defaults in prod ─
     if SECRET_KEY and "change-this-in-production" in SECRET_KEY:
         if APP_ENV in ("staging", "prod"):
             logger.error(
                 "INSECURE_SECRET_KEY",
-                msg="SECRET_KEY is set to the default value! "
+                msg="SECRET_KEY contains the default value — refusing to start. "
                 "Set a strong SECRET_KEY via environment variable before deploying.",
             )
+            sys.exit(1)
         else:
             logger.warning(
                 "default_secret_key",
@@ -67,8 +69,10 @@ async def lifespan(app: FastAPI):
     if ADMIN_PASSWORD == "changeme" and APP_ENV in ("staging", "prod"):
         logger.error(
             "INSECURE_ADMIN_PASSWORD",
-            msg="ADMIN_PASSWORD is 'changeme'! Set a strong password via environment variable.",
+            msg="ADMIN_PASSWORD is 'changeme' — refusing to start. "
+            "Set a strong password via environment variable.",
         )
+        sys.exit(1)
 
     # Seed admin user
     try:
@@ -121,7 +125,13 @@ async def lifespan(app: FastAPI):
     logger.info("auth_service_shutdown_complete")
 
 
-app = FastAPI(title="cHATBOX Auth Service", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="cHATBOX Auth Service",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/docs" if APP_ENV == "dev" else None,
+    redoc_url="/redoc" if APP_ENV == "dev" else None,
+)
 
 # ── Prometheus metrics ────────────────────────────────────────────────
 instrumentator = Instrumentator(
@@ -154,13 +164,14 @@ def ready():
     """
     checks = {}
 
-    # Database check
+    # Database check — log details internally, return generic status to client
     try:
         with Session(engine) as db:
             db.execute(text("SELECT 1"))
         checks["database"] = "ok"
     except Exception as e:
-        checks["database"] = str(e)
+        logger.error("readiness_db_check_failed", error=str(e))
+        checks["database"] = "unavailable"
 
     # Redis check
     try:
@@ -169,13 +180,14 @@ def ready():
         get_redis().ping()
         checks["redis"] = "ok"
     except Exception as e:
-        checks["redis"] = str(e)
+        logger.error("readiness_redis_check_failed", error=str(e))
+        checks["redis"] = "unavailable"
 
     # Kafka check (optional — doesn't gate readiness)
     try:
         checks["kafka"] = "ok" if is_kafka_available() else "degraded"
-    except Exception as e:
-        checks["kafka"] = f"degraded: {e}"
+    except Exception:
+        checks["kafka"] = "degraded"
 
     # Only DB and Redis are required for readiness
     all_ok = checks.get("database") == "ok" and checks.get("redis") == "ok"

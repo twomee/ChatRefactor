@@ -132,14 +132,14 @@ class TestLifespan:
                 )
 
     @pytest.mark.asyncio
-    async def test_lifespan_errors_default_secret_key_in_prod(self):
-        """In prod mode with default secret key, should log an error."""
+    async def test_lifespan_exits_default_secret_key_in_prod(self):
+        """In prod mode with default secret key, should exit the process."""
         from app.main import lifespan
 
         mock_app = MagicMock()
 
-        with patch("app.main.Session") as mock_session_cls, \
-             patch("app.main.user_dal") as mock_dal, \
+        with patch("app.main.Session"), \
+             patch("app.main.user_dal"), \
              patch("app.main.init_producer", new_callable=AsyncMock), \
              patch("app.main.close_producer", new_callable=AsyncMock), \
              patch("app.main.ADMIN_USERNAME", "admin"), \
@@ -148,27 +148,25 @@ class TestLifespan:
              patch("app.main.SECRET_KEY", "change-this-in-production"), \
              patch("app.main.logger") as mock_logger:
 
-            mock_db = MagicMock()
-            mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
-            mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
-            mock_dal.get_by_username.return_value = MagicMock(is_global_admin=True)
-
-            async with lifespan(mock_app):
-                mock_logger.error.assert_any_call(
-                    "INSECURE_SECRET_KEY",
-                    msg="SECRET_KEY is set to the default value! "
-                    "Set a strong SECRET_KEY via environment variable before deploying.",
-                )
+            with pytest.raises(SystemExit) as exc_info:
+                async with lifespan(mock_app):
+                    pass  # pragma: no cover
+            assert exc_info.value.code == 1
+            mock_logger.error.assert_any_call(
+                "INSECURE_SECRET_KEY",
+                msg="SECRET_KEY contains the default value — refusing to start. "
+                "Set a strong SECRET_KEY via environment variable before deploying.",
+            )
 
     @pytest.mark.asyncio
-    async def test_lifespan_errors_changeme_admin_password_in_prod(self):
-        """In prod mode with 'changeme' admin password, should log an error."""
+    async def test_lifespan_exits_changeme_admin_password_in_prod(self):
+        """In prod mode with 'changeme' admin password, should exit the process."""
         from app.main import lifespan
 
         mock_app = MagicMock()
 
-        with patch("app.main.Session") as mock_session_cls, \
-             patch("app.main.user_dal") as mock_dal, \
+        with patch("app.main.Session"), \
+             patch("app.main.user_dal"), \
              patch("app.main.init_producer", new_callable=AsyncMock), \
              patch("app.main.close_producer", new_callable=AsyncMock), \
              patch("app.main.ADMIN_USERNAME", "admin"), \
@@ -177,16 +175,15 @@ class TestLifespan:
              patch("app.main.SECRET_KEY", "strong-production-key"), \
              patch("app.main.logger") as mock_logger:
 
-            mock_db = MagicMock()
-            mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
-            mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
-            mock_dal.get_by_username.return_value = MagicMock(is_global_admin=True)
-
-            async with lifespan(mock_app):
-                mock_logger.error.assert_any_call(
-                    "INSECURE_ADMIN_PASSWORD",
-                    msg="ADMIN_PASSWORD is 'changeme'! Set a strong password via environment variable.",
-                )
+            with pytest.raises(SystemExit) as exc_info:
+                async with lifespan(mock_app):
+                    pass  # pragma: no cover
+            assert exc_info.value.code == 1
+            mock_logger.error.assert_any_call(
+                "INSECURE_ADMIN_PASSWORD",
+                msg="ADMIN_PASSWORD is 'changeme' — refusing to start. "
+                "Set a strong password via environment variable.",
+            )
 
 
 # ── /ready endpoint branches ──────────────────────────────────────────

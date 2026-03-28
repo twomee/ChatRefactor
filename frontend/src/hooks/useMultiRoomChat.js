@@ -244,8 +244,10 @@ export function useMultiRoomChat() {
     };
 
     ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      handleMessageRef.current(msg, roomId);
+      try {
+        const msg = JSON.parse(event.data);
+        handleMessageRef.current(msg, roomId);
+      } catch { /* drop malformed message */ }
     };
 
     ws.onclose = (event) => {
@@ -360,8 +362,10 @@ export function useMultiRoomChat() {
         lobbyRetryRef.current = 0;
       };
       ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        handleMessageRef.current(msg, null);
+        try {
+          const msg = JSON.parse(event.data);
+          handleMessageRef.current(msg, null);
+        } catch { /* drop malformed message */ }
       };
       ws.onclose = (event) => {
         if (lobbyRef.current === ws) {

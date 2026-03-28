@@ -81,14 +81,20 @@ fileRouter.get(
 
       // Stream the file back to the client
       // SECURITY: Use RFC 5987 filename* for safe encoding of the original name,
-      // and strip any double-quotes from the ASCII fallback to prevent header injection.
-      const safeName = record.originalName.replace(/"/g, "");
+      // and strip any characters that could break the header value from the ASCII fallback.
+      const safeName = record.originalName.replace(/["\\\r\n]/g, "");
       res.setHeader(
         "Content-Disposition",
         `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(record.originalName)}`
       );
       res.setHeader("Content-Type", "application/octet-stream");
       res.setHeader("Content-Length", record.fileSize);
+
+      // SECURITY: Defense-in-depth headers to prevent XSS if files are ever
+      // served inline or opened in the browser context
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Security-Policy", "default-src 'none'");
+      res.setHeader("X-Frame-Options", "DENY");
 
       const fileStream = fs.createReadStream(record.storedPath);
       fileStream.pipe(res);
