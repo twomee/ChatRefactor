@@ -69,7 +69,8 @@ func newUpgrader() websocket.Upgrader {
 }
 
 // checkOrigin validates the request origin against allowed origins.
-// In dev mode or when ALLOWED_ORIGINS is not set, all origins are allowed.
+// In dev mode, all origins are allowed. In production, ALLOWED_ORIGINS must
+// be configured — if missing, all origins are denied (fail-closed).
 func checkOrigin(r *http.Request) bool {
 	env := os.Getenv("APP_ENV")
 	if env == "" || strings.EqualFold(env, "dev") || strings.EqualFold(env, "test") {
@@ -78,7 +79,7 @@ func checkOrigin(r *http.Request) bool {
 
 	allowed := os.Getenv("ALLOWED_ORIGINS")
 	if allowed == "" {
-		return true // no restriction configured
+		return false // fail-closed: deny all origins when not configured in production
 	}
 
 	origin := r.Header.Get("Origin")

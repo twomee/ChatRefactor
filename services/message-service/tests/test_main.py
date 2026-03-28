@@ -39,8 +39,8 @@ class TestLifespanSecurityWarnings:
                 response = client.get("/health")
                 assert response.status_code == 200
 
-    def test_default_secret_key_error_in_prod(self):
-        """In prod/staging mode with default SECRET_KEY, should log an error but still start."""
+    def test_default_secret_key_exits_in_prod(self):
+        """In prod/staging mode with default SECRET_KEY, should exit the process."""
         with (
             patch("app.main.init_producer", new_callable=AsyncMock),
             patch("app.main.close_producer", new_callable=AsyncMock),
@@ -50,14 +50,22 @@ class TestLifespanSecurityWarnings:
             patch("app.main.APP_ENV", "staging"),
             patch("app.main.SECRET_KEY", "change-this-in-production"),
             patch("app.main.logger") as mock_logger,
+            patch("app.main.sys") as mock_sys,
         ):
+            # sys.exit is called inside the async lifespan, so it raises SystemExit
+            # which gets wrapped in a BaseExceptionGroup by anyio. Instead of trying
+            # to catch the wrapped exception, we mock sys.exit and verify it was called.
+            mock_sys.exit = MagicMock(side_effect=SystemExit(1))
+
             from app.main import app
 
-            with TestClient(app, raise_server_exceptions=False) as client:
-                response = client.get("/health")
-                assert response.status_code == 200
+            with pytest.raises((SystemExit, BaseException)):
+                with TestClient(app, raise_server_exceptions=True):
+                    pass
 
-            # Verify the error was logged
+            mock_sys.exit.assert_called_once_with(1)
+
+            # Verify the error was logged before exit
             mock_logger.error.assert_any_call(
                 "INSECURE_SECRET_KEY",
                 msg="SECRET_KEY is set to the default value! "
@@ -143,7 +151,7 @@ class TestReadyEndpointFailures:
                 assert response.status_code == 503
                 data = response.json()
                 assert data["status"] == "not_ready"
-                assert "connection refused" in data["database"]
+                assert data["database"] == "unavailable"
 
     def test_ready_reports_kafka_degraded_when_unavailable(self):
         """Should report kafka as degraded when not available."""
@@ -204,7 +212,7 @@ class TestReadyEndpointFailures:
             with TestClient(app, raise_server_exceptions=False) as client:
                 response = client.get("/ready")
                 data = response.json()
-                assert "degraded" in data["kafka"]
+                assert data["kafka"] == "degraded"
 
             app.dependency_overrides.clear()
 

@@ -52,13 +52,26 @@ async def register(db: Session, body: UserRegister) -> dict:
     return {"message": "Registered successfully"}
 
 
+_DUMMY_HASH = hash_password("timing-equalization-dummy")
+
+
 async def login(db: Session, body: UserLogin) -> TokenResponse:
     """Authenticate a user and return a JWT token.
 
     Flow: find user -> verify password -> create JWT -> produce event -> return token.
+    Always runs password verification to prevent timing-based username enumeration.
     """
     user = user_dal.get_by_username(db, body.username)
-    if not user or not verify_password(body.password, user.password_hash):
+    if not user:
+        # Equalize timing: run Argon2 verification even when user doesn't exist
+        # to prevent attackers from distinguishing "user not found" (fast) vs
+        # "wrong password" (slow due to Argon2)
+        verify_password(body.password, _DUMMY_HASH)
+        logger.warning("login_failed", username=body.username)
+        auth_logins_total.labels(status="invalid_credentials").inc()
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    if not verify_password(body.password, user.password_hash):
         logger.warning("login_failed", username=body.username)
         auth_logins_total.labels(status="invalid_credentials").inc()
         raise HTTPException(status_code=401, detail="Invalid username or password")
