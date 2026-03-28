@@ -1,6 +1,7 @@
 # app/dal/message_dal.py — Data Access Layer for Message model
 from datetime import datetime
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Message
@@ -33,9 +34,13 @@ def create_idempotent(
     )
     if sent_at:
         msg.sent_at = sent_at
-    db.add(msg)
-    db.commit()
-    return True
+    try:
+        db.add(msg)
+        db.commit()
+        return True
+    except IntegrityError:
+        db.rollback()
+        return False  # concurrent insert won the race — idempotent success
 
 
 def get_by_room_since(

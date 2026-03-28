@@ -13,6 +13,7 @@
 // It does NOT know about Express request/response objects.
 
 import fs from "node:fs";
+import { mkdir, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { v4 as uuidv4 } from "uuid";
 import { PrismaClient } from "@prisma/client";
@@ -74,23 +75,34 @@ export async function uploadFile(
       throw new FileValidationError("Invalid filename", 400);
     }
 
-    // 6. Ensure upload directory exists
-    fs.mkdirSync(config.uploadDir, { recursive: true });
+    // 6. Ensure upload directory exists (async to avoid blocking the event loop)
+    await mkdir(config.uploadDir, { recursive: true });
 
     // 7. Write file to disk
-    fs.writeFileSync(destPath, fileBuffer);
+    await writeFile(destPath, fileBuffer);
 
-    // 8. Save metadata to database
-    const record = await prisma.file.create({
-      data: {
-        originalName: cleanName,
-        storedPath: destPath,
-        fileSize: fileBuffer.length,
-        senderId,
-        senderName: senderUsername,
-        roomId,
-      },
-    });
+    // 8. Save metadata to database. If DB insert fails, clean up the orphaned file.
+    let record;
+    try {
+      record = await prisma.file.create({
+        data: {
+          originalName: cleanName,
+          storedPath: destPath,
+          fileSize: fileBuffer.length,
+          senderId,
+          senderName: senderUsername,
+          roomId,
+        },
+      });
+    } catch (dbError) {
+      await unlink(destPath).catch((unlinkErr) => {
+        logger.warn("Failed to clean up orphaned file after DB error", {
+          destPath,
+          error: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+        });
+      });
+      throw dbError;
+    }
 
     logger.info("File uploaded", {
       fileId: record.id,

@@ -240,6 +240,7 @@ class MessagePersistenceConsumer:
             db,
             message_id=msg_id,
             sender_id=sender_id,
+            sender_name=sender_name,
             room_id=None,
             content=text,
             is_private=True,

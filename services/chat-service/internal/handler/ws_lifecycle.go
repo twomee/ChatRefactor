@@ -152,6 +152,9 @@ func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, 
 		_ = h.delivery.DeliverChat(bgCtx, roomID, leavePayload)
 
 		h.produceEvent(bgCtx, "user_left", roomID, userID, username)
+
+		// Handle admin succession if the departing user was an admin.
+		h.handleAdminSuccession(bgCtx, roomID, userID, username)
 	}()
 }
 
@@ -194,16 +197,31 @@ func (h *WSHandler) handleAdminSuccession(ctx context.Context, roomID, userID in
 	}
 	h.manager.BroadcastRoom(roomID, promoteMsg)
 
-	// Broadcast system message about succession.
+	// Broadcast system message about succession (WS uses "from" for frontend).
+	successionNow := time.Now().UTC().Format(time.RFC3339)
+	successionMsgID := uuid.New().String()
 	systemMsg := map[string]interface{}{
 		"type":      "message",
 		"from":      "system",
 		"text":      fmt.Sprintf("%s left. %s is now admin", username, nextUsername),
 		"room_id":   roomID,
-		"msg_id":    uuid.New().String(),
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"msg_id":    successionMsgID,
+		"timestamp": successionNow,
 	}
 	h.manager.BroadcastRoom(roomID, systemMsg)
+
+	// Persist system message to Kafka (uses "username" to match consumer).
+	successionKafka := map[string]interface{}{
+		"type":      "message",
+		"room_id":   roomID,
+		"sender_id": 0,
+		"username":  "system",
+		"text":      fmt.Sprintf("%s left. %s is now admin", username, nextUsername),
+		"msg_id":    successionMsgID,
+		"timestamp": successionNow,
+	}
+	succPayload, _ := json.Marshal(successionKafka)
+	_ = h.delivery.DeliverChat(ctx, roomID, succPayload)
 }
 
 // sendHistory fetches recent messages from the Message Service and sends them

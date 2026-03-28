@@ -226,13 +226,14 @@ func (h *RoomHandler) RemoveAdmin(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "invalid room id"})
 		return
 	}
-	userID, err := strconv.Atoi(c.Param("userId"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "invalid user id"})
+
+	if !h.isCallerRoomOrGlobalAdmin(c, roomID) {
 		return
 	}
 
-	if !h.isCallerRoomOrGlobalAdmin(c, roomID) {
+	userID, err := strconv.Atoi(c.Param("userId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "invalid user id"})
 		return
 	}
 

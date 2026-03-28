@@ -47,6 +47,7 @@ export function useMultiRoomChat() {
   const retryCountsRef = useRef(new Map());     // roomId → attempt number
   const lobbyRetryRef = useRef(0);
   const lastMsgTimeRef = useRef(new Map());     // roomId → ISO timestamp
+  const closingAllRef = useRef(false);          // true during disconnectAll to suppress reconnects
 
   // Keep refs in sync with latest state
   useEffect(() => { activeRoomIdRef.current = state.activeRoomId; }, [state.activeRoomId]);
@@ -279,11 +280,15 @@ export function useMultiRoomChat() {
         retryCountsRef.current.delete(roomId);
         updateConnectionStatus();
       }
-      // Unexpected closure — auto-reconnect with exponential backoff
-      else if (wasOpen && getJoinedRooms(username).includes(roomId)) {
+      // Unexpected closure — auto-reconnect with exponential backoff.
+      // Reconnect both when the connection was open (server went down mid-session)
+      // AND when a retry failed to open (server still starting up).
+      // Skip if disconnectAll() was called (logout in progress).
+      else if (!closingAllRef.current && getJoinedRooms(username).includes(roomId)) {
         const attempt = (retryCountsRef.current.get(roomId) || 0) + 1;
         retryCountsRef.current.set(roomId, attempt);
-        const delay = getBackoffDelay(attempt - 1);
+        // If the connection never opened, use a fixed 5s delay (server probably starting)
+        const delay = wasOpen ? getBackoffDelay(attempt - 1) : 5000;
 
         reconnectingRoomsRef.current.add(roomId);
         updateConnectionStatus();
@@ -319,10 +324,18 @@ export function useMultiRoomChat() {
     [...socketsRef.current.keys()].forEach(roomId => exitRoom(roomId));
   }, [exitRoom]);
 
-  // ── disconnectAll (logout) — close sockets but keep localStorage ──
+  // ── disconnectAll (logout) — close ALL sockets (rooms + lobby) ──
   const disconnectAll = useCallback(() => {
+    // Prevent onclose handlers from scheduling reconnections
+    closingAllRef.current = true;
+    // Close all room sockets
     socketsRef.current.forEach(ws => ws.close());
     socketsRef.current.clear();
+    // Close the lobby socket so the server removes us from the online list
+    if (lobbyRef.current) {
+      lobbyRef.current.close();
+      lobbyRef.current = null;
+    }
   }, []);
 
   useEffect(() => { exitRoomRef.current = exitRoom; }, [exitRoom]);

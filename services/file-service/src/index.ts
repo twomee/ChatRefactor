@@ -110,12 +110,13 @@ async function startServer(): Promise<void> {
     });
   });
 
-  // Graceful shutdown
+  // Graceful shutdown — wait for in-flight requests before exiting
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal} — shutting down gracefully`);
-    server.close(() => {
+    await new Promise<void>((resolve) => server.close(() => {
       logger.info("HTTP server closed");
-    });
+      resolve();
+    }));
     await shutdownProducer();
     process.exit(0);
   };
