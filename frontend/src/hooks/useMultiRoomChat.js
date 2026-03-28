@@ -209,6 +209,15 @@ export function useMultiRoomChat() {
         window.alert(msg.detail);
         break;
 
+      // presence_sync is sent by the server on lobby connect with the current
+      // list of all online users. Use it to mark PM contacts as offline if
+      // they're not in the online list.
+      case 'presence_sync': {
+        const onlineSet = new Set(msg.users || []);
+        dispatch({ type: 'PRESENCE_SYNC', onlineUsers: onlineSet });
+        break;
+      }
+
       default:
         break;
     }
@@ -327,10 +336,16 @@ export function useMultiRoomChat() {
     [...socketsRef.current.keys()].forEach(roomId => exitRoom(roomId));
   }, [exitRoom]);
 
-  // ── disconnectAll (logout) — close sockets but keep localStorage ──
+  // ── disconnectAll (logout) — close ALL sockets (rooms + lobby) ──
   const disconnectAll = useCallback(() => {
+    // Close all room sockets
     socketsRef.current.forEach(ws => ws.close());
     socketsRef.current.clear();
+    // Close the lobby socket so the server removes us from the online list
+    if (lobbyRef.current) {
+      lobbyRef.current.close();
+      lobbyRef.current = null;
+    }
   }, []);
 
   useEffect(() => { exitRoomRef.current = exitRoom; }, [exitRoom]);

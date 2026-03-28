@@ -164,6 +164,26 @@ export function chatReducer(state, action) {
       if (state.knownOfflineUsers.size === 0) return state;
       return { ...state, knownOfflineUsers: new Set() };
 
+    // Server sends the full online users list on lobby connect.
+    // Any user we know about (from room online lists) who is NOT in the
+    // server's online list gets marked offline. This fixes PM contacts
+    // showing as "online" when they're actually disconnected.
+    case 'PRESENCE_SYNC': {
+      const onlineSet = action.onlineUsers; // Set<username>
+      const nextOffline = new Set();
+      // Check all users we've ever seen in rooms
+      for (const users of Object.values(state.onlineUsers)) {
+        for (const u of users) {
+          if (!onlineSet.has(u)) nextOffline.add(u);
+        }
+      }
+      // Also keep any existing offline entries not contradicted by the sync
+      for (const u of state.knownOfflineUsers) {
+        if (!onlineSet.has(u)) nextOffline.add(u);
+      }
+      return { ...state, knownOfflineUsers: nextOffline };
+    }
+
     default:
       return state;
   }
