@@ -4,6 +4,7 @@ Pure database operations — no business logic, no HTTP concerns.
 Each function takes a SQLAlchemy Session and returns model instances or None.
 """
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import User
@@ -15,8 +16,8 @@ def get_by_id(db: Session, user_id: int) -> User | None:
 
 
 def get_by_username(db: Session, username: str) -> User | None:
-    """Look up a user by username (case-sensitive)."""
-    return db.query(User).filter(User.username == username).first()
+    """Look up a user by username (case-insensitive)."""
+    return db.query(User).filter(func.lower(User.username) == username.lower()).first()
 
 
 def create(

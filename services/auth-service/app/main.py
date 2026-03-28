@@ -105,8 +105,8 @@ async def lifespan(app: FastAPI):
                 db_pool_size.set(pool.size())
                 db_pool_checked_out.set(pool.checkedout())
                 db_pool_overflow.set(pool.overflow())
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("pool_stats_collection_error", error=str(e))
             await asyncio.sleep(15)
 
     pool_stats_task = asyncio.create_task(_collect_pool_stats())
@@ -122,6 +122,13 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
     await close_producer()
+
+    # Clean up connection pools to avoid leaked connections on restart
+    from app.infrastructure.redis import close_redis_pool
+
+    close_redis_pool()
+    engine.dispose()
+
     logger.info("auth_service_shutdown_complete")
 
 

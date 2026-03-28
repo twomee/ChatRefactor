@@ -8,6 +8,7 @@ Key differences from monolith:
 """
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import ACCESS_TOKEN_EXPIRE_HOURS, APP_ENV
@@ -31,16 +32,19 @@ async def register(db: Session, body: UserRegister) -> dict:
     Flow: validate -> check duplicate -> hash password -> persist -> produce event.
     The Kafka event is fire-and-forget: registration succeeds even if Kafka is down.
     """
-    if not body.username.strip() or not body.password.strip():
-        raise HTTPException(status_code=400, detail="Username and password required")
-
     if user_dal.get_by_username(db, body.username):
         auth_registrations_total.labels(status="duplicate").inc()
         raise HTTPException(status_code=409, detail="Username already taken")
 
-    user = user_dal.create(
-        db, username=body.username.strip(), password_hash=hash_password(body.password)
-    )
+    try:
+        user = user_dal.create(
+            db, username=body.username, password_hash=hash_password(body.password)
+        )
+    except IntegrityError:
+        db.rollback()
+        auth_registrations_total.labels(status="duplicate").inc()
+        raise HTTPException(status_code=409, detail="Username already taken")
+
     logger.info("user_registered", username=user.username, user_id=user.id)
     auth_registrations_total.labels(status="success").inc()
 
@@ -102,25 +106,27 @@ async def logout(user_info: dict, token: str) -> dict:
     user_id = user_info["user_id"]
 
     # Blacklist the token in Redis so it can't be reused
+    blacklist_ok = False
     try:
         from app.infrastructure.redis import get_redis
 
         r = get_redis()
         r.setex(f"blacklist:{token}", ACCESS_TOKEN_EXPIRE_HOURS * 3600, "1")
+        blacklist_ok = True
     except Exception as exc:
         logger.error(
             "token_blacklist_failed",
             username=username,
             msg="Redis unavailable — token cannot be revoked until expiry",
         )
-        if APP_ENV == "prod":
+        if APP_ENV in ("prod", "staging"):
             raise HTTPException(
                 status_code=503,
                 detail="Logout partially failed — please try again or change your password",
             ) from exc
 
     logger.info("user_logged_out", username=username, user_id=user_id)
-    auth_logouts_total.labels(status="success").inc()
+    auth_logouts_total.labels(status="success" if blacklist_ok else "degraded").inc()
 
     # Fire-and-forget Kafka event
     await produce_event("user_logged_out", {"user_id": user_id, "username": username})
