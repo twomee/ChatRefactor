@@ -11,6 +11,7 @@ import Logo from '../components/common/Logo';
 import RoomList from '../components/room/RoomList';
 import MessageList from '../components/chat/MessageList';
 import MessageInput from '../components/chat/MessageInput';
+import TypingIndicator from '../components/chat/TypingIndicator';
 import UserList from '../components/room/UserList';
 import PMList from '../components/pm/PMList';
 import PMView from '../components/pm/PMView';
@@ -54,7 +55,7 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const [layouts, setLayouts] = useState(loadLayouts);
 
-  const { joinRoom, exitRoom, disconnectAll, sendMessage, connectionStatus } = useChatConnection();
+  const { joinRoom, exitRoom, disconnectAll, sendMessage, sendTyping, connectionStatus } = useChatConnection();
 
   // Add page-active class on mount so the one-shot aurora animation plays,
   // and remove it on unmount so the login page returns to the static gradient.
@@ -147,6 +148,7 @@ export default function ChatPage() {
   const activeUsers = state.onlineUsers[state.activeRoomId] || [];
   const activeAdmins = state.admins[state.activeRoomId] || [];
   const activeMuted = state.mutedUsers[state.activeRoomId] || [];
+  const activeTypingUsers = state.typingUsers[state.activeRoomId];
   const isCurrentUserAdmin = activeAdmins.includes(user?.username);
 
   const pmMessages = pmState.activePM
@@ -266,10 +268,13 @@ export default function ChatPage() {
             </div>
             <main className="center-panel" style={{ flex: 1, overflow: 'hidden', background: 'transparent' }}>
               {showRoom && (
-                <MessageList
-                  messages={activeMessages}
-                  onScrollToBottom={handleRoomScrollBottom}
-                />
+                <>
+                  <MessageList
+                    messages={activeMessages}
+                    onScrollToBottom={handleRoomScrollBottom}
+                  />
+                  <TypingIndicator typingUsers={activeTypingUsers} />
+                </>
               )}
               {showPM && (
                 <PMView
@@ -300,7 +305,7 @@ export default function ChatPage() {
             </div>
             <div style={{ padding: '0 12px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
               {showRoom ? (
-                <MessageInput onSend={handleSend} roomName={activeRoom?.name} roomId={state.activeRoomId} />
+                <MessageInput onSend={handleSend} roomName={activeRoom?.name} roomId={state.activeRoomId} onTyping={() => sendTyping(state.activeRoomId)} />
               ) : showPM ? (
                 <MessageInput onSend={handleSendPM} roomName={pmState.activePM} isPM />
               ) : (

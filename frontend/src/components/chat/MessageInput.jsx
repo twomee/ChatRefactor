@@ -2,12 +2,24 @@
 import { useRef, useState } from 'react';
 import { uploadFile } from '../../services/fileApi';
 
-export default function MessageInput({ onSend, roomName, roomId, isPM = false }) {
+export default function MessageInput({ onSend, roomName, roomId, isPM = false, onTyping }) {
   const [text, setText] = useState('');
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
   const fileRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+
+  function handleChange(e) {
+    setText(e.target.value);
+    // Debounce typing emission — send at most once every 2 seconds
+    if (onTyping && !typingTimeoutRef.current) {
+      onTyping();
+      typingTimeoutRef.current = setTimeout(() => {
+        typingTimeoutRef.current = null;
+      }, 2000);
+    }
+  }
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -81,7 +93,7 @@ export default function MessageInput({ onSend, roomName, roomId, isPM = false })
         <input
           className="message-input"
           value={text}
-          onChange={e => setText(e.target.value)}
+          onChange={handleChange}
           placeholder={isPM ? `Message ${roomName}…` : roomName ? `Message #${roomName}...` : 'Type a message...'}
         />
 
