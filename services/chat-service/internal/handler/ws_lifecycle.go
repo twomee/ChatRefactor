@@ -287,6 +287,9 @@ func (h *WSHandler) sendHistory(conn *websocket.Conn, roomID int, token string) 
 		if isDeleted, ok := m["is_deleted"]; ok {
 			msg["is_deleted"] = isDeleted
 		}
+		if reactions, ok := m["reactions"]; ok {
+			msg["reactions"] = reactions
+		}
 		transformed = append(transformed, msg)
 	}
 

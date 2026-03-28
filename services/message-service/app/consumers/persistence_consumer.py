@@ -149,11 +149,15 @@ class MessagePersistenceConsumer:
         db = SessionLocal()
         try:
             if topic == TOPIC_MESSAGES:
-                msg_type = value.get("type")
+                msg_type = value.get("type", "message")
                 if msg_type == "edit_message":
                     self._handle_edit_message(db, value)
                 elif msg_type == "delete_message":
                     self._handle_delete_message(db, value)
+                elif msg_type == "add_reaction":
+                    self._persist_add_reaction(db, value)
+                elif msg_type == "remove_reaction":
+                    self._persist_remove_reaction(db, value)
                 else:
                     self._persist_room_message(db, value)
             elif topic == TOPIC_PRIVATE:
@@ -290,6 +294,40 @@ class MessagePersistenceConsumer:
                 logger.debug("message_deleted_via_kafka", msg_id=msg_id)
             else:
                 logger.warning("message_delete_skipped", msg_id=msg_id, sender_id=sender_id)
+
+    def _persist_add_reaction(self, db, value: dict):
+        """Persist an add_reaction event from Kafka."""
+        from app.dal import reaction_dal
+
+        msg_id = value.get("msg_id")
+        user_id = value.get("user_id")
+        username = value.get("username")
+        emoji = value.get("emoji")
+
+        if any(v is None for v in [msg_id, user_id, username, emoji]):
+            logger.warning("add_reaction_missing_fields", value=value)
+            return
+
+        inserted = reaction_dal.add_reaction(db, msg_id, user_id, username, emoji)
+        if inserted:
+            messages_persisted_total.labels(type="reaction").inc()
+            logger.debug("reaction_persisted", msg_id=msg_id, emoji=emoji, user=username)
+
+    def _persist_remove_reaction(self, db, value: dict):
+        """Persist a remove_reaction event from Kafka."""
+        from app.dal import reaction_dal
+
+        msg_id = value.get("msg_id")
+        user_id = value.get("user_id")
+        emoji = value.get("emoji")
+
+        if any(v is None for v in [msg_id, user_id, emoji]):
+            logger.warning("remove_reaction_missing_fields", value=value)
+            return
+
+        removed = reaction_dal.remove_reaction(db, msg_id, user_id, emoji)
+        if removed:
+            logger.debug("reaction_removed", msg_id=msg_id, emoji=emoji)
 
     async def _send_to_dlq(self, msg):
         """Route a failed message to the Dead Letter Queue with error context."""

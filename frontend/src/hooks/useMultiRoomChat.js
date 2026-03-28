@@ -70,7 +70,7 @@ export function useMultiRoomChat() {
           dispatch({
             type: 'ADD_MESSAGE',
             roomId: m.room_id,
-            message: { from: m.sender, text: m.content },
+            message: { from: m.sender, text: m.content, msg_id: m.message_id },
           });
         }
       }
@@ -251,6 +251,27 @@ export function useMultiRoomChat() {
             isTyping: false,
           });
         }, 3000);
+        break;
+
+      case 'reaction_added':
+        dispatch({
+          type: 'ADD_REACTION',
+          roomId: msg.room_id,
+          msgId: msg.msg_id,
+          emoji: msg.emoji,
+          username: msg.username,
+          userId: msg.user_id,
+        });
+        break;
+
+      case 'reaction_removed':
+        dispatch({
+          type: 'REMOVE_REACTION',
+          roomId: msg.room_id,
+          msgId: msg.msg_id,
+          emoji: msg.emoji,
+          username: msg.username,
+        });
         break;
 
       case 'error':

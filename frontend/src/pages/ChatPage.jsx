@@ -143,6 +143,16 @@ export default function ChatPage() {
     }
   }
 
+  function handleAddReaction(msgId, emoji) {
+    if (!state.activeRoomId) return;
+    sendMessage(state.activeRoomId, { type: 'add_reaction', msg_id: msgId, emoji });
+  }
+
+  function handleRemoveReaction(msgId, emoji) {
+    if (!state.activeRoomId) return;
+    sendMessage(state.activeRoomId, { type: 'remove_reaction', msg_id: msgId, emoji });
+  }
+
   function handleKick(target) { sendMessage(state.activeRoomId, { type: 'kick', target }); }
   function handleMute(target) { sendMessage(state.activeRoomId, { type: 'mute', target }); }
   function handleUnmute(target) { sendMessage(state.activeRoomId, { type: 'unmute', target }); }
@@ -295,6 +305,8 @@ export default function ChatPage() {
                     currentUser={user?.username}
                     onEditMessage={handleEditMessage}
                     onDeleteMessage={handleDeleteMessage}
+                    onAddReaction={handleAddReaction}
+                    onRemoveReaction={handleRemoveReaction}
                   />
                   <TypingIndicator typingUsers={activeTypingUsers} />
                 </>

@@ -1,4 +1,4 @@
-# app/models/__init__.py — Message model
+# app/models/__init__.py — Message & Reaction models
 #
 # Key difference from monolith: NO ForeignKey constraints.
 # In the microservice architecture, users and rooms live in separate databases
@@ -7,7 +7,7 @@
 # application level, not the database level.
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, UniqueConstraint
 
 from app.core.database import Base
 
@@ -30,3 +30,27 @@ class Message(Base):
     sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     edited_at = Column(DateTime, nullable=True)
     is_deleted = Column(Boolean, default=False, nullable=False)
+
+
+class Reaction(Base):
+    """Emoji reaction on a message.
+
+    Each row represents one user's reaction (one emoji) on one message.
+    The unique constraint prevents duplicate reactions — a user can only
+    react once per emoji per message.
+    """
+
+    __tablename__ = "reactions"
+
+    id = Column(Integer, primary_key=True)
+    message_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(Integer, nullable=False)
+    username = Column(String(64), nullable=False)
+    emoji = Column(String(32), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "message_id", "user_id", "emoji", name="uq_reaction_per_user_per_emoji"
+        ),
+    )

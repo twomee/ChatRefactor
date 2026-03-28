@@ -27,7 +27,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.config import ALGORITHM, SECRET_KEY
 from app.core.database import Base, get_db
-from app.models import Message
+from app.models import Message, Reaction
 
 # ── In-memory SQLite test database ──────────────────────────────────
 
