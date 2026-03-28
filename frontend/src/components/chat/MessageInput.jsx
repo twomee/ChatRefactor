@@ -18,6 +18,14 @@ export default function MessageInput({ onSend, roomName, roomId, isPM = false, e
     }
   }, [editingMessage]);
 
+  // Allow Escape key to cancel edit mode
+  useEffect(() => {
+    if (!editingMessage) return;
+    const handler = (e) => { if (e.key === 'Escape') onCancelEdit?.(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [editingMessage, onCancelEdit]);
+
   function handleSubmit(e) {
     e.preventDefault();
     if (!text.trim()) return;

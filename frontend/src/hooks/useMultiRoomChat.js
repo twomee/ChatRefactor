@@ -158,8 +158,9 @@ export function useMultiRoomChat() {
           type: 'EDIT_MESSAGE',
           roomId: msg.room_id,
           msgId: msg.msg_id,
-          text: msg.text,
-          edited_at: msg.edited_at,
+          newText: msg.text,
+          editedAt: msg.edited_at,
+          from: msg.from,
         });
         break;
 
@@ -168,6 +169,7 @@ export function useMultiRoomChat() {
           type: 'DELETE_MESSAGE',
           roomId: msg.room_id,
           msgId: msg.msg_id,
+          from: msg.from,
         });
         break;
 

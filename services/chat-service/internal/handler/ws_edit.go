@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 
 // handleEditMessage validates the edit request, broadcasts the edit to the room,
 // and publishes to Kafka for persistence.
-func (h *WSHandler) handleEditMessage(conn *websocket.Conn, roomID, userID int, username string, msg IncomingMessage) {
+func (h *WSHandler) handleEditMessage(ctx context.Context, conn *websocket.Conn, roomID, userID int, username string, msg IncomingMessage) {
 	if strings.TrimSpace(msg.MessageID) == "" {
 		h.sendError(conn, "Message ID is required for editing")
 		return
@@ -25,6 +26,20 @@ func (h *WSHandler) handleEditMessage(conn *websocket.Conn, roomID, userID int, 
 
 	if len(msg.Text) > maxContentLength {
 		h.sendError(conn, "Message too long")
+		return
+	}
+
+	// Check if user is muted.
+	muted, _ := h.store.IsMuted(ctx, roomID, userID)
+	if muted {
+		h.sendError(conn, "You are muted in this room")
+		return
+	}
+
+	// Rate limiting.
+	key := fmt.Sprintf("room:%d:user:%d", roomID, userID)
+	if !h.limiter.allow(key) {
+		h.sendError(conn, "Rate limit exceeded")
 		return
 	}
 
@@ -52,7 +67,6 @@ func (h *WSHandler) handleEditMessage(conn *websocket.Conn, roomID, userID int, 
 		"timestamp": now.Format(time.RFC3339),
 	}
 	payload, _ := json.Marshal(kafkaMsg)
-	ctx := context.Background()
 	if err := h.delivery.DeliverChat(ctx, roomID, payload); err != nil {
 		h.logger.Warn("kafka_edit_deliver_failed", zap.Error(err))
 	}
@@ -60,9 +74,23 @@ func (h *WSHandler) handleEditMessage(conn *websocket.Conn, roomID, userID int, 
 
 // handleDeleteMessage validates the delete request, broadcasts the deletion to the room,
 // and publishes to Kafka for persistence.
-func (h *WSHandler) handleDeleteMessage(conn *websocket.Conn, roomID, userID int, username string, msg IncomingMessage) {
+func (h *WSHandler) handleDeleteMessage(ctx context.Context, conn *websocket.Conn, roomID, userID int, username string, msg IncomingMessage) {
 	if strings.TrimSpace(msg.MessageID) == "" {
 		h.sendError(conn, "Message ID is required for deletion")
+		return
+	}
+
+	// Check if user is muted.
+	muted, _ := h.store.IsMuted(ctx, roomID, userID)
+	if muted {
+		h.sendError(conn, "You are muted in this room")
+		return
+	}
+
+	// Rate limiting.
+	key := fmt.Sprintf("room:%d:user:%d", roomID, userID)
+	if !h.limiter.allow(key) {
+		h.sendError(conn, "Rate limit exceeded")
 		return
 	}
 
@@ -87,7 +115,6 @@ func (h *WSHandler) handleDeleteMessage(conn *websocket.Conn, roomID, userID int
 		"timestamp": now.Format(time.RFC3339),
 	}
 	payload, _ := json.Marshal(kafkaMsg)
-	ctx := context.Background()
 	if err := h.delivery.DeliverChat(ctx, roomID, payload); err != nil {
 		h.logger.Warn("kafka_delete_deliver_failed", zap.Error(err))
 	}

@@ -143,30 +143,31 @@ export function chatReducer(state, action) {
       };
 
     case 'EDIT_MESSAGE': {
-      const roomMsgs = state.messages[action.roomId];
-      if (!roomMsgs) return state;
-      const updated = roomMsgs.map(m =>
-        m.msg_id === action.msgId
-          ? { ...m, text: action.text, edited_at: action.edited_at }
-          : m
-      );
+      const { roomId, msgId, newText, editedAt, from } = action;
+      const roomMsgs = state.messages[roomId] || [];
       return {
         ...state,
-        messages: { ...state.messages, [action.roomId]: updated },
+        messages: {
+          ...state.messages,
+          [roomId]: roomMsgs.map(m =>
+            // Only apply edit if the edit came from the original sender
+            (m.msg_id === msgId && m.from === from) ? { ...m, text: newText, edited_at: editedAt } : m
+          ),
+        },
       };
     }
 
     case 'DELETE_MESSAGE': {
-      const roomMsgs = state.messages[action.roomId];
-      if (!roomMsgs) return state;
-      const updated = roomMsgs.map(m =>
-        m.msg_id === action.msgId
-          ? { ...m, text: '[deleted]', is_deleted: true }
-          : m
-      );
+      const { roomId, msgId, from } = action;
+      const roomMsgs = state.messages[roomId] || [];
       return {
         ...state,
-        messages: { ...state.messages, [action.roomId]: updated },
+        messages: {
+          ...state.messages,
+          [roomId]: roomMsgs.map(m =>
+            (m.msg_id === msgId && m.from === from) ? { ...m, text: '[deleted]', is_deleted: true } : m
+          ),
+        },
       };
     }
 

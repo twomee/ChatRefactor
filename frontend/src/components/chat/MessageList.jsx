@@ -110,7 +110,7 @@ export default function MessageList({ messages, onScrollToBottom, currentUser, o
               {msg.edited_at && <span className="msg-edited-badge">(edited)</span>}
               <div className="msg-text">{msg.text}</div>
             </div>
-            {isOwn && msg.msg_id && (
+            {isOwn && msg.msg_id && !msg.isSystem && (
               <div className="msg-actions">
                 <button
                   className="msg-action-btn"

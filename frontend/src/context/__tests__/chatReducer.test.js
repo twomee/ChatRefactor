@@ -268,6 +268,134 @@ describe('chatReducer', () => {
     });
   });
 
+  describe('EDIT_MESSAGE', () => {
+    it('updates the correct message text and sets edited_at', () => {
+      const state = {
+        ...initialState,
+        messages: {
+          r1: [
+            { msg_id: 'aaa', from: 'alice', text: 'Hello' },
+            { msg_id: 'bbb', from: 'bob', text: 'World' },
+          ],
+        },
+      };
+
+      const next = chatReducer(state, {
+        type: 'EDIT_MESSAGE',
+        roomId: 'r1',
+        msgId: 'aaa',
+        newText: 'Hello, updated!',
+        editedAt: '2025-06-01T00:00:00Z',
+        from: 'alice',
+      });
+
+      expect(next.messages.r1[0].text).toBe('Hello, updated!');
+      expect(next.messages.r1[0].edited_at).toBe('2025-06-01T00:00:00Z');
+      // Other message untouched
+      expect(next.messages.r1[1].text).toBe('World');
+      expect(next.messages.r1[1].edited_at).toBeUndefined();
+    });
+
+    it('ignores wrong msg_id', () => {
+      const state = {
+        ...initialState,
+        messages: { r1: [{ msg_id: 'aaa', from: 'alice', text: 'Hello' }] },
+      };
+
+      const next = chatReducer(state, {
+        type: 'EDIT_MESSAGE',
+        roomId: 'r1',
+        msgId: 'nonexistent',
+        newText: 'Nope',
+        editedAt: '2025-06-01T00:00:00Z',
+        from: 'alice',
+      });
+
+      expect(next.messages.r1[0].text).toBe('Hello');
+      expect(next.messages.r1[0].edited_at).toBeUndefined();
+    });
+
+    it('does not apply edit when from does not match original sender (ownership check)', () => {
+      const state = {
+        ...initialState,
+        messages: { r1: [{ msg_id: 'aaa', from: 'alice', text: 'Hello' }] },
+      };
+
+      const next = chatReducer(state, {
+        type: 'EDIT_MESSAGE',
+        roomId: 'r1',
+        msgId: 'aaa',
+        newText: 'Hacked!',
+        editedAt: '2025-06-01T00:00:00Z',
+        from: 'eve', // not the original sender
+      });
+
+      expect(next.messages.r1[0].text).toBe('Hello');
+      expect(next.messages.r1[0].edited_at).toBeUndefined();
+    });
+  });
+
+  describe('DELETE_MESSAGE', () => {
+    it('sets is_deleted and replaces text with [deleted]', () => {
+      const state = {
+        ...initialState,
+        messages: {
+          r1: [
+            { msg_id: 'aaa', from: 'alice', text: 'Hello' },
+            { msg_id: 'bbb', from: 'bob', text: 'World' },
+          ],
+        },
+      };
+
+      const next = chatReducer(state, {
+        type: 'DELETE_MESSAGE',
+        roomId: 'r1',
+        msgId: 'aaa',
+        from: 'alice',
+      });
+
+      expect(next.messages.r1[0].is_deleted).toBe(true);
+      expect(next.messages.r1[0].text).toBe('[deleted]');
+      // Other message untouched
+      expect(next.messages.r1[1].text).toBe('World');
+      expect(next.messages.r1[1].is_deleted).toBeUndefined();
+    });
+
+    it('does not apply delete when from does not match original sender (ownership check)', () => {
+      const state = {
+        ...initialState,
+        messages: { r1: [{ msg_id: 'aaa', from: 'alice', text: 'Hello' }] },
+      };
+
+      const next = chatReducer(state, {
+        type: 'DELETE_MESSAGE',
+        roomId: 'r1',
+        msgId: 'aaa',
+        from: 'eve', // not the original sender
+      });
+
+      expect(next.messages.r1[0].text).toBe('Hello');
+      expect(next.messages.r1[0].is_deleted).toBeUndefined();
+    });
+
+    it('ignores wrong msg_id', () => {
+      const state = {
+        ...initialState,
+        messages: { r1: [{ msg_id: 'aaa', from: 'alice', text: 'Hello' }] },
+      };
+
+      const next = chatReducer(state, {
+        type: 'DELETE_MESSAGE',
+        roomId: 'r1',
+        msgId: 'nonexistent',
+        from: 'alice',
+      });
+
+      expect(next.messages.r1[0].text).toBe('Hello');
+      expect(next.messages.r1[0].is_deleted).toBeUndefined();
+    });
+  });
+
   describe('default', () => {
     it('returns current state for unknown action', () => {
       const next = chatReducer(initialState, { type: 'UNKNOWN_ACTION' });

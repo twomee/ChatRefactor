@@ -121,6 +121,7 @@ export default function ChatPage() {
 
   function handleDeleteMessage(msg) {
     if (!state.activeRoomId || !msg.msg_id) return;
+    if (!window.confirm('Delete this message? This cannot be undone.')) return;
     sendMessage(state.activeRoomId, { type: 'delete_message', msg_id: msg.msg_id });
   }
 

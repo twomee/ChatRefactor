@@ -10,7 +10,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/messages", tags=["messages"])
 class EditMessageBody(BaseModel):
     """Request body for editing a message."""
 
-    content: str
+    content: str = Field(..., min_length=1, max_length=4096)
 
 
 @router.get("/rooms/{room_id}", response_model=list[MessageResponse])

@@ -1,5 +1,5 @@
 # app/dal/message_dal.py — Data Access Layer for Message model
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -82,7 +82,7 @@ def edit_message(db: Session, message_id: str, sender_id: int, new_content: str)
     if not msg or msg.is_deleted:
         return False
     msg.content = new_content
-    msg.edited_at = datetime.utcnow()
+    msg.edited_at = datetime.now(timezone.utc)
     db.commit()
     return True
 
