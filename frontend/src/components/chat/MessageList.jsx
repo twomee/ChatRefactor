@@ -100,7 +100,7 @@ export default function MessageList({ messages, onScrollToBottom }) {
               <div className="msg-avatar">{getInitials(msg.isSelf ? msg.to : msg.from)}</div>
               <div className="msg-body">
                 <div className="msg-private-label">{label}</div>
-                <div className="msg-text">{msg.text}</div>
+                <div className="msg-text">{renderMessageText(msg.text, currentUser)}</div>
               </div>
             </div>
           );

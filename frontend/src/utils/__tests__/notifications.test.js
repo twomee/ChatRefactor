@@ -49,6 +49,32 @@ describe('notifications', () => {
     expect(globalThis.Notification.requestPermission).toHaveBeenCalled();
   });
 
+  it('sendBrowserNotification creates notification when tab is not focused', async () => {
+    // Vitest requires a function/class implementation (not arrow) for `new`
+    const calls = [];
+    function MockNotification(title, options) {
+      calls.push({ title, options });
+      this.close = vi.fn();
+    }
+    MockNotification.permission = 'granted';
+    MockNotification.requestPermission = vi.fn().mockResolvedValue('granted');
+    globalThis.Notification = MockNotification;
+
+    const { requestNotificationPermission, sendBrowserNotification } = await import('../notifications.js');
+    await requestNotificationPermission();
+
+    const originalHasFocus = document.hasFocus;
+    document.hasFocus = () => false;
+    try {
+      sendBrowserNotification('Test Title', 'Test Body');
+      expect(calls.length).toBe(1);
+      expect(calls[0].title).toBe('Test Title');
+      expect(calls[0].options.body).toBe('Test Body');
+    } finally {
+      document.hasFocus = originalHasFocus;
+    }
+  });
+
   it('sendBrowserNotification does not fire when document has focus', async () => {
     const mockConstructor = vi.fn();
     globalThis.Notification = Object.assign(mockConstructor, { permission: 'granted' });

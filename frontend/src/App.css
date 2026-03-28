@@ -744,6 +744,7 @@
 .mention {
   color: var(--accent);
   font-weight: 600;
+  /* background uses accent RGB directly since CSS vars don't support alpha easily */
   background: rgba(14, 165, 233, 0.1);
   padding: 0 2px;
   border-radius: 3px;

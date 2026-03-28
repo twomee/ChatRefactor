@@ -87,3 +87,21 @@ func TestIsRoomMention_EmptyString(t *testing.T) {
 		t.Error("expected false for empty string")
 	}
 }
+
+func TestIsRoomMention_PartialMatch(t *testing.T) {
+	if isRoomMention("hey @roommate check this") {
+		t.Error("expected false for @roommate (partial match)")
+	}
+}
+
+func TestIsRoomMention_ChannelPartialMatch(t *testing.T) {
+	if isRoomMention("@channeling my energy") {
+		t.Error("expected false for @channeling (partial match)")
+	}
+}
+
+func TestIsRoomMention_EveryonePartialMatch(t *testing.T) {
+	if isRoomMention("@everyoneknows") {
+		t.Error("expected false for @everyoneknows (partial match)")
+	}
+}

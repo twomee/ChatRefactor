@@ -38,6 +38,12 @@ export function useMultiRoomChat() {
     }
   }
 
+  // Keep a ref to the latest `user` so handleMessage (memoised with
+  // [dispatch, pmDispatch]) always sees the current value without
+  // needing `user` in its dependency array (which would break memoisation).
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
+
   // Mutable refs — changes don't need re-renders
   const socketsRef = useRef(new Map());
   const lobbyRef = useRef(null);
@@ -121,10 +127,13 @@ export function useMultiRoomChat() {
         trackTimestamp(msg.room_id);
 
         // Send browser notification when the current user is @mentioned.
-        const currentUsername = user?.username;
-        if (currentUsername && (msg.mentions?.includes(currentUsername.toLowerCase()) || msg.mention_room)) {
+        // Use userRef (not `user`) to avoid a stale closure — see ref at top.
+        const currentUsername = userRef.current?.username;
+        if (currentUsername &&
+            msg.from?.toLowerCase() !== currentUsername.toLowerCase() &&
+            (msg.mentions?.includes(currentUsername.toLowerCase()) || msg.mention_room)) {
           sendBrowserNotification(
-            `@${msg.from} mentioned you`,
+            `${msg.from} mentioned you`,
             msg.text.substring(0, 100)
           );
         }
