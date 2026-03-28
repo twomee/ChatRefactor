@@ -21,7 +21,7 @@ function getBackoffDelay(attempt) {
 export function useMultiRoomChat() {
   const { state, dispatch } = useChat();
   const { pmState, pmDispatch } = usePM();
-  const { token, user, logout } = useAuth();
+  const { token, user } = useAuth();
   const username = user?.username ?? 'anonymous';
 
   // ── Connection status ─────────────────────────────────────────────────────
@@ -272,13 +272,8 @@ export function useMultiRoomChat() {
         retryCountsRef.current.delete(roomId);
         updateConnectionStatus();
       }
-      // 4001 = auth rejected — token is invalid, force logout
-      else if (event.code === 4001) {
-        console.warn('WebSocket auth rejected (4001) — forcing logout');
-        logout();
-      }
-      // 4002–4004: permanent failures — don't reconnect
-      else if (event.code >= 4002 && event.code <= 4004) {
+      // 4001–4004: permanent failures — don't reconnect
+      else if (event.code >= 4001 && event.code <= 4004) {
         dispatch({ type: 'EXIT_ROOM', roomId });
         removeJoinedRoom(username, roomId);
         reconnectingRoomsRef.current.delete(roomId);
@@ -389,11 +384,7 @@ export function useMultiRoomChat() {
         if (lobbyRef.current === ws) {
           lobbyRef.current = null;
         }
-        if (event.code === 4001) {
-          authRejected = true;
-          console.warn('Lobby WebSocket auth rejected (4001) — forcing logout');
-          logout();
-        }
+        if (event.code === 4001) authRejected = true;
         if (!intentionallyClosed && !authRejected) {
           const attempt = lobbyRetryRef.current++;
           const delay = wasOpen ? getBackoffDelay(attempt) : 5000;
