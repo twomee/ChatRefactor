@@ -61,7 +61,7 @@ describe('MessageList', () => {
 
   it('highlights @mentions in regular messages', () => {
     const messages = [{ from: 'alice', text: 'Hey @bob check this out' }];
-    const { container } = render(<MessageList messages={messages} />);
+    const { container } = render(<MessageList messages={messages} currentUser="testuser" />);
     const mention = container.querySelector('.mention');
     expect(mention).toBeInTheDocument();
     expect(mention.textContent).toBe('@bob');
@@ -69,7 +69,7 @@ describe('MessageList', () => {
 
   it('highlights self-mention with mention-self class', () => {
     const messages = [{ from: 'alice', text: 'Hey @testuser look at this' }];
-    const { container } = render(<MessageList messages={messages} />);
+    const { container } = render(<MessageList messages={messages} currentUser="testuser" />);
     const mention = container.querySelector('.mention-self');
     expect(mention).toBeInTheDocument();
     expect(mention.textContent).toBe('@testuser');

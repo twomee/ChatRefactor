@@ -1,6 +1,5 @@
 // src/components/chat/MessageList.jsx
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
 import { formatSize } from '../../utils/formatting';
 import { isImageFile } from '../../utils/fileHelpers';
 import { downloadFile } from '../../services/fileApi';
@@ -213,7 +212,7 @@ export default function MessageList({ messages, onScrollToBottom, currentUser, o
             <div className="msg-body">
               <span className="msg-author">{msg.from}</span>
               {msg.edited_at && <span className="msg-edited-badge">(edited)</span>}
-              <div className="msg-text"><span className="msg-text-content"><MarkdownMessage text={msg.text} /></span></div>
+              <div className="msg-text"><span className="msg-text-content">{renderMessageText(msg.text, currentUser)}</span></div>
               {/* Reaction chips */}
               {(grouped.length > 0 || msg.msg_id) && (
                 <div className="msg-reactions">

@@ -13,7 +13,7 @@ import (
 // handleAddReaction validates the reaction payload, broadcasts a reaction_added
 // event to the room, and publishes to Kafka for persistence.
 func (h *WSHandler) handleAddReaction(ctx context.Context, conn *websocket.Conn, roomID, userID int, username string, msg IncomingMessage) {
-	msgID := strings.TrimSpace(msg.MsgID)
+	msgID := strings.TrimSpace(msg.MessageID)
 	emoji := strings.TrimSpace(msg.Emoji)
 
 	if msgID == "" {
@@ -71,7 +71,7 @@ func (h *WSHandler) handleAddReaction(ctx context.Context, conn *websocket.Conn,
 // handleRemoveReaction validates the reaction payload, broadcasts a reaction_removed
 // event to the room, and publishes to Kafka for persistence.
 func (h *WSHandler) handleRemoveReaction(ctx context.Context, conn *websocket.Conn, roomID, userID int, username string, msg IncomingMessage) {
-	msgID := strings.TrimSpace(msg.MsgID)
+	msgID := strings.TrimSpace(msg.MessageID)
 	emoji := strings.TrimSpace(msg.Emoji)
 
 	if msgID == "" {
