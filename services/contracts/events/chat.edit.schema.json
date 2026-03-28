@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chat.edit.schema.json",
+  "title": "Chat Message Edit",
+  "description": "Produced by Chat & Room Service to chat.messages topic when a user edits a message in a room.",
+  "type": "object",
+  "required": ["type", "msg_id", "sender_id", "username", "text", "room_id", "timestamp"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "edit_message",
+      "description": "Event type discriminator — always 'edit_message'"
+    },
+    "msg_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID of the message being edited"
+    },
+    "sender_id": {
+      "type": "integer",
+      "description": "User ID of the message author (only the author can edit)"
+    },
+    "username": {
+      "type": "string",
+      "description": "Username of the sender (for display)"
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 4096,
+      "description": "New message content"
+    },
+    "room_id": {
+      "type": "integer",
+      "description": "Room ID the message belongs to"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of the edit"
+    }
+  },
+  "additionalProperties": false,
+  "_kafka": {
+    "topic": "chat.messages",
+    "key": "str(room_id)",
+    "retention": "7 days",
+    "producer": "Chat & Room Service (Go)",
+    "consumer": "Message Service (Python)"
+  }
+}

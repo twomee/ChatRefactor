@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chat.delete.schema.json",
+  "title": "Chat Message Delete",
+  "description": "Produced by Chat & Room Service to chat.messages topic when a user deletes a message in a room.",
+  "type": "object",
+  "required": ["type", "msg_id", "sender_id", "username", "room_id", "timestamp"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "delete_message",
+      "description": "Event type discriminator — always 'delete_message'"
+    },
+    "msg_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID of the message being deleted"
+    },
+    "sender_id": {
+      "type": "integer",
+      "description": "User ID of the message author (only the author can delete)"
+    },
+    "username": {
+      "type": "string",
+      "description": "Username of the sender (for audit)"
+    },
+    "room_id": {
+      "type": "integer",
+      "description": "Room ID the message belongs to"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of the deletion"
+    }
+  },
+  "additionalProperties": false,
+  "_kafka": {
+    "topic": "chat.messages",
+    "key": "str(room_id)",
+    "retention": "7 days",
+    "producer": "Chat & Room Service (Go)",
+    "consumer": "Message Service (Python)"
+  }
+}

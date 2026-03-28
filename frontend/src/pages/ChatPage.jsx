@@ -56,6 +56,7 @@ export default function ChatPage() {
   const [layouts, setLayouts] = useState(loadLayouts);
 
   const { joinRoom, exitRoom, disconnectAll, sendMessage, sendTyping, connectionStatus } = useChatConnection();
+  const [editingMessage, setEditingMessage] = useState(null);
 
   // Add page-active class on mount so the one-shot aurora animation plays,
   // and remove it on unmount so the login page returns to the static gradient.
@@ -104,9 +105,28 @@ export default function ChatPage() {
     dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
   }
 
-  function handleSend(text) {
+  function handleSend(text, editMsgId) {
     if (!state.activeRoomId) return;
-    sendMessage(state.activeRoomId, { type: 'message', text });
+    if (editMsgId) {
+      // Edit mode — send edit via WebSocket
+      sendMessage(state.activeRoomId, { type: 'edit_message', msg_id: editMsgId, text });
+      setEditingMessage(null);
+    } else {
+      sendMessage(state.activeRoomId, { type: 'message', text });
+    }
+  }
+
+  function handleEditMessage(msg) {
+    setEditingMessage(msg);
+  }
+
+  function handleDeleteMessage(msg) {
+    if (!state.activeRoomId || !msg.msg_id) return;
+    sendMessage(state.activeRoomId, { type: 'delete_message', msg_id: msg.msg_id });
+  }
+
+  function handleCancelEdit() {
+    setEditingMessage(null);
   }
 
   async function handleSendPM(text) {
@@ -272,6 +292,9 @@ export default function ChatPage() {
                   <MessageList
                     messages={activeMessages}
                     onScrollToBottom={handleRoomScrollBottom}
+                    currentUser={user?.username}
+                    onEditMessage={handleEditMessage}
+                    onDeleteMessage={handleDeleteMessage}
                   />
                   <TypingIndicator typingUsers={activeTypingUsers} />
                 </>
@@ -305,7 +328,14 @@ export default function ChatPage() {
             </div>
             <div style={{ padding: '0 12px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
               {showRoom ? (
-                <MessageInput onSend={handleSend} roomName={activeRoom?.name} roomId={state.activeRoomId} onTyping={() => sendTyping(state.activeRoomId)} />
+                <MessageInput
+                  onSend={handleSend}
+                  roomName={activeRoom?.name}
+                  roomId={state.activeRoomId}
+                  onTyping={() => sendTyping(state.activeRoomId)}
+                  editingMessage={editingMessage}
+                  onCancelEdit={handleCancelEdit}
+                />
               ) : showPM ? (
                 <MessageInput onSend={handleSendPM} roomName={pmState.activePM} isPM />
               ) : (

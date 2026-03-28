@@ -189,6 +189,25 @@ services:
           fault_tolerant: true
           hide_client_headers: false
 
+  # -- Message Edit/Delete (stricter rate limit: 30/min) -------------------
+  - name: message-edit-delete
+    url: http://message-service:8004
+    routes:
+      - name: message-edit-delete-route
+        paths:
+          - /messages/edit
+          - /messages/delete
+        methods:
+          - PATCH
+          - DELETE
+          - OPTIONS
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30
+          policy: local
+
   # -- File Service (stricter rate limit: 20/min) --------------------------
   - name: file-service
     url: http://file-service:8005

@@ -93,6 +93,10 @@ func (h *WSHandler) readLoop(conn *websocket.Conn, roomID, userID int, username 
 			h.handlePrivateMessage(ctx, conn, roomID, userID, username, incoming.To, incoming.Text)
 		case "typing":
 			h.handleTyping(conn, roomID, username)
+		case "edit_message":
+			h.handleEditMessage(conn, roomID, userID, username, incoming)
+		case "delete_message":
+			h.handleDeleteMessage(conn, roomID, userID, username, incoming)
 		default:
 			h.sendError(conn, "Unknown message type")
 		}

@@ -28,3 +28,5 @@ class Message(Base):
     content = Column(Text, nullable=False)
     is_private = Column(Boolean, default=False, nullable=False)
     sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    edited_at = Column(DateTime, nullable=True)
+    is_deleted = Column(Boolean, default=False, nullable=False)

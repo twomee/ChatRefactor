@@ -50,11 +50,14 @@ const (
 //   - "message":         uses Text
 //   - "kick","mute","unmute","promote": uses Target (username)
 //   - "private_message": uses To and Text
+//   - "edit_message":    uses MessageID and Text
+//   - "delete_message":  uses MessageID
 type IncomingMessage struct {
-	Type   string `json:"type"`
-	Text   string `json:"text"`
-	Target string `json:"target"`
-	To     string `json:"to"`
+	Type      string `json:"type"`
+	Text      string `json:"text"`
+	Target    string `json:"target"`
+	To        string `json:"to"`
+	MessageID string `json:"msg_id"`
 }
 
 // newUpgrader creates a WebSocket upgrader with origin checking.
