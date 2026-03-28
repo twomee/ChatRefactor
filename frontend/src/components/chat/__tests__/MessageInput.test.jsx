@@ -94,4 +94,23 @@ describe('MessageInput', () => {
     fileInput.dispatchEvent(new Event('change', { bubbles: true }));
     expect(fileApi.uploadFile).not.toHaveBeenCalled();
   });
+
+  describe('isPM mode', () => {
+    it('hides file attachment input and button when isPM is true', () => {
+      render(<MessageInput onSend={vi.fn()} roomName="alice" isPM />);
+      expect(document.querySelector('input[type="file"]')).not.toBeInTheDocument();
+      expect(screen.queryByTitle('Attach file')).not.toBeInTheDocument();
+    });
+
+    it('uses PM placeholder when isPM is true', () => {
+      render(<MessageInput onSend={vi.fn()} roomName="alice" isPM />);
+      expect(screen.getByPlaceholderText('Message alice…')).toBeInTheDocument();
+    });
+
+    it('shows file attachment button by default (isPM=false)', () => {
+      render(<MessageInput onSend={vi.fn()} roomName="general" roomId="r1" />);
+      expect(document.querySelector('input[type="file"]')).toBeInTheDocument();
+      expect(screen.getByTitle('Attach file')).toBeInTheDocument();
+    });
+  });
 });

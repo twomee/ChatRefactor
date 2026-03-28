@@ -60,6 +60,18 @@ export default function UserList({
             <div className="user-item-name">{u}</div>
             {isAdmin(u) && <div className="user-item-role">Admin</div>}
             {isMuted(u) && <div className="user-item-role" style={{ color: 'var(--danger)' }}>Muted</div>}
+            {isCurrentUserAdmin && u !== currentUser && (
+              <button
+                className="user-item-menu-btn"
+                title="Admin actions"
+                onClick={e => {
+                  e.stopPropagation();
+                  setMenu({ x: e.clientX, y: e.clientY, target: u });
+                }}
+              >
+                ⋮
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -72,6 +84,7 @@ export default function UserList({
           onMute={onMute}
           onUnmute={onUnmute}
           onPromote={onPromote}
+          onStartPM={onStartPM}
           onClose={() => setMenu(null)}
         />
       )}

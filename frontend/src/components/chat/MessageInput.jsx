@@ -2,7 +2,7 @@
 import { useRef, useState } from 'react';
 import { uploadFile } from '../../services/fileApi';
 
-export default function MessageInput({ onSend, roomName, roomId }) {
+export default function MessageInput({ onSend, roomName, roomId, isPM = false }) {
   const [text, setText] = useState('');
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -53,32 +53,36 @@ export default function MessageInput({ onSend, roomName, roomId }) {
       )}
 
       <form onSubmit={handleSubmit} className="message-input-form">
-        {/* + button — triggers file picker */}
-        <input
-          ref={fileRef}
-          type="file"
-          style={{ display: 'none' }}
-          onChange={handleFileChange}
-          disabled={uploading}
-        />
-        <button
-          type="button"
-          className="input-icon-btn"
-          title="Attach file"
-          disabled={uploading}
-          onClick={() => fileRef.current?.click()}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-        </button>
+        {/* File attachment — hidden in PM mode (PMs don't support file uploads) */}
+        {!isPM && (
+          <>
+            <input
+              ref={fileRef}
+              type="file"
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+              disabled={uploading}
+            />
+            <button
+              type="button"
+              className="input-icon-btn"
+              title="Attach file"
+              disabled={uploading}
+              onClick={() => fileRef.current?.click()}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          </>
+        )}
 
         {/* text input */}
         <input
           className="message-input"
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder={roomName ? `Message #${roomName}...` : 'Type a message...'}
+          placeholder={isPM ? `Message ${roomName}…` : roomName ? `Message #${roomName}...` : 'Type a message...'}
         />
 
         {/* right-side icon actions */}
