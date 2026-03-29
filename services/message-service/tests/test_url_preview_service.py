@@ -19,6 +19,7 @@ from app.services.url_preview_service import (
     MetadataParser,
     _cache_key,
     _is_url_safe,
+    _resolve_safe_ip,
     _sanitize,
     _sanitize_url,
     cache_preview,
@@ -123,10 +124,10 @@ class TestMetadataParser:
 
     def test_og_description_takes_priority(self):
         html = (
-            '<html><head>'
+            "<html><head>"
             '<meta name="description" content="Meta desc">'
             '<meta property="og:description" content="OG desc">'
-            '</head></html>'
+            "</head></html>"
         )
         parser = MetadataParser()
         parser.feed(html)
@@ -168,7 +169,10 @@ class TestSanitize:
         assert _sanitize("  hello  ", 100) == "hello"
 
     def test_escapes_html_entities(self):
-        assert _sanitize('<script>alert("xss")</script>', 200) == '&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;'
+        assert (
+            _sanitize('<script>alert("xss")</script>', 200)
+            == "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;"
+        )
 
     def test_truncates_to_max_len(self):
         result = _sanitize("a" * 300, 200)
@@ -190,10 +194,16 @@ class TestSanitizeUrl:
     """Tests for URL-specific sanitization that enforces http/https scheme."""
 
     def test_accepts_https_url(self):
-        assert _sanitize_url("https://img.example.com/pic.jpg", 1000) == "https://img.example.com/pic.jpg"
+        assert (
+            _sanitize_url("https://img.example.com/pic.jpg", 1000)
+            == "https://img.example.com/pic.jpg"
+        )
 
     def test_accepts_http_url(self):
-        assert _sanitize_url("http://img.example.com/pic.jpg", 1000) == "http://img.example.com/pic.jpg"
+        assert (
+            _sanitize_url("http://img.example.com/pic.jpg", 1000)
+            == "http://img.example.com/pic.jpg"
+        )
 
     def test_rejects_javascript_scheme(self):
         assert _sanitize_url("javascript:alert(1)", 1000) is None
@@ -214,7 +224,10 @@ class TestSanitizeUrl:
         assert len(result) == 1000
 
     def test_strips_leading_whitespace(self):
-        assert _sanitize_url("  https://example.com/img.jpg", 1000) == "https://example.com/img.jpg"
+        assert (
+            _sanitize_url("  https://example.com/img.jpg", 1000)
+            == "https://example.com/img.jpg"
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -295,7 +308,10 @@ class TestSSRFProtection:
 
     @pytest.mark.asyncio
     async def test_blocks_google_metadata_hostname(self):
-        assert await _is_url_safe("http://metadata.google.internal/computeMetadata/v1/") is False
+        assert (
+            await _is_url_safe("http://metadata.google.internal/computeMetadata/v1/")
+            is False
+        )
 
     @pytest.mark.asyncio
     @patch("app.services.url_preview_service.socket.getaddrinfo")
@@ -312,7 +328,12 @@ class TestSSRFProtection:
     @pytest.mark.asyncio
     async def test_returns_false_for_dns_failure(self):
         # This domain should not resolve
-        assert await _is_url_safe("http://this-domain-definitely-does-not-exist-qwerty12345.com") is False
+        assert (
+            await _is_url_safe(
+                "http://this-domain-definitely-does-not-exist-qwerty12345.com"
+            )
+            is False
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -324,15 +345,19 @@ class TestFetchPreview:
     """Tests for the async preview fetcher with mocked HTTP calls."""
 
     @pytest.mark.asyncio
-    @patch("app.services.url_preview_service._is_url_safe", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "app.services.url_preview_service._resolve_safe_ip",
+        new_callable=AsyncMock,
+        return_value="93.184.216.34",
+    )
     @patch("app.services.url_preview_service.httpx.AsyncClient")
     async def test_successful_fetch(self, mock_client_cls, mock_safe):
         html = (
-            '<html><head>'
+            "<html><head>"
             '<meta property="og:title" content="Test Title">'
             '<meta property="og:description" content="Test Description">'
             '<meta property="og:image" content="https://img.example.com/pic.jpg">'
-            '</head><body></body></html>'
+            "</head><body></body></html>"
         )
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -354,7 +379,11 @@ class TestFetchPreview:
         assert result["image"] == "https://img.example.com/pic.jpg"
 
     @pytest.mark.asyncio
-    @patch("app.services.url_preview_service._is_url_safe", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "app.services.url_preview_service._resolve_safe_ip",
+        new_callable=AsyncMock,
+        return_value="93.184.216.34",
+    )
     @patch("app.services.url_preview_service.httpx.AsyncClient")
     async def test_returns_none_for_non_html(self, mock_client_cls, mock_safe):
         mock_response = MagicMock()
@@ -372,7 +401,11 @@ class TestFetchPreview:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch("app.services.url_preview_service._is_url_safe", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "app.services.url_preview_service._resolve_safe_ip",
+        new_callable=AsyncMock,
+        return_value="93.184.216.34",
+    )
     @patch("app.services.url_preview_service.httpx.AsyncClient")
     async def test_returns_none_for_non_200(self, mock_client_cls, mock_safe):
         mock_response = MagicMock()
@@ -389,7 +422,11 @@ class TestFetchPreview:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch("app.services.url_preview_service._is_url_safe", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "app.services.url_preview_service._resolve_safe_ip",
+        new_callable=AsyncMock,
+        return_value="93.184.216.34",
+    )
     @patch("app.services.url_preview_service.httpx.AsyncClient")
     async def test_returns_none_for_redirect(self, mock_client_cls, mock_safe):
         """A redirect response must be refused to prevent SSRF bypass."""
@@ -408,7 +445,11 @@ class TestFetchPreview:
             assert result is None, f"Expected None for redirect {redirect_code}"
 
     @pytest.mark.asyncio
-    @patch("app.services.url_preview_service._is_url_safe", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "app.services.url_preview_service._resolve_safe_ip",
+        new_callable=AsyncMock,
+        return_value="93.184.216.34",
+    )
     @patch("app.services.url_preview_service.httpx.AsyncClient")
     async def test_returns_none_for_no_metadata(self, mock_client_cls, mock_safe):
         mock_response = MagicMock()
@@ -426,16 +467,24 @@ class TestFetchPreview:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch("app.services.url_preview_service._is_url_safe", new_callable=AsyncMock, return_value=False)
+    @patch(
+        "app.services.url_preview_service._resolve_safe_ip",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     async def test_returns_none_for_unsafe_url(self, mock_safe):
         result = await fetch_preview("http://169.254.169.254/meta-data")
         assert result is None
 
     @pytest.mark.asyncio
-    @patch("app.services.url_preview_service._is_url_safe", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "app.services.url_preview_service._resolve_safe_ip",
+        new_callable=AsyncMock,
+        return_value="93.184.216.34",
+    )
     @patch("app.services.url_preview_service.httpx.AsyncClient")
     async def test_sanitizes_html_in_title(self, mock_client_cls, mock_safe):
-        html = '<html><head><title><b>Bold</b> &amp; Title</title></head><body></body></html>'
+        html = "<html><head><title><b>Bold</b> &amp; Title</title></head><body></body></html>"
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.headers = {"content-type": "text/html"}
@@ -454,15 +503,19 @@ class TestFetchPreview:
         assert "<b>" not in (result["title"] or "")
 
     @pytest.mark.asyncio
-    @patch("app.services.url_preview_service._is_url_safe", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "app.services.url_preview_service._resolve_safe_ip",
+        new_callable=AsyncMock,
+        return_value="93.184.216.34",
+    )
     @patch("app.services.url_preview_service.httpx.AsyncClient")
     async def test_rejects_javascript_og_image(self, mock_client_cls, mock_safe):
         """og:image with javascript: scheme must be stripped."""
         html = (
-            '<html><head>'
+            "<html><head>"
             '<meta property="og:title" content="XSS Test">'
             '<meta property="og:image" content="javascript:alert(1)">'
-            '</head><body></body></html>'
+            "</head><body></body></html>"
         )
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -480,7 +533,11 @@ class TestFetchPreview:
         assert result["image"] is None
 
     @pytest.mark.asyncio
-    @patch("app.services.url_preview_service._is_url_safe", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "app.services.url_preview_service._resolve_safe_ip",
+        new_callable=AsyncMock,
+        return_value="93.184.216.34",
+    )
     @patch("app.services.url_preview_service.httpx.AsyncClient")
     async def test_returns_none_on_timeout(self, mock_client_cls, mock_safe):
         """A TimeoutException from httpx must be caught and return None (lines 243-245)."""
@@ -496,7 +553,11 @@ class TestFetchPreview:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch("app.services.url_preview_service._is_url_safe", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "app.services.url_preview_service._resolve_safe_ip",
+        new_callable=AsyncMock,
+        return_value="93.184.216.34",
+    )
     @patch("app.services.url_preview_service.httpx.AsyncClient")
     async def test_returns_none_on_request_error(self, mock_client_cls, mock_safe):
         """A RequestError from httpx must be caught and return None (lines 246-248)."""
@@ -512,9 +573,15 @@ class TestFetchPreview:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch("app.services.url_preview_service._is_url_safe", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "app.services.url_preview_service._resolve_safe_ip",
+        new_callable=AsyncMock,
+        return_value="93.184.216.34",
+    )
     @patch("app.services.url_preview_service.httpx.AsyncClient")
-    async def test_returns_none_on_unexpected_exception(self, mock_client_cls, mock_safe):
+    async def test_returns_none_on_unexpected_exception(
+        self, mock_client_cls, mock_safe
+    ):
         """Any unexpected exception must be caught and return None (lines 249-251)."""
         mock_client = AsyncMock()
         mock_client.get.side_effect = RuntimeError("unexpected failure")
@@ -540,7 +607,12 @@ class TestRedisCache:
     @pytest.mark.asyncio
     async def test_get_cached_preview_returns_data(self):
         mock_redis = AsyncMock()
-        data = {"url": "https://x.com", "title": "X", "description": None, "image": None}
+        data = {
+            "url": "https://x.com",
+            "title": "X",
+            "description": None,
+            "image": None,
+        }
         mock_redis.get.return_value = json.dumps(data)
 
         result = await get_cached_preview(mock_redis, "https://x.com")
@@ -564,7 +636,12 @@ class TestRedisCache:
     @pytest.mark.asyncio
     async def test_cache_preview_stores_data(self):
         mock_redis = AsyncMock()
-        data = {"url": "https://x.com", "title": "X", "description": None, "image": None}
+        data = {
+            "url": "https://x.com",
+            "title": "X",
+            "description": None,
+            "image": None,
+        }
 
         await cache_preview(mock_redis, "https://x.com", data)
         expected_key = _cache_key("https://x.com")
@@ -623,8 +700,16 @@ class TestPreviewEndpoint:
         }
         with (
             patch("app.routers.messages.get_redis", return_value=None),
-            patch("app.routers.messages.get_cached_preview", new_callable=AsyncMock, return_value=None),
-            patch("app.routers.messages.fetch_preview", new_callable=AsyncMock, return_value=preview_data),
+            patch(
+                "app.routers.messages.get_cached_preview",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.routers.messages.fetch_preview",
+                new_callable=AsyncMock,
+                return_value=preview_data,
+            ),
             patch("app.routers.messages.cache_preview", new_callable=AsyncMock),
         ):
             response = client.get(
@@ -645,7 +730,11 @@ class TestPreviewEndpoint:
         }
         with (
             patch("app.routers.messages.get_redis", return_value=MagicMock()),
-            patch("app.routers.messages.get_cached_preview", new_callable=AsyncMock, return_value=cached_data),
+            patch(
+                "app.routers.messages.get_cached_preview",
+                new_callable=AsyncMock,
+                return_value=cached_data,
+            ),
         ):
             response = client.get(
                 "/messages/preview?url=https://cached.com",
@@ -657,7 +746,11 @@ class TestPreviewEndpoint:
     def test_returns_404_for_cached_miss(self, client, auth_headers):
         with (
             patch("app.routers.messages.get_redis", return_value=MagicMock()),
-            patch("app.routers.messages.get_cached_preview", new_callable=AsyncMock, return_value={"_miss": True}),
+            patch(
+                "app.routers.messages.get_cached_preview",
+                new_callable=AsyncMock,
+                return_value={"_miss": True},
+            ),
         ):
             response = client.get(
                 "/messages/preview?url=https://bad.com",
@@ -684,8 +777,16 @@ class TestPreviewEndpoint:
     def test_returns_404_when_fetch_fails(self, client, auth_headers):
         with (
             patch("app.routers.messages.get_redis", return_value=None),
-            patch("app.routers.messages.get_cached_preview", new_callable=AsyncMock, return_value=None),
-            patch("app.routers.messages.fetch_preview", new_callable=AsyncMock, return_value=None),
+            patch(
+                "app.routers.messages.get_cached_preview",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.routers.messages.fetch_preview",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
             patch("app.routers.messages.cache_preview", new_callable=AsyncMock),
         ):
             response = client.get(

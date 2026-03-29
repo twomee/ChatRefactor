@@ -6,6 +6,10 @@
 # Security considerations:
 # - Only http/https URLs are accepted
 # - SSRF protection: private/internal IPs are blocked before fetching
+# - DNS pinning: the resolved IP is used for the actual HTTP request, closing
+#   the DNS rebinding window between the SSRF check and the fetch
+# - For HTTPS, the original hostname is forwarded as TLS SNI so certificate
+#   validation still works against the domain name, not the raw IP
 # - Redirects are refused to prevent SSRF bypass via open-redirect chains
 # - Response size capped at 500KB to prevent memory exhaustion
 # - 5-second timeout to prevent slow-loris style hangs
@@ -68,25 +72,30 @@ _BLOCKED_HOSTNAMES = frozenset(
 )
 
 
-async def _is_url_safe(url: str) -> bool:
-    """Return True if the URL targets a public, non-internal address.
+async def _resolve_safe_ip(url: str) -> str | None:
+    """Resolve the URL's hostname to a safe public IP and return it.
 
-    Resolves the hostname to an IP and checks it against the private IP blocklist.
-    This prevents Server-Side Request Forgery (SSRF) attacks where an attacker
-    could trick the server into fetching internal resources.
+    Returns the resolved IP address string if the URL is safe to fetch,
+    or None if the hostname resolves to a private/internal address
+    (SSRF protection) or if DNS resolution fails.
 
-    DNS resolution is offloaded to a thread via run_in_executor so it does not
-    block the async event loop.
+    Returning the IP (rather than a boolean) lets callers use the
+    pre-resolved address directly for HTTP connections, closing the DNS
+    rebinding window that exists between a safety check and the actual
+    request when the original hostname is used.
+
+    DNS resolution is offloaded to a thread via run_in_executor so it
+    does not block the async event loop.
     """
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname
         if not hostname:
-            return False
+            return None
 
         # Block known cloud metadata hostnames outright
         if hostname.lower() in _BLOCKED_HOSTNAMES:
-            return False
+            return None
 
         # Resolve hostname to IPs off the event loop (socket.getaddrinfo is blocking)
         loop = asyncio.get_event_loop()
@@ -96,6 +105,8 @@ async def _is_url_safe(url: str) -> bool:
                 hostname, parsed.port or 80, proto=socket.IPPROTO_TCP
             ),
         )
+
+        first_safe_ip: str | None = None
         for family, _type, _proto, _canonname, sockaddr in addr_infos:
             ip = ipaddress.ip_address(sockaddr[0])
             for network in _BLOCKED_NETWORKS:
@@ -106,14 +117,26 @@ async def _is_url_safe(url: str) -> bool:
                         resolved_ip=str(ip),
                         blocked_network=str(network),
                     )
-                    return False
-        return True
+                    return None
+            if first_safe_ip is None:
+                first_safe_ip = str(ip)
+
+        return first_safe_ip
     except (socket.gaierror, ValueError, OSError):
         # DNS resolution failed or invalid URL — treat as unsafe
-        return False
+        return None
 
 
-# ── HTML Metadata Parser ─────────────────────────────────────────────────
+async def _is_url_safe(url: str) -> bool:
+    """Return True if the URL targets a public, non-internal address.
+
+    Thin wrapper around _resolve_safe_ip.  Prefer calling _resolve_safe_ip
+    directly when you need the resolved IP for DNS-pinned connections.
+    """
+    return await _resolve_safe_ip(url) is not None
+
+
+# ── HTML Metadata Parser ─────────────────────────────────────────────────────
 
 
 class MetadataParser(HTMLParser):
@@ -160,7 +183,7 @@ class MetadataParser(HTMLParser):
             self.in_title = False
 
 
-# ── Public API ───────────────────────────────────────────────────────────
+# ── Public API ───────────────────────────────────────────────────────────────
 
 
 def extract_urls(text: str) -> list[str]:
@@ -196,25 +219,61 @@ async def fetch_preview(url: str) -> dict | None:
 
     Returns a dict with url, title, description, image — or None on failure.
 
+    DNS pinning: the hostname is resolved once by _resolve_safe_ip() which
+    also performs the SSRF blocklist check.  The actual HTTP request uses
+    the pre-resolved IP address, not the original hostname, so an attacker
+    cannot change the DNS record between the safety check and the fetch
+    (DNS rebinding attack).
+
+    For HTTPS, the original hostname is forwarded as the TLS SNI value via
+    the ``sni_hostname`` request extension so that certificate validation
+    still works against the domain name rather than the raw IP address.
+
     Redirects are refused: a server returning 3xx is treated as a failure.
     This closes the SSRF-via-open-redirect attack vector where a public domain
     DNS-checks clean but then redirects to an internal address.
     """
-    # SSRF check before making any HTTP request
-    if not await _is_url_safe(url):
+    # Resolve hostname to a safe public IP (SSRF check + DNS pinning).
+    # safe_ip comes from DNS resolution — it is NOT derived from user input,
+    # so the subsequent client.get(connection_url) call is not an SSRF risk.
+    safe_ip = await _resolve_safe_ip(url)
+    if safe_ip is None:
         return None
 
     try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname or ""
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+
+        # Build path + query string (never include fragment — client-side only).
+        path = parsed.path or "/"
+        if parsed.query:
+            path += f"?{parsed.query}"
+
+        # IPv6 literal addresses must be wrapped in brackets inside URLs.
+        ip_obj = ipaddress.ip_address(safe_ip)
+        ip_in_url = f"[{safe_ip}]" if ip_obj.version == 6 else safe_ip
+        connection_url = f"{parsed.scheme}://{ip_in_url}:{port}{path}"
+
+        # For HTTPS, pass the original hostname as TLS SNI so that the server
+        # presents the correct certificate and our SSL stack can validate it
+        # against the domain name (not the raw IP address).
+        request_extensions: dict = {}
+        if parsed.scheme == "https" and hostname:
+            request_extensions["sni_hostname"] = hostname.encode("ascii")
+
         async with httpx.AsyncClient(
             follow_redirects=False,
             timeout=FETCH_TIMEOUT,
         ) as client:
-            response = await client.get(  # lgtm[py/full-ssrf]
-                url,  # URL validated by _is_url_safe() — scheme, DNS, private-IP checks
+            response = await client.get(
+                connection_url,
                 headers={
                     "User-Agent": "cHATBOX-LinkPreview/1.0",
                     "Accept": "text/html",
+                    "Host": hostname,
                 },
+                extensions=request_extensions,
             )
             # Refuse to follow redirects — the destination is unknown and could
             # point to an internal address that bypassed the SSRF DNS check.
@@ -234,7 +293,7 @@ async def fetch_preview(url: str) -> dict | None:
             return None
 
         return {
-            "url": url,
+            "url": url,  # Return original URL (not IP) so callers see the domain
             "title": _sanitize(parser.title, 200),
             "description": _sanitize(parser.description, 500),
             # Use _sanitize_url (not _sanitize) so javascript:/data: are rejected
@@ -251,7 +310,7 @@ async def fetch_preview(url: str) -> dict | None:
         return None
 
 
-# ── Redis Cache Layer ────────────────────────────────────────────────────
+# ── Redis Cache Layer ────────────────────────────────────────────────────────
 
 CACHE_TTL = 3600  # 1 hour
 NEGATIVE_CACHE_TTL = 300  # 5 minutes for failed lookups
