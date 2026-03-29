@@ -129,6 +129,26 @@ services:
           - POST
           - OPTIONS
 
+  # Auth 2FA (rate limited: 10/min to prevent TOTP brute-force)
+  - name: auth-2fa
+    url: http://auth-service:8001
+    routes:
+      - name: auth-2fa-route
+        paths:
+          - /auth/2fa
+        strip_path: false
+        methods:
+          - POST
+          - GET
+          - OPTIONS
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 10
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
   # -- Chat Service (REST) --------------------------------------------------
   - name: chat-service-rooms
     url: http://chat-service:8003
