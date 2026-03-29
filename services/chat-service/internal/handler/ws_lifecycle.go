@@ -90,34 +90,9 @@ func (h *WSHandler) handleLeave(ctx context.Context, conn *websocket.Conn, roomI
 		return // multi-tab: user still connected via another tab
 	}
 
-	// Cancel any pending grace-period leave.
-	leaveKey := fmt.Sprintf("%d:%d", roomID, userID)
-	h.pendingLeaveMu.Lock()
-	if cancel, ok := h.pendingLeaves[leaveKey]; ok {
-		cancel()
-		delete(h.pendingLeaves, leaveKey)
-	}
-	h.pendingLeaveMu.Unlock()
+	// Active leave: broadcast (non-silent), admin succession, system message.
+	h.broadcastLeave(ctx, roomID, userID, username, false)
 
-	// Active leave: broadcast with silent=false so frontend shows the message.
-	remainingUsers := h.manager.GetUsernamesInRoom(roomID)
-	updatedAdmins := h.getAdminUsernames(ctx, roomID)
-	updatedMuted := h.getMutedUsernames(ctx, roomID)
-	leaveBroadcast := map[string]interface{}{
-		"type":     "user_left",
-		"username": username,
-		"users":    remainingUsers,
-		"admins":   updatedAdmins,
-		"muted":    updatedMuted,
-		"room_id":  roomID,
-		"silent":   false,
-	}
-	h.manager.BroadcastRoom(roomID, leaveBroadcast)
-
-	h.produceEvent(ctx, "user_left", roomID, userID, username)
-	h.handleAdminSuccession(ctx, roomID, userID, username)
-
-	// Persist the "X left the room" system message.
 	leaveMsgID := uuid.New().String()
 	leaveNow := time.Now().UTC().Format(time.RFC3339)
 	leaveKafka := map[string]interface{}{
@@ -172,7 +147,7 @@ func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, 
 	// Skip the reconnect grace period — broadcast leave immediately so
 	// zombie reconnects (from stale frontend timers) can't cancel the leave.
 	if !h.manager.HasLobbyConnection(userID) {
-		h.broadcastLeaveImmediate(ctx, roomID, userID, username)
+		h.broadcastLeave(ctx, roomID, userID, username, true)
 		return
 	}
 
@@ -186,70 +161,34 @@ func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, 
 	h.pendingLeaveMu.Unlock()
 
 	go func() {
-		// Wait for either: cancellation, full grace period, or lobby loss.
-		// The lobby-loss ticker catches the race where DisconnectLobby's
-		// flushPendingLeaves runs before this pending leave is registered.
-		lobbyTicker := time.NewTicker(500 * time.Millisecond)
-		defer lobbyTicker.Stop()
-		graceTimer := time.After(reconnectGrace)
-
-		for {
-			select {
-			case <-leaveCtx.Done():
-				// Cancelled — user reconnected or flushPendingLeaves fired.
-				return
-			case <-graceTimer:
-				// Grace period expired — user truly left.
-				goto broadcast
-			case <-lobbyTicker.C:
-				if !h.manager.HasLobbyConnection(userID) {
-					// User logged out during grace period — leave immediately.
-					goto broadcast
-				}
-			}
+		select {
+		case <-leaveCtx.Done():
+			// Cancelled — user reconnected or flushPendingLeaves fired.
+			return
+		case <-time.After(reconnectGrace):
+			// Grace period expired — user truly left.
 		}
-	broadcast:
 
 		h.pendingLeaveMu.Lock()
 		delete(h.pendingLeaves, leaveKey)
 		h.pendingLeaveMu.Unlock()
 
-		// If the user reconnected during the grace period (e.g., their old stale
-		// connection was evicted and a new one registered), skip the leave
-		// broadcast so we don't send a spurious "user left" for someone who is
-		// still in the room.
 		if h.manager.IsUserInRoom(roomID, userID) {
 			return
 		}
 
-		// Broadcast leave with updated room state (silent — no system message).
+		// Passive disconnect (tab close, network loss): silent broadcast + admin succession.
 		bgCtx := context.Background()
-		remainingUsers := h.manager.GetUsernamesInRoom(roomID)
-		updatedAdmins := h.getAdminUsernames(bgCtx, roomID)
-		updatedMuted := h.getMutedUsernames(bgCtx, roomID)
-
-		leaveBroadcast := map[string]interface{}{
-			"type":     "user_left",
-			"username": username,
-			"users":    remainingUsers,
-			"admins":   updatedAdmins,
-			"muted":    updatedMuted,
-			"room_id":  roomID,
-			"silent":   true,
-		}
-		h.manager.BroadcastRoom(roomID, leaveBroadcast)
-
-		h.produceEvent(bgCtx, "user_left", roomID, userID, username)
+		h.broadcastLeave(bgCtx, roomID, userID, username, true)
 	}()
 }
 
-// broadcastLeaveImmediate broadcasts a user_left event without any grace period.
-// This is a silent leave — no system message ("X left the room") is generated.
-// Used for passive disconnects (logout, network loss). For active leaves (user
-// clicks "Leave Room"), handleLeave calls this then adds the system message.
-func (h *WSHandler) broadcastLeaveImmediate(ctx context.Context, roomID, userID int, username string) {
-	// Cancel any existing pending leave for this user/room so we don't
-	// double-broadcast later if a grace timer was already running.
+// broadcastLeave broadcasts user_left, produces the Kafka event, and handles
+// admin succession. When silent=true (passive disconnect), the frontend skips
+// the "X left the room" chat message. When silent=false (active leave), the
+// frontend shows the message.
+func (h *WSHandler) broadcastLeave(ctx context.Context, roomID, userID int, username string, silent bool) {
+	// Cancel any existing pending leave for this user/room.
 	leaveKey := fmt.Sprintf("%d:%d", roomID, userID)
 	h.pendingLeaveMu.Lock()
 	if cancel, ok := h.pendingLeaves[leaveKey]; ok {
@@ -269,11 +208,12 @@ func (h *WSHandler) broadcastLeaveImmediate(ctx context.Context, roomID, userID 
 		"admins":   updatedAdmins,
 		"muted":    updatedMuted,
 		"room_id":  roomID,
-		"silent":   true,
+		"silent":   silent,
 	}
 	h.manager.BroadcastRoom(roomID, leaveBroadcast)
 
 	h.produceEvent(ctx, "user_left", roomID, userID, username)
+	h.handleAdminSuccession(ctx, roomID, userID, username)
 }
 
 // flushPendingLeaves cancels all pending grace-period leave timers for a user
@@ -296,7 +236,7 @@ func (h *WSHandler) flushPendingLeaves(userID int, username string) {
 
 	ctx := context.Background()
 	for _, rid := range roomIDs {
-		h.broadcastLeaveImmediate(ctx, rid, userID, username)
+		h.broadcastLeave(ctx, rid, userID, username, true)
 	}
 }
 
