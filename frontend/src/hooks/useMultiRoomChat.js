@@ -431,13 +431,20 @@ export function useMultiRoomChat() {
     const saved = getJoinedRooms(username);
     saved.forEach(roomId => joinRoom(roomId, { silent: true }));
 
+    // Capture refs so cleanup closes over the correct values.
+    const sockets = socketsRef.current;
+    const seenIds = seenMsgIdsRef.current;
+    const retryCounts = retryCountsRef.current;
+    const reconnecting = reconnectingRoomsRef.current;
+    const lastMsg = lastMsgTimeRef.current;
+
     return () => {
-      socketsRef.current.forEach(ws => ws.close());
-      socketsRef.current.clear();
-      seenMsgIdsRef.current.clear();
-      retryCountsRef.current.clear();
-      reconnectingRoomsRef.current.clear();
-      lastMsgTimeRef.current.clear();
+      sockets.forEach(ws => ws.close());
+      sockets.clear();
+      seenIds.clear();
+      retryCounts.clear();
+      reconnecting.clear();
+      lastMsg.clear();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
