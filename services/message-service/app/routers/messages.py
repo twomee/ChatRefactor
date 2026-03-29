@@ -41,8 +41,16 @@ class EditMessageBody(BaseModel):
 
 @router.get("/search")
 def search_messages_endpoint(
-    q: str = Query(..., min_length=2, max_length=200, description="Search query (minimum 2 characters)"),
-    room_id: int = Query(..., description="Room ID to search within — required to prevent cross-room enumeration"),
+    q: str = Query(
+        ...,
+        min_length=2,
+        max_length=200,
+        description="Search query (minimum 2 characters)",
+    ),
+    room_id: int = Query(
+        ...,
+        description="Room ID to search within — required to prevent cross-room enumeration",
+    ),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
@@ -101,7 +109,9 @@ def get_room_messages(
     return _enrich_with_reactions(db, messages)
 
 
-@router.get("/rooms/{room_id}/history", response_model=list[MessageWithReactionsResponse])
+@router.get(
+    "/rooms/{room_id}/history", response_model=list[MessageWithReactionsResponse]
+)
 def get_room_history(
     room_id: int,
     limit: int = Query(50, ge=1, le=200),
@@ -135,7 +145,9 @@ def edit_message(
         db, message_id, current_user["user_id"], body.content
     )
     if not success:
-        raise HTTPException(status_code=404, detail="Message not found or not owned by you")
+        raise HTTPException(
+            status_code=404, detail="Message not found or not owned by you"
+        )
     return {"edited": True}
 
 
@@ -152,11 +164,11 @@ def delete_message(
     Returns 404 if the message doesn't exist, is already deleted,
     or does not belong to the authenticated user.
     """
-    success = message_dal.soft_delete_message(
-        db, message_id, current_user["user_id"]
-    )
+    success = message_dal.soft_delete_message(db, message_id, current_user["user_id"])
     if not success:
-        raise HTTPException(status_code=404, detail="Message not found or not owned by you")
+        raise HTTPException(
+            status_code=404, detail="Message not found or not owned by you"
+        )
     return {"deleted": True}
 
 
@@ -186,7 +198,9 @@ async def get_link_preview(
     """
     # Validate URL scheme — only http/https allowed
     if not url.startswith(("http://", "https://")):
-        raise HTTPException(status_code=400, detail="Invalid URL: must start with http:// or https://")
+        raise HTTPException(
+            status_code=400, detail="Invalid URL: must start with http:// or https://"
+        )
 
     redis_client = get_redis()
 
@@ -206,9 +220,7 @@ async def get_link_preview(
     return preview
 
 
-def _enrich_with_reactions(
-    db: Session, messages: list[MessageResponse]
-) -> list[dict]:
+def _enrich_with_reactions(db: Session, messages: list[MessageResponse]) -> list[dict]:
     """Attach reactions to each message response.
 
     Fetches reactions in a single batch query for all message_ids, then

@@ -92,7 +92,9 @@ async def _is_url_safe(url: str) -> bool:
         loop = asyncio.get_event_loop()
         addr_infos = await loop.run_in_executor(
             None,
-            lambda: socket.getaddrinfo(hostname, parsed.port or 80, proto=socket.IPPROTO_TCP),
+            lambda: socket.getaddrinfo(
+                hostname, parsed.port or 80, proto=socket.IPPROTO_TCP
+            ),
         )
         for family, _type, _proto, _canonname, sockaddr in addr_infos:
             ip = ipaddress.ip_address(sockaddr[0])
@@ -289,6 +291,8 @@ async def cache_preview(redis_client, url: str, data: dict | None):
             await redis_client.setex(key, CACHE_TTL, json.dumps(data))
         else:
             # Cache the miss too, so we don't keep retrying dead URLs
-            await redis_client.setex(key, NEGATIVE_CACHE_TTL, json.dumps({"_miss": True}))
+            await redis_client.setex(
+                key, NEGATIVE_CACHE_TTL, json.dumps({"_miss": True})
+            )
     except Exception:
         logger.debug("redis_cache_set_failed", url=url, exc_info=True)

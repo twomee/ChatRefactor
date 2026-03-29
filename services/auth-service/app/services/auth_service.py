@@ -195,9 +195,7 @@ def _store_2fa_temp_token(user_id: int, username: str) -> str:
 
     token = secrets.token_urlsafe(48)
     payload = json.dumps({"user_id": user_id, "username": username})
-    _get_redis().setex(
-        f"{_2FA_TEMP_TOKEN_PREFIX}{token}", _2FA_TEMP_TOKEN_TTL, payload
-    )
+    _get_redis().setex(f"{_2FA_TEMP_TOKEN_PREFIX}{token}", _2FA_TEMP_TOKEN_TTL, payload)
     return token
 
 
@@ -337,9 +335,7 @@ def verify_2fa_setup(db: Session, user_info: dict, code: str) -> dict:
 
     user_dal.enable_2fa(db, user.id)
     logger.info("2fa_enabled", username=user.username, user_id=user.id)
-    auth_2fa_operations_total.labels(
-        operation="verify_setup", status="success"
-    ).inc()
+    auth_2fa_operations_total.labels(operation="verify_setup", status="success").inc()
 
     return {"message": "2FA enabled successfully"}
 
@@ -362,9 +358,7 @@ def disable_2fa(db: Session, user_info: dict, code: str) -> dict:
     plaintext_secret = decrypt_totp_secret(user.totp_secret)
 
     if not verify_totp(plaintext_secret, code):
-        logger.warning(
-            "2fa_disable_failed", username=user.username, user_id=user.id
-        )
+        logger.warning("2fa_disable_failed", username=user.username, user_id=user.id)
         auth_2fa_operations_total.labels(
             operation="disable", status="invalid_code"
         ).inc()
@@ -402,7 +396,8 @@ async def verify_login_2fa(db: Session, temp_token: str, code: str) -> TokenResp
             operation="verify_login", status="expired_token"
         ).inc()
         raise HTTPException(
-            status_code=401, detail="Temp token expired or invalid — please log in again"
+            status_code=401,
+            detail="Temp token expired or invalid — please log in again",
         )
 
     user = user_dal.get_by_id(db, user_data["user_id"])
@@ -443,9 +438,7 @@ async def verify_login_2fa(db: Session, temp_token: str, code: str) -> TokenResp
     token = create_access_token({"sub": str(user.id), "username": user.username})
     logger.info("user_logged_in_2fa", username=user.username, user_id=user.id)
     auth_logins_total.labels(status="success").inc()
-    auth_2fa_operations_total.labels(
-        operation="verify_login", status="success"
-    ).inc()
+    auth_2fa_operations_total.labels(operation="verify_login", status="success").inc()
 
     # Fire-and-forget Kafka event
     await produce_event(

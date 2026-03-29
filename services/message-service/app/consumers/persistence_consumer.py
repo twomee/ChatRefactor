@@ -279,7 +279,9 @@ class MessagePersistenceConsumer:
             if edited:
                 logger.debug("message_edited_via_kafka", msg_id=msg_id)
             else:
-                logger.warning("message_edit_skipped", msg_id=msg_id, sender_id=sender_id)
+                logger.warning(
+                    "message_edit_skipped", msg_id=msg_id, sender_id=sender_id
+                )
 
     def _handle_delete_message(self, db, value: dict):
         """Apply a message soft-delete from Kafka to the database."""
@@ -293,7 +295,9 @@ class MessagePersistenceConsumer:
             if deleted:
                 logger.debug("message_deleted_via_kafka", msg_id=msg_id)
             else:
-                logger.warning("message_delete_skipped", msg_id=msg_id, sender_id=sender_id)
+                logger.warning(
+                    "message_delete_skipped", msg_id=msg_id, sender_id=sender_id
+                )
 
     def _persist_add_reaction(self, db, value: dict):
         """Persist an add_reaction event from Kafka."""
@@ -311,7 +315,9 @@ class MessagePersistenceConsumer:
         inserted = reaction_dal.add_reaction(db, msg_id, user_id, username, emoji)
         if inserted:
             messages_persisted_total.labels(type="reaction").inc()
-            logger.debug("reaction_persisted", msg_id=msg_id, emoji=emoji, user=username)
+            logger.debug(
+                "reaction_persisted", msg_id=msg_id, emoji=emoji, user=username
+            )
 
     def _persist_remove_reaction(self, db, value: dict):
         """Persist a remove_reaction event from Kafka."""

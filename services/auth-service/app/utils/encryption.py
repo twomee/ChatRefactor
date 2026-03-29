@@ -1,4 +1,5 @@
 """Symmetric encryption utility for sensitive fields stored in the database."""
+
 import base64
 import os
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -10,7 +11,7 @@ def _get_key() -> bytes:
     if not key_hex:
         raise RuntimeError(
             "TOTP_ENCRYPTION_KEY environment variable is not set. "
-            "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+            'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
         )
     key = bytes.fromhex(key_hex)
     if len(key) != 32:
