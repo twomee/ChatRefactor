@@ -19,6 +19,8 @@ def _make_message(
     content: str = "Hello",
     is_private: bool = False,
     sent_at: datetime | None = None,
+    edited_at: datetime | None = None,
+    is_deleted: bool = False,
 ) -> Message:
     """Create a Message ORM object for testing."""
     msg = Message()
@@ -29,6 +31,8 @@ def _make_message(
     msg.content = content
     msg.is_private = is_private
     msg.sent_at = sent_at or datetime(2025, 1, 1, 12, 0, 0)
+    msg.edited_at = edited_at
+    msg.is_deleted = is_deleted
     return msg
 
 

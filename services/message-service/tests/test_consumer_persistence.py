@@ -17,7 +17,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.consumers.persistence_consumer import MAX_CONTENT_LENGTH, MessagePersistenceConsumer
+from app.consumers.persistence_consumer import (
+    MAX_CONTENT_LENGTH,
+    MessagePersistenceConsumer,
+)
 from app.infrastructure.kafka_producer import TOPIC_MESSAGES, TOPIC_PRIVATE
 from app.models import Message
 
@@ -113,7 +116,9 @@ class TestPersistPrivateMessage:
         mock_sender = {"id": 10, "username": "alice"}
         mock_recipient = {"id": 20, "username": "bob"}
 
-        with patch("app.consumers.persistence_consumer.get_user_by_username") as mock_get_user:
+        with patch(
+            "app.consumers.persistence_consumer.get_user_by_username"
+        ) as mock_get_user:
             mock_get_user.side_effect = lambda name: {
                 "alice": mock_sender,
                 "bob": mock_recipient,
@@ -141,7 +146,9 @@ class TestPersistPrivateMessage:
     @pytest.mark.asyncio
     async def test_private_message_unknown_sender_raises(self, db, consumer):
         """Consumer should raise if the sender username doesn't resolve."""
-        with patch("app.consumers.persistence_consumer.get_user_by_username") as mock_get_user:
+        with patch(
+            "app.consumers.persistence_consumer.get_user_by_username"
+        ) as mock_get_user:
             mock_get_user.return_value = None  # user not found
 
             with pytest.raises(ValueError, match="Unknown user"):
@@ -159,7 +166,9 @@ class TestPersistPrivateMessage:
     @pytest.mark.asyncio
     async def test_private_message_auth_service_down_raises(self, db, consumer):
         """Consumer should raise ConnectionError if Auth Service is unreachable."""
-        with patch("app.consumers.persistence_consumer.get_user_by_username") as mock_get_user:
+        with patch(
+            "app.consumers.persistence_consumer.get_user_by_username"
+        ) as mock_get_user:
             mock_get_user.side_effect = ConnectionError("Auth service unreachable")
 
             with pytest.raises(ConnectionError):
@@ -210,7 +219,9 @@ class TestPersistPrivateMessage:
         mock_sender = {"id": 10, "username": "alice"}
         mock_recipient = {"id": 20, "username": "bob"}
 
-        with patch("app.consumers.persistence_consumer.get_user_by_username") as mock_get_user:
+        with patch(
+            "app.consumers.persistence_consumer.get_user_by_username"
+        ) as mock_get_user:
             mock_get_user.side_effect = lambda name: {
                 "alice": mock_sender,
                 "bob": mock_recipient,
@@ -236,5 +247,3 @@ class TestPersistPrivateMessage:
 # ══════════════════════════════════════════════════════════════════════
 # DLQ routing via _process_with_retry
 # ══════════════════════════════════════════════════════════════════════
-
-

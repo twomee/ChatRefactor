@@ -17,7 +17,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.consumers.persistence_consumer import MAX_CONTENT_LENGTH, MessagePersistenceConsumer
+from app.consumers.persistence_consumer import (
+    MAX_CONTENT_LENGTH,
+    MessagePersistenceConsumer,
+)
 from app.infrastructure.kafka_producer import TOPIC_MESSAGES, TOPIC_PRIVATE
 from app.models import Message
 
@@ -72,7 +75,6 @@ class TestSendToDlq:
 # ══════════════════════════════════════════════════════════════════════
 
 
-
 class TestProcessWithRetryDLQ:
     """Tests for the consumer's _process_with_retry and DLQ routing."""
 
@@ -87,7 +89,10 @@ class TestProcessWithRetryDLQ:
 
         with (
             patch.object(consumer, "_process", new_callable=AsyncMock) as mock_process,
-            patch("app.consumers.persistence_consumer.produce_to_dlq", new_callable=AsyncMock) as mock_dlq,
+            patch(
+                "app.consumers.persistence_consumer.produce_to_dlq",
+                new_callable=AsyncMock,
+            ) as mock_dlq,
         ):
             mock_process.side_effect = Exception("DB error")
             mock_dlq.return_value = True
@@ -113,7 +118,10 @@ class TestProcessWithRetryDLQ:
 
         with (
             patch.object(consumer, "_process", new_callable=AsyncMock) as mock_process,
-            patch("app.consumers.persistence_consumer.produce_to_dlq", new_callable=AsyncMock) as mock_dlq,
+            patch(
+                "app.consumers.persistence_consumer.produce_to_dlq",
+                new_callable=AsyncMock,
+            ) as mock_dlq,
         ):
             await consumer._process_with_retry(mock_msg)
 
@@ -136,8 +144,13 @@ class TestProcessWithRetryDLQ:
                 raise Exception("Transient error")
 
         with (
-            patch.object(consumer, "_process", side_effect=flaky_process) as mock_process,
-            patch("app.consumers.persistence_consumer.produce_to_dlq", new_callable=AsyncMock) as mock_dlq,
+            patch.object(
+                consumer, "_process", side_effect=flaky_process
+            ) as mock_process,
+            patch(
+                "app.consumers.persistence_consumer.produce_to_dlq",
+                new_callable=AsyncMock,
+            ) as mock_dlq,
         ):
             await consumer._process_with_retry(mock_msg)
 
@@ -188,4 +201,3 @@ class TestContentTruncation:
         msg = db.query(Message).filter(Message.message_id == "normal-msg").first()
         assert msg is not None
         assert msg.content == normal_text
-

@@ -184,9 +184,7 @@ class TestCreateConsumer:
         mock_aiokafka.AIOKafkaConsumer.return_value = mock_consumer_instance
 
         with patch.dict("sys.modules", {"aiokafka": mock_aiokafka}):
-            result = create_consumer(
-                group_id="test-group", topics=["topic1", "topic2"]
-            )
+            result = create_consumer(group_id="test-group", topics=["topic1", "topic2"])
 
         assert result is mock_consumer_instance
         mock_aiokafka.AIOKafkaConsumer.assert_called_once()

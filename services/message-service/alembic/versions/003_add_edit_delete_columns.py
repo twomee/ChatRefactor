@@ -8,6 +8,7 @@ Revision ID: 003
 Revises: 002
 Create Date: 2026-03-28
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -25,9 +26,7 @@ def upgrade() -> None:
     Uses ADD COLUMN IF NOT EXISTS for idempotent deployment — safe to run
     against a database that already has the columns.
     """
-    op.execute(
-        "ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP"
-    )
+    op.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP")
     op.execute(
         "ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE"
     )

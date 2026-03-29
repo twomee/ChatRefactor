@@ -8,6 +8,7 @@ Revision ID: 002
 Revises: 001
 Create Date: 2026-03-26
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -26,9 +27,7 @@ def upgrade() -> None:
     against a database that already has the column (e.g., fresh deploys where
     001 is replaced with a schema that includes sender_name).
     """
-    op.execute(
-        "ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_name VARCHAR(64)"
-    )
+    op.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_name VARCHAR(64)")
 
 
 def downgrade() -> None:

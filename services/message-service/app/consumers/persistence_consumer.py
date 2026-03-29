@@ -275,7 +275,9 @@ class MessagePersistenceConsumer:
             if edited:
                 logger.debug("message_edited_via_kafka", msg_id=msg_id)
             else:
-                logger.warning("message_edit_skipped", msg_id=msg_id, sender_id=sender_id)
+                logger.warning(
+                    "message_edit_skipped", msg_id=msg_id, sender_id=sender_id
+                )
 
     def _handle_delete_message(self, db, value: dict):
         """Apply a message soft-delete from Kafka to the database."""
@@ -289,7 +291,9 @@ class MessagePersistenceConsumer:
             if deleted:
                 logger.debug("message_deleted_via_kafka", msg_id=msg_id)
             else:
-                logger.warning("message_delete_skipped", msg_id=msg_id, sender_id=sender_id)
+                logger.warning(
+                    "message_delete_skipped", msg_id=msg_id, sender_id=sender_id
+                )
 
     async def _send_to_dlq(self, msg):
         """Route a failed message to the Dead Letter Queue with error context."""

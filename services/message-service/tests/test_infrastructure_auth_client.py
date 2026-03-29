@@ -146,7 +146,9 @@ class TestGetUserByUsername:
             MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            with patch("app.infrastructure.auth_client.asyncio.sleep", new_callable=AsyncMock):
+            with patch(
+                "app.infrastructure.auth_client.asyncio.sleep", new_callable=AsyncMock
+            ):
                 with pytest.raises(ConnectionError, match="unreachable"):
                     await get_user_by_username("someone")
 
@@ -162,7 +164,9 @@ class TestGetUserByUsername:
             MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            with patch("app.infrastructure.auth_client.asyncio.sleep", new_callable=AsyncMock):
+            with patch(
+                "app.infrastructure.auth_client.asyncio.sleep", new_callable=AsyncMock
+            ):
                 with pytest.raises(ConnectionError, match="unreachable"):
                     await get_user_by_username("someone")
 
@@ -177,7 +181,9 @@ class TestGetUserByUsername:
             MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            with patch("app.infrastructure.auth_client.asyncio.sleep", new_callable=AsyncMock):
+            with patch(
+                "app.infrastructure.auth_client.asyncio.sleep", new_callable=AsyncMock
+            ):
                 with pytest.raises(ConnectionError, match="unreachable"):
                     await get_user_by_username("someone")
 
@@ -236,7 +242,9 @@ class TestGetUserByUsername:
             MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            with patch("app.infrastructure.auth_client.asyncio.sleep", new_callable=AsyncMock):
+            with patch(
+                "app.infrastructure.auth_client.asyncio.sleep", new_callable=AsyncMock
+            ):
                 with pytest.raises(ConnectionError):
                     await get_user_by_username("fail")
 

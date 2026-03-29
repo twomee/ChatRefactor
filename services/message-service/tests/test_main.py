@@ -26,9 +26,14 @@ class TestLifespanSecurityWarnings:
         with (
             patch("app.main.init_producer", new_callable=AsyncMock),
             patch("app.main.close_producer", new_callable=AsyncMock),
-            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.start", new_callable=AsyncMock),
-            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.stop", new_callable=AsyncMock),
-
+            patch(
+                "app.consumers.persistence_consumer.MessagePersistenceConsumer.start",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.consumers.persistence_consumer.MessagePersistenceConsumer.stop",
+                new_callable=AsyncMock,
+            ),
             patch("app.main.APP_ENV", "dev"),
             patch("app.main.SECRET_KEY", "change-this-in-production"),
         ):
@@ -44,9 +49,14 @@ class TestLifespanSecurityWarnings:
         with (
             patch("app.main.init_producer", new_callable=AsyncMock),
             patch("app.main.close_producer", new_callable=AsyncMock),
-            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.start", new_callable=AsyncMock),
-            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.stop", new_callable=AsyncMock),
-
+            patch(
+                "app.consumers.persistence_consumer.MessagePersistenceConsumer.start",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.consumers.persistence_consumer.MessagePersistenceConsumer.stop",
+                new_callable=AsyncMock,
+            ),
             patch("app.main.APP_ENV", "staging"),
             patch("app.main.SECRET_KEY", "change-this-in-production"),
             patch("app.main.logger") as mock_logger,
@@ -77,9 +87,14 @@ class TestLifespanSecurityWarnings:
         with (
             patch("app.main.init_producer", new_callable=AsyncMock),
             patch("app.main.close_producer", new_callable=AsyncMock),
-            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.start", new_callable=AsyncMock),
-            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.stop", new_callable=AsyncMock),
-
+            patch(
+                "app.consumers.persistence_consumer.MessagePersistenceConsumer.start",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.consumers.persistence_consumer.MessagePersistenceConsumer.stop",
+                new_callable=AsyncMock,
+            ),
             patch("app.main.APP_ENV", "prod"),
             patch("app.main.SECRET_KEY", "super-secure-production-key-2024"),
         ):
@@ -88,7 +103,6 @@ class TestLifespanSecurityWarnings:
             with TestClient(app, raise_server_exceptions=False) as client:
                 response = client.get("/health")
                 assert response.status_code == 200
-
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -109,8 +123,10 @@ class TestLifespanKafkaConsumerFailure:
                 new_callable=AsyncMock,
                 side_effect=Exception("consumer start failed"),
             ),
-            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.stop", new_callable=AsyncMock),
-
+            patch(
+                "app.consumers.persistence_consumer.MessagePersistenceConsumer.stop",
+                new_callable=AsyncMock,
+            ),
         ):
             from app.main import app
 
@@ -132,14 +148,21 @@ class TestReadyEndpointFailures:
         with (
             patch("app.main.init_producer", new_callable=AsyncMock),
             patch("app.main.close_producer", new_callable=AsyncMock),
-            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.start", new_callable=AsyncMock),
-            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.stop", new_callable=AsyncMock),
-
+            patch(
+                "app.consumers.persistence_consumer.MessagePersistenceConsumer.start",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.consumers.persistence_consumer.MessagePersistenceConsumer.stop",
+                new_callable=AsyncMock,
+            ),
             patch("app.main.Session") as MockSession,
         ):
             # Make the DB check fail
             mock_session = MagicMock()
-            mock_session.__enter__ = MagicMock(side_effect=Exception("connection refused"))
+            mock_session.__enter__ = MagicMock(
+                side_effect=Exception("connection refused")
+            )
             mock_session.__exit__ = MagicMock(return_value=False)
             MockSession.return_value = mock_session
 
@@ -158,9 +181,14 @@ class TestReadyEndpointFailures:
         with (
             patch("app.main.init_producer", new_callable=AsyncMock),
             patch("app.main.close_producer", new_callable=AsyncMock),
-            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.start", new_callable=AsyncMock),
-            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.stop", new_callable=AsyncMock),
-
+            patch(
+                "app.consumers.persistence_consumer.MessagePersistenceConsumer.start",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.consumers.persistence_consumer.MessagePersistenceConsumer.stop",
+                new_callable=AsyncMock,
+            ),
             patch("app.main.is_kafka_available", return_value=False),
         ):
             from app.core.database import get_db
@@ -190,10 +218,18 @@ class TestReadyEndpointFailures:
         with (
             patch("app.main.init_producer", new_callable=AsyncMock),
             patch("app.main.close_producer", new_callable=AsyncMock),
-            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.start", new_callable=AsyncMock),
-            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.stop", new_callable=AsyncMock),
-
-            patch("app.main.is_kafka_available", side_effect=Exception("kafka check failed")),
+            patch(
+                "app.consumers.persistence_consumer.MessagePersistenceConsumer.start",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.consumers.persistence_consumer.MessagePersistenceConsumer.stop",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.main.is_kafka_available",
+                side_effect=Exception("kafka check failed"),
+            ),
         ):
             from app.core.database import get_db
             from app.main import app

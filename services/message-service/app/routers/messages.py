@@ -80,7 +80,9 @@ def edit_message(
         db, message_id, current_user["user_id"], body.content
     )
     if not success:
-        raise HTTPException(status_code=404, detail="Message not found or not owned by you")
+        raise HTTPException(
+            status_code=404, detail="Message not found or not owned by you"
+        )
     return {"edited": True}
 
 
@@ -97,9 +99,9 @@ def delete_message(
     Returns 404 if the message doesn't exist, is already deleted,
     or does not belong to the authenticated user.
     """
-    success = message_dal.soft_delete_message(
-        db, message_id, current_user["user_id"]
-    )
+    success = message_dal.soft_delete_message(db, message_id, current_user["user_id"])
     if not success:
-        raise HTTPException(status_code=404, detail="Message not found or not owned by you")
+        raise HTTPException(
+            status_code=404, detail="Message not found or not owned by you"
+        )
     return {"deleted": True}

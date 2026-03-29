@@ -76,9 +76,13 @@ def get_room_history(db: Session, room_id: int, limit: int = 50) -> list[Message
     return msgs
 
 
-def edit_message(db: Session, message_id: str, sender_id: int, new_content: str) -> bool:
+def edit_message(
+    db: Session, message_id: str, sender_id: int, new_content: str
+) -> bool:
     """Edit message content. Only the original sender can edit."""
-    msg = db.query(Message).filter_by(message_id=message_id, sender_id=sender_id).first()
+    msg = (
+        db.query(Message).filter_by(message_id=message_id, sender_id=sender_id).first()
+    )
     if not msg or msg.is_deleted:
         return False
     msg.content = new_content
@@ -89,7 +93,9 @@ def edit_message(db: Session, message_id: str, sender_id: int, new_content: str)
 
 def soft_delete_message(db: Session, message_id: str, sender_id: int) -> bool:
     """Soft-delete a message. Only the original sender can delete."""
-    msg = db.query(Message).filter_by(message_id=message_id, sender_id=sender_id).first()
+    msg = (
+        db.query(Message).filter_by(message_id=message_id, sender_id=sender_id).first()
+    )
     if not msg or msg.is_deleted:
         return False
     msg.is_deleted = True
