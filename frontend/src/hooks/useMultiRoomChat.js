@@ -55,7 +55,7 @@ export function useMultiRoomChat() {
   useEffect(() => { pmStateRef.current = pmState; }, [pmState]);
 
   // ── Message replay after reconnect ────────────────────────────────────────
-  function replayMissedMessages(roomId) {
+  const replayMissedMessages = useCallback((roomId) => {
     const since = lastMsgTimeRef.current.get(roomId);
     if (!since) return;
 
@@ -74,7 +74,7 @@ export function useMultiRoomChat() {
         }
       }
     }).catch(() => {});
-  }
+  }, [dispatch]);
 
   // ── Track last message timestamp ──────────────────────────────────────────
   function trackTimestamp(roomId) {
@@ -312,7 +312,7 @@ export function useMultiRoomChat() {
     };
 
     socketsRef.current.set(roomId, ws);
-  }, [token, username, dispatch]);
+  }, [token, username, dispatch, replayMissedMessages]);
 
   // ── exitRoom ───────────────────────────────────────────────────────
   const exitRoom = useCallback((roomId) => {

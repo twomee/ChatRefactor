@@ -128,31 +128,28 @@ func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, 
 	h.manager.DisconnectRoom(roomID, conn)
 	_ = conn.Close()
 
-	// Kicked users: immediate leave (already broadcast by handleKick).
-	if h.wasKicked(roomID, userID) {
-		return
+	if h.wasKicked(roomID, userID) || h.wasLeft(roomID, userID) {
+		return // already handled by handleKick or handleLeave
 	}
-
-	// Intentional leave: already handled by handleLeave.
-	if h.wasLeft(roomID, userID) {
-		return
-	}
-
-	// Check if user still has other connections in this room (multi-tab).
 	if h.manager.IsUserInRoom(roomID, userID) {
-		return
+		return // multi-tab: user still connected via another tab
 	}
 
-	// If the user has no lobby connection they are fully logged out.
-	// Skip the reconnect grace period — broadcast leave immediately so
-	// zombie reconnects (from stale frontend timers) can't cancel the leave.
+	// No lobby → fully logged out. Leave immediately (no grace period).
 	if !h.manager.HasLobbyConnection(userID) {
 		h.broadcastLeave(ctx, roomID, userID, username, true)
 		return
 	}
 
 	// Schedule a delayed leave. If the user reconnects within the grace
-	// period, handleJoin cancels this and no leave/join is broadcast.
+	// period (e.g. page refresh), handleJoin cancels this silently.
+	h.scheduleGracePeriodLeave(roomID, userID, username)
+}
+
+// scheduleGracePeriodLeave waits reconnectGrace before broadcasting a silent
+// user_left. If the user reconnects or logs out within the window, the pending
+// leave is cancelled by handleJoin or flushPendingLeaves respectively.
+func (h *WSHandler) scheduleGracePeriodLeave(roomID, userID int, username string) {
 	leaveCtx, cancel := context.WithCancel(context.Background())
 	leaveKey := fmt.Sprintf("%d:%d", roomID, userID)
 
@@ -163,10 +160,8 @@ func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, 
 	go func() {
 		select {
 		case <-leaveCtx.Done():
-			// Cancelled — user reconnected or flushPendingLeaves fired.
-			return
+			return // cancelled — user reconnected or flushed on logout
 		case <-time.After(reconnectGrace):
-			// Grace period expired — user truly left.
 		}
 
 		h.pendingLeaveMu.Lock()
@@ -177,9 +172,7 @@ func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, 
 			return
 		}
 
-		// Passive disconnect (tab close, network loss): silent broadcast + admin succession.
-		bgCtx := context.Background()
-		h.broadcastLeave(bgCtx, roomID, userID, username, true)
+		h.broadcastLeave(context.Background(), roomID, userID, username, true)
 	}()
 }
 
