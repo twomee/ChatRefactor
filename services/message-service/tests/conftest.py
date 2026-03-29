@@ -31,7 +31,9 @@ from app.models import Message, Reaction
 
 # ── In-memory SQLite test database ──────────────────────────────────
 
-test_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+test_engine = create_engine(
+    "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+)
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 # Create all tables
@@ -62,8 +64,14 @@ def client(db):
     with (
         patch("app.main.init_producer", new_callable=AsyncMock),
         patch("app.main.close_producer", new_callable=AsyncMock),
-        patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.start", new_callable=AsyncMock),
-        patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.stop", new_callable=AsyncMock),
+        patch(
+            "app.consumers.persistence_consumer.MessagePersistenceConsumer.start",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.consumers.persistence_consumer.MessagePersistenceConsumer.stop",
+            new_callable=AsyncMock,
+        ),
     ):
         from app.main import app
 
@@ -78,9 +86,13 @@ def client(db):
 # ── JWT token fixtures ──────────────────────────────────────────────
 
 
-def _create_test_token(user_id: int = 1, username: str = "testuser", expired: bool = False) -> str:
+def _create_test_token(
+    user_id: int = 1, username: str = "testuser", expired: bool = False
+) -> str:
     """Create a JWT token for testing."""
-    exp = datetime.now(timezone.utc) + (timedelta(hours=-1) if expired else timedelta(hours=24))
+    exp = datetime.now(timezone.utc) + (
+        timedelta(hours=-1) if expired else timedelta(hours=24)
+    )
     payload = {"sub": str(user_id), "username": username, "exp": exp}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 

@@ -5,6 +5,7 @@ Revises: None
 Create Date: 2026-03-22
 
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -32,8 +33,12 @@ def upgrade() -> None:
         sa.Column("room_id", sa.Integer(), nullable=True),
         sa.Column("recipient_id", sa.Integer(), nullable=True),
         sa.Column("content", sa.Text(), nullable=False),
-        sa.Column("is_private", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("sent_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "is_private", sa.Boolean(), nullable=False, server_default=sa.text("false")
+        ),
+        sa.Column(
+            "sent_at", sa.DateTime(), nullable=False, server_default=sa.func.now()
+        ),
     )
     # Unique index on message_id for idempotent Kafka writes
     op.create_index("ix_messages_message_id", "messages", ["message_id"], unique=True)

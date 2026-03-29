@@ -17,7 +17,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.consumers.persistence_consumer import MAX_CONTENT_LENGTH, MessagePersistenceConsumer
+from app.consumers.persistence_consumer import (
+    MAX_CONTENT_LENGTH,
+    MessagePersistenceConsumer,
+)
 from app.infrastructure.kafka_producer import TOPIC_MESSAGES, TOPIC_PRIVATE
 from app.models import Message
 
@@ -247,5 +250,3 @@ class TestConsumerRunLoop:
 # ══════════════════════════════════════════════════════════════════════
 # _send_to_dlq
 # ══════════════════════════════════════════════════════════════════════
-
-

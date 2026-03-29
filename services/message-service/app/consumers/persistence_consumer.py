@@ -278,7 +278,9 @@ class MessagePersistenceConsumer:
         inserted = reaction_dal.add_reaction(db, msg_id, user_id, username, emoji)
         if inserted:
             messages_persisted_total.labels(type="reaction").inc()
-            logger.debug("reaction_persisted", msg_id=msg_id, emoji=emoji, user=username)
+            logger.debug(
+                "reaction_persisted", msg_id=msg_id, emoji=emoji, user=username
+            )
 
     def _persist_remove_reaction(self, db, value: dict):
         """Persist a remove_reaction event from Kafka."""

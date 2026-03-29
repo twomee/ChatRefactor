@@ -41,7 +41,9 @@ def get_room_messages(
     return _enrich_with_reactions(db, messages)
 
 
-@router.get("/rooms/{room_id}/history", response_model=list[MessageWithReactionsResponse])
+@router.get(
+    "/rooms/{room_id}/history", response_model=list[MessageWithReactionsResponse]
+)
 def get_room_history(
     room_id: int,
     limit: int = Query(50, ge=1, le=200),
@@ -72,9 +74,7 @@ def get_message_reactions(
     ]
 
 
-def _enrich_with_reactions(
-    db: Session, messages: list[MessageResponse]
-) -> list[dict]:
+def _enrich_with_reactions(db: Session, messages: list[MessageResponse]) -> list[dict]:
     """Attach reactions to each message response.
 
     Fetches reactions in a single batch query for all message_ids, then

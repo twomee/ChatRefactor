@@ -78,8 +78,10 @@ class TestDatabaseUrlProdValidation:
 
         try:
             with pytest.raises(SystemExit) as exc_info:
-                with patch.dict(os.environ, env_clean, clear=True), \
-                     patch("dotenv.load_dotenv"):
+                with (
+                    patch.dict(os.environ, env_clean, clear=True),
+                    patch("dotenv.load_dotenv"),
+                ):
                     importlib.reload(config_module)
 
             assert exc_info.value.code == 1

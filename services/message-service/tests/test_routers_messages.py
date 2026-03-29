@@ -20,10 +20,14 @@ from app.models import Message
 class TestReplayEndpoint:
     """Tests for GET /messages/rooms/{room_id}?since=...&limit=..."""
 
-    def test_replay_returns_messages_since_timestamp(self, client, auth_headers, sample_messages):
+    def test_replay_returns_messages_since_timestamp(
+        self, client, auth_headers, sample_messages
+    ):
         """Should return messages after the given timestamp."""
         since = "2025-01-01T12:02:00"
-        response = client.get(f"/messages/rooms/1?since={since}&limit=100", headers=auth_headers)
+        response = client.get(
+            f"/messages/rooms/1?since={since}&limit=100", headers=auth_headers
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -35,12 +39,16 @@ class TestReplayEndpoint:
     def test_replay_returns_empty_list_when_no_messages(self, client, auth_headers):
         """Should return empty list for a room with no messages."""
         since = "2025-01-01T00:00:00"
-        response = client.get(f"/messages/rooms/999?since={since}", headers=auth_headers)
+        response = client.get(
+            f"/messages/rooms/999?since={since}", headers=auth_headers
+        )
 
         assert response.status_code == 200
         assert response.json() == []
 
-    def test_replay_returns_empty_when_since_is_after_all_messages(self, client, auth_headers, sample_messages):
+    def test_replay_returns_empty_when_since_is_after_all_messages(
+        self, client, auth_headers, sample_messages
+    ):
         """Should return empty list when 'since' is after all messages."""
         since = "2026-01-01T00:00:00"
         response = client.get(f"/messages/rooms/1?since={since}", headers=auth_headers)
@@ -51,7 +59,9 @@ class TestReplayEndpoint:
     def test_replay_respects_limit(self, client, auth_headers, sample_messages):
         """Should respect the limit parameter."""
         since = "2025-01-01T12:00:00"
-        response = client.get(f"/messages/rooms/1?since={since}&limit=2", headers=auth_headers)
+        response = client.get(
+            f"/messages/rooms/1?since={since}&limit=2", headers=auth_headers
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -65,14 +75,18 @@ class TestReplayEndpoint:
 
     def test_replay_rejects_invalid_since_format(self, client, auth_headers):
         """Should return 422 for invalid datetime format."""
-        response = client.get("/messages/rooms/1?since=not-a-date", headers=auth_headers)
+        response = client.get(
+            "/messages/rooms/1?since=not-a-date", headers=auth_headers
+        )
 
         assert response.status_code == 422
 
     def test_replay_response_shape(self, client, auth_headers, sample_messages):
         """Should return messages with the expected schema fields."""
         since = "2025-01-01T12:00:00"
-        response = client.get(f"/messages/rooms/1?since={since}&limit=1", headers=auth_headers)
+        response = client.get(
+            f"/messages/rooms/1?since={since}&limit=1", headers=auth_headers
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -101,7 +115,9 @@ class TestReplayEndpoint:
 class TestHistoryEndpoint:
     """Tests for GET /messages/rooms/{room_id}/history"""
 
-    def test_history_returns_recent_messages(self, client, auth_headers, sample_messages):
+    def test_history_returns_recent_messages(
+        self, client, auth_headers, sample_messages
+    ):
         """Should return recent messages in chronological order."""
         response = client.get("/messages/rooms/1/history", headers=auth_headers)
 
@@ -229,9 +245,7 @@ class TestAPIInputValidation:
 
     def test_negative_room_id_returns_422_or_empty(self, client, auth_headers):
         """Negative room_id should be handled safely (no SQL injection)."""
-        response = client.get(
-            "/messages/rooms/-1/history", headers=auth_headers
-        )
+        response = client.get("/messages/rooms/-1/history", headers=auth_headers)
         # Should succeed (just returns empty) since -1 is a valid int
         assert response.status_code == 200
         assert response.json() == []

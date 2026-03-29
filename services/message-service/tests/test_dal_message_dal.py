@@ -7,7 +7,12 @@
 #   - delete_all: removes all messages
 from datetime import datetime, timedelta
 
-from app.dal.message_dal import create_idempotent, delete_all, get_by_room_since, get_room_history
+from app.dal.message_dal import (
+    create_idempotent,
+    delete_all,
+    get_by_room_since,
+    get_room_history,
+)
 from app.models import Message
 
 
@@ -109,14 +114,16 @@ class TestGetByRoomSince:
         """Should return only messages sent after the given timestamp."""
         base = datetime(2025, 1, 1, 12, 0, 0)
         for i in range(5):
-            db.add(Message(
-                message_id=f"since-{i}",
-                sender_id=1,
-                room_id=1,
-                content=f"Message {i}",
-                is_private=False,
-                sent_at=base + timedelta(minutes=i),
-            ))
+            db.add(
+                Message(
+                    message_id=f"since-{i}",
+                    sender_id=1,
+                    room_id=1,
+                    content=f"Message {i}",
+                    is_private=False,
+                    sent_at=base + timedelta(minutes=i),
+                )
+            )
         db.commit()
 
         result = get_by_room_since(db, room_id=1, since=base + timedelta(minutes=2))
@@ -127,8 +134,26 @@ class TestGetByRoomSince:
     def test_filters_by_room_id(self, db):
         """Should only return messages from the specified room."""
         base = datetime(2025, 1, 1, 12, 0, 0)
-        db.add(Message(message_id="r1", sender_id=1, room_id=1, content="Room 1", is_private=False, sent_at=base))
-        db.add(Message(message_id="r2", sender_id=1, room_id=2, content="Room 2", is_private=False, sent_at=base))
+        db.add(
+            Message(
+                message_id="r1",
+                sender_id=1,
+                room_id=1,
+                content="Room 1",
+                is_private=False,
+                sent_at=base,
+            )
+        )
+        db.add(
+            Message(
+                message_id="r2",
+                sender_id=1,
+                room_id=2,
+                content="Room 2",
+                is_private=False,
+                sent_at=base,
+            )
+        )
         db.commit()
 
         result = get_by_room_since(db, room_id=1, since=base - timedelta(hours=1))
@@ -139,8 +164,26 @@ class TestGetByRoomSince:
     def test_excludes_private_messages(self, db):
         """Should not return private messages."""
         base = datetime(2025, 1, 1, 12, 0, 0)
-        db.add(Message(message_id="pub", sender_id=1, room_id=1, content="Public", is_private=False, sent_at=base))
-        db.add(Message(message_id="priv", sender_id=1, room_id=1, content="Private", is_private=True, sent_at=base))
+        db.add(
+            Message(
+                message_id="pub",
+                sender_id=1,
+                room_id=1,
+                content="Public",
+                is_private=False,
+                sent_at=base,
+            )
+        )
+        db.add(
+            Message(
+                message_id="priv",
+                sender_id=1,
+                room_id=1,
+                content="Private",
+                is_private=True,
+                sent_at=base,
+            )
+        )
         db.commit()
 
         result = get_by_room_since(db, room_id=1, since=base - timedelta(hours=1))
@@ -152,25 +195,47 @@ class TestGetByRoomSince:
         """Should respect the limit parameter."""
         base = datetime(2025, 1, 1, 12, 0, 0)
         for i in range(10):
-            db.add(Message(
-                message_id=f"lim-{i}",
-                sender_id=1,
-                room_id=1,
-                content=f"Message {i}",
-                is_private=False,
-                sent_at=base + timedelta(minutes=i),
-            ))
+            db.add(
+                Message(
+                    message_id=f"lim-{i}",
+                    sender_id=1,
+                    room_id=1,
+                    content=f"Message {i}",
+                    is_private=False,
+                    sent_at=base + timedelta(minutes=i),
+                )
+            )
         db.commit()
 
-        result = get_by_room_since(db, room_id=1, since=base - timedelta(hours=1), limit=3)
+        result = get_by_room_since(
+            db, room_id=1, since=base - timedelta(hours=1), limit=3
+        )
 
         assert len(result) == 3
 
     def test_orders_by_sent_at_ascending(self, db):
         """Should return messages in chronological order (oldest first)."""
         base = datetime(2025, 1, 1, 12, 0, 0)
-        db.add(Message(message_id="late", sender_id=1, room_id=1, content="Late", is_private=False, sent_at=base + timedelta(minutes=5)))
-        db.add(Message(message_id="early", sender_id=1, room_id=1, content="Early", is_private=False, sent_at=base))
+        db.add(
+            Message(
+                message_id="late",
+                sender_id=1,
+                room_id=1,
+                content="Late",
+                is_private=False,
+                sent_at=base + timedelta(minutes=5),
+            )
+        )
+        db.add(
+            Message(
+                message_id="early",
+                sender_id=1,
+                room_id=1,
+                content="Early",
+                is_private=False,
+                sent_at=base,
+            )
+        )
         db.commit()
 
         result = get_by_room_since(db, room_id=1, since=base - timedelta(hours=1))
@@ -192,14 +257,16 @@ class TestGetRoomHistory:
         """Should return the most recent messages, ordered oldest-first."""
         base = datetime(2025, 1, 1, 12, 0, 0)
         for i in range(5):
-            db.add(Message(
-                message_id=f"hist-{i}",
-                sender_id=1,
-                room_id=1,
-                content=f"Message {i}",
-                is_private=False,
-                sent_at=base + timedelta(minutes=i),
-            ))
+            db.add(
+                Message(
+                    message_id=f"hist-{i}",
+                    sender_id=1,
+                    room_id=1,
+                    content=f"Message {i}",
+                    is_private=False,
+                    sent_at=base + timedelta(minutes=i),
+                )
+            )
         db.commit()
 
         result = get_room_history(db, room_id=1, limit=3)
@@ -213,8 +280,26 @@ class TestGetRoomHistory:
     def test_excludes_private_messages(self, db):
         """Should not return private messages."""
         base = datetime(2025, 1, 1, 12, 0, 0)
-        db.add(Message(message_id="pub-h", sender_id=1, room_id=1, content="Public", is_private=False, sent_at=base))
-        db.add(Message(message_id="priv-h", sender_id=1, room_id=1, content="Private", is_private=True, sent_at=base))
+        db.add(
+            Message(
+                message_id="pub-h",
+                sender_id=1,
+                room_id=1,
+                content="Public",
+                is_private=False,
+                sent_at=base,
+            )
+        )
+        db.add(
+            Message(
+                message_id="priv-h",
+                sender_id=1,
+                room_id=1,
+                content="Private",
+                is_private=True,
+                sent_at=base,
+            )
+        )
         db.commit()
 
         result = get_room_history(db, room_id=1)
@@ -234,8 +319,24 @@ class TestDeleteAll:
 
     def test_deletes_all_messages(self, db):
         """Should remove all messages from the database."""
-        db.add(Message(message_id="del-1", sender_id=1, room_id=1, content="A", is_private=False))
-        db.add(Message(message_id="del-2", sender_id=1, room_id=1, content="B", is_private=False))
+        db.add(
+            Message(
+                message_id="del-1",
+                sender_id=1,
+                room_id=1,
+                content="A",
+                is_private=False,
+            )
+        )
+        db.add(
+            Message(
+                message_id="del-2",
+                sender_id=1,
+                room_id=1,
+                content="B",
+                is_private=False,
+            )
+        )
         db.commit()
 
         assert db.query(Message).count() == 2
