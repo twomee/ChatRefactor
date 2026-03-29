@@ -1,5 +1,5 @@
-# Claude Code — ephemeral agent worktrees (NOT project files like skills/hooks)
-.claude/worktrees/
+# Claude Code (all internals — skills, hooks, worktrees, plans)
+.claude/
 
 # Git worktrees managed by this tool
 .worktrees/
@@ -19,6 +19,9 @@ __pycache__/
 coverage/
 .venv/
 venv/          # both naming conventions
+
+# Uploaded files (test artifacts and user content — never commit)
+**/uploads/
 
 # Node / Frontend
 node_modules/
