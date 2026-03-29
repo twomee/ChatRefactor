@@ -68,13 +68,11 @@ describe('notifications', () => {
 
   it('sendBrowserNotification creates a Notification when unfocused and permission granted', async () => {
     const mockClose = vi.fn();
-    let createdInstance;
     // vi.fn() must be used with mockImplementation (not mockReturnValue) for `new` calls
     const MockNotificationClass = vi.fn().mockImplementation(function(title, opts) {
       this.title = title;
       this.opts = opts;
       this.close = mockClose;
-      createdInstance = this;
     });
     globalThis.Notification = Object.assign(MockNotificationClass, { permission: 'granted' });
 

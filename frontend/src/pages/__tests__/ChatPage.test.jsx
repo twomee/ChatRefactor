@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -26,7 +26,7 @@ vi.mock('../../components/common/Logo', () => ({
   default: () => <span data-testid="logo">Logo</span>,
 }));
 vi.mock('../../components/room/RoomList', () => ({
-  default: ({ rooms, onJoin, onExit, onSelect }) => (
+  default: ({ rooms, onSelect }) => (
     <div data-testid="room-list">
       {rooms.map(r => (
         <button key={r.id} data-testid={`room-${r.id}`} onClick={() => onSelect(r.id)}>
@@ -363,11 +363,10 @@ describe('ChatPage', () => {
     );
   });
 
-  it('does not send message when no active room', async () => {
-    const user = userEvent.setup();
+  it('does not send message when no active room', () => {
     renderChatPage({ chatState: { ...defaultChatState, activeRoomId: null } });
 
-    // MessageInput is not rendered in empty state, click is a no-op safety check
+    // MessageInput is not rendered in empty state
     expect(screen.queryByTestId('trigger-send')).toBeNull();
     expect(mockSendMessage).not.toHaveBeenCalled();
   });
@@ -467,6 +466,7 @@ describe('ChatPage', () => {
 
     expect(mockDisconnectAll).toHaveBeenCalled();
     await act(async () => {}); // flush the async authApi.logout()
+    expect(authApi.logout).toHaveBeenCalled();
     expect(mockLogout).toHaveBeenCalled();
     expect(mockNavigate).toHaveBeenCalledWith('/login');
   });
