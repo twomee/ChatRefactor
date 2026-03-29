@@ -58,9 +58,11 @@ def search_messages_endpoint(
             description="Room ID to search within — required to prevent cross-room enumeration",
         ),
     ],
-    limit: Annotated[int, Query(20, ge=1, le=100)],
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    db: Annotated[Session, Depends(get_db)] = Depends(get_db),
+    current_user: Annotated[dict, Depends(get_current_user)] = Depends(
+        get_current_user
+    ),
 ):
     """Search messages by text content within a specific room.
 
@@ -103,9 +105,11 @@ def get_room_messages(
         datetime,
         Query(..., description="ISO 8601 timestamp — return messages after this time"),
     ],
-    limit: Annotated[int, Query(100, ge=1, le=500)],
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    db: Annotated[Session, Depends(get_db)] = Depends(get_db),
+    current_user: Annotated[dict, Depends(get_current_user)] = Depends(
+        get_current_user
+    ),
 ):
     """
     Replay endpoint: fetch messages in a room since a given timestamp.
@@ -122,9 +126,11 @@ def get_room_messages(
 )
 def get_room_history(
     room_id: int,
-    limit: Annotated[int, Query(50, ge=1, le=200)],
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    db: Annotated[Session, Depends(get_db)] = Depends(get_db),
+    current_user: Annotated[dict, Depends(get_current_user)] = Depends(
+        get_current_user
+    ),
 ):
     """
     History endpoint: fetch the most recent messages in a room.

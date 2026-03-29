@@ -231,7 +231,9 @@ def _build_connection_url(parsed, safe_ip: str) -> str:
     return f"{parsed.scheme}://{ip_in_url}:{port}{path}"
 
 
-async def _fetch_html(connection_url: str, hostname: str, parsed_scheme: str) -> str | None:
+async def _fetch_html(
+    connection_url: str, hostname: str, parsed_scheme: str
+) -> str | None:
     """Perform the HTTP request and return raw HTML, or None on failure.
 
     Refuses 3xx redirects to prevent SSRF-via-open-redirect bypasses.
