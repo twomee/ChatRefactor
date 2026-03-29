@@ -16,6 +16,7 @@ import UserList from '../components/room/UserList';
 import PMList from '../components/pm/PMList';
 import PMView from '../components/pm/PMView';
 import ConnectionStatus from '../components/common/ConnectionStatus';
+import SearchModal from '../components/chat/SearchModal';
 
 import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
 import { WidthProvider } from 'react-grid-layout/legacy';
@@ -57,12 +58,25 @@ export default function ChatPage() {
 
   const { joinRoom, exitRoom, disconnectAll, sendMessage, sendTyping, connectionStatus } = useChatConnection();
   const [editingMessage, setEditingMessage] = useState(null);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Add page-active class on mount so the one-shot aurora animation plays,
   // and remove it on unmount so the login page returns to the static gradient.
   useEffect(() => {
     document.body.classList.add('page-active');
     return () => document.body.classList.remove('page-active');
+  }, []);
+
+  // Ctrl+K / Cmd+K keyboard shortcut to open search
+  useEffect(() => {
+    function handleSearchShortcut(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(prev => !prev);
+      }
+    }
+    window.addEventListener('keydown', handleSearchShortcut);
+    return () => window.removeEventListener('keydown', handleSearchShortcut);
   }, []);
 
   function handleLayoutChange(_current, allLayouts) {
@@ -158,6 +172,16 @@ export default function ChatPage() {
   function handleUnmute(target) { sendMessage(state.activeRoomId, { type: 'unmute', target }); }
   function handlePromote(target) { sendMessage(state.activeRoomId, { type: 'promote', target }); }
 
+  function handleSearchNavigate(roomId) {
+    // Navigate to a room from a search result — join if not already joined
+    if (!state.joinedRooms.has(roomId)) {
+      joinRoom(roomId);
+    }
+    dispatch({ type: 'SET_ACTIVE_ROOM', roomId });
+    dispatch({ type: 'CLEAR_UNREAD', roomId });
+    pmDispatch({ type: 'SET_ACTIVE_PM', username: null });
+  }
+
   function handleGoToAdmin() {
     pmDispatch({ type: 'SET_ACTIVE_PM', username: null });
     dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
@@ -228,6 +252,13 @@ export default function ChatPage() {
 
         {/* Right: user + actions */}
         <div className="chat-header-actions">
+          <button onClick={() => setSearchOpen(true)} className="btn-ghost search-trigger-btn" aria-label="Search messages" title="Search messages (Ctrl+K)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            Search
+          </button>
           <ConnectionStatus status={connectionStatus} />
           <div className="user-badge">
             <div className="user-avatar">{getInitials(user?.username)}</div>
@@ -382,6 +413,14 @@ export default function ChatPage() {
           </div>
         </Responsive>
       </div>
+
+      {/* Global message search modal — Ctrl+K / Cmd+K */}
+      <SearchModal
+        isOpen={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        rooms={state.rooms}
+        onNavigate={handleSearchNavigate}
+      />
     </div>
   );
 }
