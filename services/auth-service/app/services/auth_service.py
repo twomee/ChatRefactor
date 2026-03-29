@@ -34,6 +34,10 @@ from app.utils.encryption import decrypt_totp_secret, encrypt_totp_secret
 
 logger = get_logger("services.auth")
 
+# Module-level string constants to avoid S1192 duplication warnings
+_USER_NOT_FOUND = "User not found"
+_INVALID_TOTP = "Invalid TOTP code"
+
 
 async def register(db: Session, body: UserRegister) -> dict:
     """Register a new user.
@@ -291,7 +295,7 @@ def setup_2fa(db: Session, user_info: dict) -> dict:
     """
     user = user_dal.get_by_id(db, user_info["user_id"])
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=_USER_NOT_FOUND)
     if user.is_2fa_enabled:
         raise HTTPException(status_code=400, detail="2FA is already enabled")
 
@@ -314,7 +318,7 @@ def verify_2fa_setup(db: Session, user_info: dict, code: str) -> dict:
     """Confirm 2FA setup by verifying a TOTP code, then enable 2FA on the account."""
     user = user_dal.get_by_id(db, user_info["user_id"])
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=_USER_NOT_FOUND)
     if user.is_2fa_enabled:
         raise HTTPException(status_code=400, detail="2FA is already enabled")
     if not user.totp_secret:
@@ -331,7 +335,7 @@ def verify_2fa_setup(db: Session, user_info: dict, code: str) -> dict:
         auth_2fa_operations_total.labels(
             operation="verify_setup", status="invalid_code"
         ).inc()
-        raise HTTPException(status_code=400, detail="Invalid TOTP code")
+        raise HTTPException(status_code=400, detail=_INVALID_TOTP)
 
     user_dal.enable_2fa(db, user.id)
     logger.info("2fa_enabled", username=user.username, user_id=user.id)
@@ -344,7 +348,7 @@ def disable_2fa(db: Session, user_info: dict, code: str) -> dict:
     """Disable 2FA after verifying a TOTP code (proof that the user owns the secret)."""
     user = user_dal.get_by_id(db, user_info["user_id"])
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=_USER_NOT_FOUND)
     if not user.is_2fa_enabled:
         raise HTTPException(status_code=400, detail="2FA is not enabled")
 
@@ -362,7 +366,7 @@ def disable_2fa(db: Session, user_info: dict, code: str) -> dict:
         auth_2fa_operations_total.labels(
             operation="disable", status="invalid_code"
         ).inc()
-        raise HTTPException(status_code=400, detail="Invalid TOTP code")
+        raise HTTPException(status_code=400, detail=_INVALID_TOTP)
 
     # Replay attack protection for disable flow
     if _check_and_mark_totp_replay(user.id, code):
@@ -372,7 +376,7 @@ def disable_2fa(db: Session, user_info: dict, code: str) -> dict:
         auth_2fa_operations_total.labels(
             operation="disable", status="replay_detected"
         ).inc()
-        raise HTTPException(status_code=400, detail="Invalid TOTP code")
+        raise HTTPException(status_code=400, detail=_INVALID_TOTP)
 
     user_dal.disable_2fa(db, user.id)
     logger.info("2fa_disabled", username=user.username, user_id=user.id)
@@ -419,7 +423,7 @@ async def verify_login_2fa(db: Session, temp_token: str, code: str) -> TokenResp
             operation="verify_login", status="invalid_code"
         ).inc()
         # Token is NOT consumed — user can retry with a new code
-        raise HTTPException(status_code=401, detail="Invalid TOTP code")
+        raise HTTPException(status_code=401, detail=_INVALID_TOTP)
 
     # Replay attack protection: reject a code that was already used
     if _check_and_mark_totp_replay(user.id, code):
@@ -429,7 +433,7 @@ async def verify_login_2fa(db: Session, temp_token: str, code: str) -> TokenResp
         auth_2fa_operations_total.labels(
             operation="verify_login", status="replay_detected"
         ).inc()
-        raise HTTPException(status_code=401, detail="Invalid TOTP code")
+        raise HTTPException(status_code=401, detail=_INVALID_TOTP)
 
     # TOTP verified and not a replay — now consume the temp token (single-use)
     _consume_2fa_temp_token(temp_token)
@@ -456,5 +460,5 @@ def get_2fa_status(db: Session, user_info: dict) -> dict:
     """Return the current 2FA status for the authenticated user."""
     user = user_dal.get_by_id(db, user_info["user_id"])
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=_USER_NOT_FOUND)
     return {"is_2fa_enabled": user.is_2fa_enabled}

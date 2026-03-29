@@ -13,6 +13,8 @@ Key differences from monolith:
 5. 2FA endpoints for TOTP-based two-factor authentication.
 """
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -38,13 +40,13 @@ logger = get_logger("routers.auth")
 
 
 @router.post("/register", status_code=201)
-async def register(body: UserRegister, db: Session = Depends(get_db)):
+async def register(body: UserRegister, db: Annotated[Session, Depends(get_db)]):
     """Register a new user account."""
     return await auth_service.register(db, body)
 
 
 @router.post("/login")
-async def login(body: UserLogin, db: Session = Depends(get_db)):
+async def login(body: UserLogin, db: Annotated[Session, Depends(get_db)]):
     """Authenticate and receive a JWT access token.
 
     If the user has 2FA enabled, returns a Login2FARequiredResponse with a temp_token
@@ -55,15 +57,15 @@ async def login(body: UserLogin, db: Session = Depends(get_db)):
 
 @router.post("/logout")
 async def logout(
-    token: str = Depends(oauth2_scheme),
-    current_user: dict = Depends(get_current_user),
+    token: Annotated[str, Depends(oauth2_scheme)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """Revoke the current access token (blacklists it in Redis)."""
     return await auth_service.logout(current_user, token)
 
 
 @router.post("/ping")
-def ping(current_user: dict = Depends(get_current_user)):
+def ping(current_user: Annotated[dict, Depends(get_current_user)]):
     """Presence ping. In microservice architecture, this is a simple health signal."""
     return auth_service.ping()
 
@@ -73,8 +75,8 @@ def ping(current_user: dict = Depends(get_current_user)):
 
 @router.post("/2fa/setup")
 def setup_2fa(
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """Generate a TOTP secret. Returns secret + otpauth URI for QR code.
 
@@ -87,8 +89,8 @@ def setup_2fa(
 @router.post("/2fa/verify-setup")
 def verify_2fa_setup(
     body: Verify2FARequest,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """Verify a TOTP code to confirm 2FA setup. Enables 2FA on the account."""
     return auth_service.verify_2fa_setup(db, current_user, body.code)
@@ -97,8 +99,8 @@ def verify_2fa_setup(
 @router.post("/2fa/disable")
 def disable_2fa(
     body: Verify2FARequest,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """Disable 2FA. Requires a valid TOTP code as proof of ownership."""
     return auth_service.disable_2fa(db, current_user, body.code)
@@ -107,7 +109,7 @@ def disable_2fa(
 @router.post("/2fa/verify-login", response_model=TokenResponse)
 async def verify_login_2fa(
     body: VerifyLogin2FARequest,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Complete a 2FA-protected login. Requires temp_token + TOTP code.
 
@@ -119,8 +121,8 @@ async def verify_login_2fa(
 
 @router.get("/2fa/status")
 def get_2fa_status(
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """Return the current 2FA status for the authenticated user."""
     return auth_service.get_2fa_status(db, current_user)
@@ -134,7 +136,7 @@ def get_2fa_status(
 
 
 @router.get("/users/by-username/{username}", response_model=UserResponse)
-def get_user_by_username(username: str, db: Session = Depends(get_db)):
+def get_user_by_username(username: str, db: Annotated[Session, Depends(get_db)]):
     """Internal: Look up a user by username. Used by other services."""
     user = user_dal.get_by_username(db, username)
     if not user:
@@ -143,7 +145,7 @@ def get_user_by_username(username: str, db: Session = Depends(get_db)):
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)
-def get_user_by_id(user_id: int, db: Session = Depends(get_db)):
+def get_user_by_id(user_id: int, db: Annotated[Session, Depends(get_db)]):
     """Internal: Look up a user by ID. Used by other services (Chat, File, etc.)."""
     user = user_dal.get_by_id(db, user_id)
     if not user:

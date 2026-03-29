@@ -8,6 +8,7 @@
 # - get_current_user returns a dict, not a User ORM object
 # - Sender names are NOT resolved here (would require auth service call per message)
 from datetime import datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -39,21 +40,27 @@ class EditMessageBody(BaseModel):
 #    FastAPI matching "search" as a path parameter) ──────────────────
 
 
-@router.get("/search")
+@router.get("/search", responses={400: {"description": "Query cannot be empty"}})
 def search_messages_endpoint(
-    q: str = Query(
-        ...,
-        min_length=2,
-        max_length=200,
-        description="Search query (minimum 2 characters)",
-    ),
-    room_id: int = Query(
-        ...,
-        description="Room ID to search within — required to prevent cross-room enumeration",
-    ),
-    limit: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    q: Annotated[
+        str,
+        Query(
+            ...,
+            min_length=2,
+            max_length=200,
+            description="Search query (minimum 2 characters)",
+        ),
+    ],
+    room_id: Annotated[
+        int,
+        Query(
+            ...,
+            description="Room ID to search within — required to prevent cross-room enumeration",
+        ),
+    ],
+    limit: Annotated[int, Query(20, ge=1, le=100)],
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """Search messages by text content within a specific room.
 
@@ -92,12 +99,13 @@ def search_messages_endpoint(
 @router.get("/rooms/{room_id}", response_model=list[MessageWithReactionsResponse])
 def get_room_messages(
     room_id: int,
-    since: datetime = Query(
-        ..., description="ISO 8601 timestamp — return messages after this time"
-    ),
-    limit: int = Query(100, ge=1, le=500),
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    since: Annotated[
+        datetime,
+        Query(..., description="ISO 8601 timestamp — return messages after this time"),
+    ],
+    limit: Annotated[int, Query(100, ge=1, le=500)],
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """
     Replay endpoint: fetch messages in a room since a given timestamp.
@@ -114,9 +122,9 @@ def get_room_messages(
 )
 def get_room_history(
     room_id: int,
-    limit: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    limit: Annotated[int, Query(50, ge=1, le=200)],
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """
     History endpoint: fetch the most recent messages in a room.
@@ -128,12 +136,15 @@ def get_room_history(
     return _enrich_with_reactions(db, messages)
 
 
-@router.patch("/edit/{message_id}")
+@router.patch(
+    "/edit/{message_id}",
+    responses={404: {"description": "Message not found or not owned by you"}},
+)
 def edit_message(
     message_id: str,
     body: EditMessageBody,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """
     Edit a message's content. Only the original sender can edit.
@@ -151,11 +162,14 @@ def edit_message(
     return {"edited": True}
 
 
-@router.delete("/delete/{message_id}")
+@router.delete(
+    "/delete/{message_id}",
+    responses={404: {"description": "Message not found or not owned by you"}},
+)
 def delete_message(
     message_id: str,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """
     Soft-delete a message. Only the original sender can delete.
@@ -175,8 +189,8 @@ def delete_message(
 @router.get("/{message_id}/reactions")
 def get_message_reactions(
     message_id: str,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """Return all reactions for a specific message."""
     reactions = reaction_dal.get_reactions_for_message(db, message_id)
@@ -186,10 +200,16 @@ def get_message_reactions(
     ]
 
 
-@router.get("/preview")
+@router.get(
+    "/preview",
+    responses={
+        400: {"description": "Invalid URL: must start with http:// or https://"},
+        404: {"description": "Could not generate preview"},
+    },
+)
 async def get_link_preview(
-    url: str = Query(..., min_length=10, max_length=2048),
-    current_user: dict = Depends(get_current_user),
+    url: Annotated[str, Query(..., min_length=10, max_length=2048)],
+    current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """Fetch link preview metadata (Open Graph) for a URL.
 

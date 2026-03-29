@@ -162,7 +162,7 @@ export default function TwoFactorSetup() {
             <input
               placeholder="6-digit code"
               value={code}
-              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onChange={e => setCode(e.target.value.replaceAll(/\D/g, '').slice(0, 6))}
               maxLength={6}
               style={{ width: 120, textAlign: 'center', letterSpacing: '0.2em' }}
               data-testid="tfa-setup-code"
@@ -195,7 +195,7 @@ export default function TwoFactorSetup() {
             <input
               placeholder="Enter code to disable"
               value={code}
-              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onChange={e => setCode(e.target.value.replaceAll(/\D/g, '').slice(0, 6))}
               maxLength={6}
               style={{ width: 160, textAlign: 'center', letterSpacing: '0.2em' }}
               data-testid="tfa-disable-code"

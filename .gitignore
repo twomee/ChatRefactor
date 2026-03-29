@@ -8,6 +8,10 @@
 .env
 k8s/secrets.env
 k8s/secrets.env.local
+infra/k8s/secrets.env
+infra/k8s/secrets.env.local
+**/secrets.env
+**/secrets.env.local
 
 # Python
 *.db

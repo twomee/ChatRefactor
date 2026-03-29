@@ -216,6 +216,58 @@ def _sanitize_url(raw: str | None, max_len: int) -> str | None:
     return cleaned[:max_len]
 
 
+def _build_connection_url(parsed, safe_ip: str) -> str:
+    """Build the DNS-pinned connection URL using the pre-resolved IP address.
+
+    IPv6 literal addresses are wrapped in brackets as required by RFC 2732.
+    Fragment is intentionally omitted — it is a client-side-only construct.
+    """
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    path = parsed.path or "/"
+    if parsed.query:
+        path += f"?{parsed.query}"
+    ip_obj = ipaddress.ip_address(safe_ip)
+    ip_in_url = f"[{safe_ip}]" if ip_obj.version == 6 else safe_ip
+    return f"{parsed.scheme}://{ip_in_url}:{port}{path}"
+
+
+async def _fetch_html(connection_url: str, hostname: str, parsed_scheme: str) -> str | None:
+    """Perform the HTTP request and return raw HTML, or None on failure.
+
+    Refuses 3xx redirects to prevent SSRF-via-open-redirect bypasses.
+    Only accepts 200 OK responses with a text/html content type.
+    """
+    request_extensions: dict = {}
+    if parsed_scheme == "https" and hostname:
+        # Forward original hostname as TLS SNI so certificate validation works
+        # against the domain name rather than the raw IP address.
+        request_extensions["sni_hostname"] = hostname.encode("ascii")
+
+    async with httpx.AsyncClient(
+        follow_redirects=False,
+        timeout=FETCH_TIMEOUT,
+    ) as client:
+        response = await client.get(
+            connection_url,
+            headers={
+                "User-Agent": "cHATBOX-LinkPreview/1.0",
+                "Accept": "text/html",
+                "Host": hostname,
+            },
+            extensions=request_extensions,
+        )
+        # Refuse to follow redirects — the destination is unknown and could
+        # point to an internal address that bypassed the SSRF DNS check.
+        if response.status_code in (301, 302, 303, 307, 308):
+            return None
+        if response.status_code != 200:
+            return None
+        content_type = response.headers.get("content-type", "")
+        if "text/html" not in content_type:
+            return None
+        return response.text[:MAX_FETCH_SIZE]
+
+
 async def fetch_preview(url: str) -> dict | None:
     """Fetch a URL and extract Open Graph metadata for a link preview card.
 
@@ -245,48 +297,10 @@ async def fetch_preview(url: str) -> dict | None:
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname or ""
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
-
-        # Build path + query string (never include fragment — client-side only).
-        path = parsed.path or "/"
-        if parsed.query:
-            path += f"?{parsed.query}"
-
-        # IPv6 literal addresses must be wrapped in brackets inside URLs.
-        ip_obj = ipaddress.ip_address(safe_ip)
-        ip_in_url = f"[{safe_ip}]" if ip_obj.version == 6 else safe_ip
-        connection_url = f"{parsed.scheme}://{ip_in_url}:{port}{path}"
-
-        # For HTTPS, pass the original hostname as TLS SNI so that the server
-        # presents the correct certificate and our SSL stack can validate it
-        # against the domain name (not the raw IP address).
-        request_extensions: dict = {}
-        if parsed.scheme == "https" and hostname:
-            request_extensions["sni_hostname"] = hostname.encode("ascii")
-
-        async with httpx.AsyncClient(
-            follow_redirects=False,
-            timeout=FETCH_TIMEOUT,
-        ) as client:
-            response = await client.get(
-                connection_url,
-                headers={
-                    "User-Agent": "cHATBOX-LinkPreview/1.0",
-                    "Accept": "text/html",
-                    "Host": hostname,
-                },
-                extensions=request_extensions,
-            )
-            # Refuse to follow redirects — the destination is unknown and could
-            # point to an internal address that bypassed the SSRF DNS check.
-            if response.status_code in (301, 302, 303, 307, 308):
-                return None
-            if response.status_code != 200:
-                return None
-            content_type = response.headers.get("content-type", "")
-            if "text/html" not in content_type:
-                return None
-            html = response.text[:MAX_FETCH_SIZE]
+        connection_url = _build_connection_url(parsed, safe_ip)
+        html = await _fetch_html(connection_url, hostname, parsed.scheme)
+        if html is None:
+            return None
 
         parser = MetadataParser()
         parser.feed(html)

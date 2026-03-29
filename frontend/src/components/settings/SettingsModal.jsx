@@ -1,5 +1,6 @@
 // src/components/settings/SettingsModal.jsx
 import { useEffect, useRef } from 'react';
+import PropTypes from 'prop-types';
 import TwoFactorSetup from './TwoFactorSetup';
 
 /**
@@ -16,8 +17,8 @@ export default function SettingsModal({ open, onClose }) {
     function handleKey(e) {
       if (e.key === 'Escape') onClose();
     }
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
+    globalThis.addEventListener('keydown', handleKey);
+    return () => globalThis.removeEventListener('keydown', handleKey);
   }, [open, onClose]);
 
   if (!open) return null;
@@ -30,7 +31,7 @@ export default function SettingsModal({ open, onClose }) {
       onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) onClose(); }}
       tabIndex={-1}
     >
-      <div className="settings-panel glass-panel" role="dialog" aria-label="Settings">
+      <dialog open={open} className="settings-panel glass-panel" aria-label="Settings">
         <div className="settings-header">
           <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Settings</h3>
           <button className="btn-ghost btn-sm" onClick={onClose} aria-label="Close settings">
@@ -43,7 +44,12 @@ export default function SettingsModal({ open, onClose }) {
         <div className="settings-body">
           <TwoFactorSetup />
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }
+
+SettingsModal.propTypes = {
+  open: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+};

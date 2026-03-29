@@ -124,7 +124,8 @@ export function chatReducer(state, action) {
       const { [action.roomId]: _mu, ...mutedUsers } = state.mutedUsers;
       const { [action.roomId]: _un, ...unreadCounts } = state.unreadCounts;
       const { [action.roomId]: _ty, ...typingUsers } = state.typingUsers || {};
-      const { [action.roomId]: _rp, ...readPositions } = state.readPositions;
+      const readPositions = { ...state.readPositions };
+      delete readPositions[action.roomId];
       // If we've left all rooms we can no longer track anyone's presence — clear
       // stale offline entries so PMs don't show false-positive "Offline" banners.
       const knownOfflineUsers = next.size === 0 ? new Set() : state.knownOfflineUsers;

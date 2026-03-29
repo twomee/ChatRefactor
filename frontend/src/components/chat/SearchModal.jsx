@@ -5,6 +5,7 @@
 // Displays results with sender, content snippet, room name, and timestamp.
 // Clicking a result navigates the user to that room.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import PropTypes from 'prop-types';
 import { searchMessages } from '../../services/searchApi';
 
 /**
@@ -14,6 +15,45 @@ import { searchMessages } from '../../services/searchApi';
  * @param {Array}    props.rooms       - Room list [{ id, name }] for name lookups
  * @param {Function} props.onNavigate  - Called with roomId when user clicks a result
  */
+
+// ── Module-scope helpers ──
+
+/**
+ * Wraps matching substrings in <mark> for highlighting.
+ * Defined at module scope to keep the component's cognitive complexity budget intact.
+ */
+function highlightMatch(text, q) {
+  if (!q || !text) return text;
+  const escaped = q.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
+  return parts.map((part, i) => {
+    const key = `part-${i}`;
+    if (part.toLowerCase() === q.toLowerCase()) {
+      return (
+        <mark key={key} className="search-highlight">
+          {part}
+        </mark>
+      );
+    }
+    return <span key={key}>{part}</span>;
+  });
+}
+
+function formatTime(isoString) {
+  if (!isoString) return '';
+  try {
+    const d = new Date(isoString);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    if (isToday) {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  } catch {
+    return '';
+  }
+}
+
 export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -44,8 +84,8 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
         onClose();
       }
     }
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    globalThis.addEventListener('keydown', handleKeyDown);
+    return () => globalThis.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
   // Debounced search — fires after 300 ms of inactivity.
@@ -60,7 +100,6 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
   // Dependency array is intentionally empty: setResults, setError, and
   // setLoading are stable React dispatcher references that never change between
   // renders, so there is no stale-closure risk here.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const doSearch = useCallback(
     (q) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -126,37 +165,9 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
 
   function getRoomName(roomId) {
     const room = rooms.find((r) => r.id === roomId);
-    return room ? `#${room.name}` : roomId ? `Room ${roomId}` : 'DM';
-  }
-
-  function highlightMatch(text, q) {
-    if (!q || !text) return text;
-    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
-    return parts.map((part, i) =>
-      part.toLowerCase() === q.toLowerCase() ? (
-        <mark key={i} className="search-highlight">
-          {part}
-        </mark>
-      ) : (
-        part
-      ),
-    );
-  }
-
-  function formatTime(isoString) {
-    if (!isoString) return '';
-    try {
-      const d = new Date(isoString);
-      const now = new Date();
-      const isToday = d.toDateString() === now.toDateString();
-      if (isToday) {
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      }
-      return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    } catch {
-      return '';
-    }
+    if (room) return `#${room.name}`;
+    if (roomId) return `Room ${roomId}`;
+    return 'DM';
   }
 
   if (!isOpen) return null;
@@ -238,3 +249,13 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
     </div>
   );
 }
+
+SearchModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  rooms: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    name: PropTypes.string,
+  })),
+  onNavigate: PropTypes.func,
+};
