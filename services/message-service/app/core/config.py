@@ -37,3 +37,6 @@ DATABASE_URL = _require_env("DATABASE_URL")
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:29092")
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8001")
+
+# Redis is optional — used for link preview caching. Empty string means disabled.
+REDIS_URL = os.getenv("REDIS_URL", "")

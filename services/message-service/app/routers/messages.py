@@ -17,8 +17,14 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.dal import message_dal
 from app.dal import reaction_dal
+from app.infrastructure.redis_client import get_redis
 from app.schemas.message import MessageResponse, MessageWithReactionsResponse
 from app.services import message_service
+from app.services.url_preview_service import (
+    cache_preview,
+    fetch_preview,
+    get_cached_preview,
+)
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 
@@ -120,6 +126,38 @@ def get_message_reactions(
         {"emoji": r.emoji, "username": r.username, "user_id": r.user_id}
         for r in reactions
     ]
+
+
+@router.get("/preview")
+async def get_link_preview(
+    url: str = Query(..., min_length=10, max_length=2048),
+    current_user: dict = Depends(get_current_user),
+):
+    """Fetch link preview metadata (Open Graph) for a URL.
+
+    Returns title, description, image URL, and the original URL.
+    Results are cached in Redis for 1 hour to avoid re-fetching.
+    """
+    # Validate URL scheme — only http/https allowed
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Invalid URL: must start with http:// or https://")
+
+    redis_client = get_redis()
+
+    # Check cache first
+    cached = await get_cached_preview(redis_client, url)
+    if cached is not None:
+        if cached.get("_miss"):
+            raise HTTPException(status_code=404, detail="Could not generate preview")
+        return cached
+
+    # Fetch and cache
+    preview = await fetch_preview(url)
+    await cache_preview(redis_client, url, preview)
+
+    if not preview:
+        raise HTTPException(status_code=404, detail="Could not generate preview")
+    return preview
 
 
 def _enrich_with_reactions(

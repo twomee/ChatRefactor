@@ -4,6 +4,7 @@ import { formatSize } from '../../utils/formatting';
 import { isImageFile } from '../../utils/fileHelpers';
 import { downloadFile } from '../../services/fileApi';
 import MarkdownMessage from './MarkdownMessage';
+import LinkPreview from './LinkPreview';
 import { API_BASE } from '../../config/constants';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
@@ -213,6 +214,8 @@ export default function MessageList({ messages, onScrollToBottom, currentUser, o
               <span className="msg-author">{msg.from}</span>
               {msg.edited_at && <span className="msg-edited-badge">(edited)</span>}
               <div className="msg-text"><span className="msg-text-content">{renderMessageText(msg.text, currentUser)}</span></div>
+              {/* Link preview for first URL in message */}
+              <LinkPreview text={msg.text} />
               {/* Reaction chips */}
               {(grouped.length > 0 || msg.msg_id) && (
                 <div className="msg-reactions">
