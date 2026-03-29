@@ -101,6 +101,8 @@ func (h *WSHandler) readLoop(conn *websocket.Conn, roomID, userID int, username 
 			h.handleAddReaction(ctx, conn, roomID, userID, username, incoming)
 		case "remove_reaction":
 			h.handleRemoveReaction(ctx, conn, roomID, userID, username, incoming)
+		case "mark_read":
+			h.handleMarkRead(ctx, conn, roomID, userID, incoming.MessageID)
 		default:
 			h.sendError(conn, "Unknown message type")
 		}
@@ -176,4 +178,29 @@ func (h *WSHandler) handleTyping(conn *websocket.Conn, roomID int, username stri
 		"username": username,
 	}
 	h.manager.BroadcastRoomExcept(roomID, conn, typingPayload)
+}
+
+// handleMarkRead persists the user's last-read message position in a room.
+// Read positions are per-user and are NOT broadcast to other users.
+func (h *WSHandler) handleMarkRead(ctx context.Context, conn *websocket.Conn, roomID, userID int, messageID string) {
+	messageID = strings.TrimSpace(messageID)
+	if messageID == "" {
+		h.sendError(conn, "msg_id is required for mark_read")
+		return
+	}
+
+	if _, err := uuid.Parse(messageID); err != nil {
+		h.sendError(conn, "msg_id must be a valid UUID")
+		return
+	}
+
+	if h.readPositionStore == nil {
+		// Gracefully degrade if read-position store is not configured (e.g. no DB).
+		return
+	}
+
+	if err := h.readPositionStore.Upsert(ctx, userID, roomID, messageID); err != nil {
+		h.logger.Warn("mark_read_failed", zap.Int("user_id", userID), zap.Int("room_id", roomID), zap.Error(err))
+		// Don't send error to client — mark_read is best-effort.
+	}
 }

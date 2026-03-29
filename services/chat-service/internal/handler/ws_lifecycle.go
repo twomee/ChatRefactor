@@ -224,6 +224,27 @@ func (h *WSHandler) handleAdminSuccession(ctx context.Context, roomID, userID in
 	_ = h.delivery.DeliverChat(ctx, roomID, succPayload)
 }
 
+// sendReadPosition sends the user's last-read message position for the room.
+// Called after sendHistory so the frontend can render the "New messages" divider.
+func (h *WSHandler) sendReadPosition(ctx context.Context, conn *websocket.Conn, roomID, userID int) {
+	if h.readPositionStore == nil {
+		return
+	}
+
+	rp, err := h.readPositionStore.Get(ctx, userID, roomID)
+	if err != nil {
+		// No read position yet (first visit) — nothing to send.
+		return
+	}
+
+	readPosMsg := map[string]interface{}{
+		"type":                 "read_position",
+		"room_id":              roomID,
+		"last_read_message_id": rp.LastReadMessageID,
+	}
+	_ = h.manager.SendToConn(conn, readPosMsg)
+}
+
 // sendHistory fetches recent messages from the Message Service and sends them
 // to the newly connected client.
 func (h *WSHandler) sendHistory(conn *websocket.Conn, roomID int, token string) {

@@ -1,5 +1,5 @@
 // src/pages/ChatPage.jsx
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
@@ -56,9 +56,9 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const [layouts, setLayouts] = useState(loadLayouts);
 
-  const { joinRoom, exitRoom, disconnectAll, sendMessage, sendTyping, connectionStatus } = useChatConnection();
+  const { joinRoom, exitRoom, disconnectAll, sendMessage, sendTyping, markAsRead, connectionStatus } = useChatConnection();
   const [editingMessage, setEditingMessage] = useState(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const markAsReadTimerRef = useRef(null);
 
   // Add page-active class on mount so the one-shot aurora animation plays,
   // and remove it on unmount so the login page returns to the static gradient.
@@ -222,12 +222,49 @@ export default function ChatPage() {
     ? !state.knownOfflineUsers.has(pmState.activePM)
     : true;
 
+  const lastReadMessageId = state.readPositions[state.activeRoomId] || null;
+
   const showRoom = !!state.activeRoomId;
   const showPM = !showRoom && !!pmState.activePM;
 
+  // Debounced mark-as-read: when the user scrolls to the bottom, wait 1s
+  // then persist the last message as read. This avoids flooding the server
+  // with mark_read messages during rapid scrolling.
+  const debouncedMarkAsRead = useCallback(() => {
+    if (markAsReadTimerRef.current) clearTimeout(markAsReadTimerRef.current);
+    markAsReadTimerRef.current = setTimeout(() => {
+      // Don't mark as read if the tab isn't visible — prevents updating read
+      // position on a background tab the user hasn't actually looked at.
+      if (document.hidden) return;
+      const roomId = state.activeRoomId;
+      if (!roomId) return;
+      const msgs = state.messages[roomId];
+      if (!msgs || msgs.length === 0) return;
+      // Find the last message with a msg_id (system messages don't have one)
+      for (let j = msgs.length - 1; j >= 0; j--) {
+        if (msgs[j].msg_id) {
+          markAsRead(roomId, msgs[j].msg_id);
+          break;
+        }
+      }
+    }, 1000);
+  }, [state.activeRoomId, state.messages, markAsRead]);
+
+  // Auto-mark as read when selecting a room (if user can see all messages)
+  useEffect(() => {
+    if (!state.activeRoomId) return;
+    debouncedMarkAsRead();
+    return () => {
+      if (markAsReadTimerRef.current) clearTimeout(markAsReadTimerRef.current);
+    };
+  }, [state.activeRoomId, debouncedMarkAsRead]);
+
   const handleRoomScrollBottom = useCallback(() => {
-    if (state.activeRoomId) dispatch({ type: 'CLEAR_UNREAD', roomId: state.activeRoomId });
-  }, [state.activeRoomId, dispatch]);
+    if (state.activeRoomId) {
+      dispatch({ type: 'CLEAR_UNREAD', roomId: state.activeRoomId });
+      debouncedMarkAsRead();
+    }
+  }, [state.activeRoomId, dispatch, debouncedMarkAsRead]);
 
   const handlePMScrollBottom = useCallback(() => {
     if (pmState.activePM) pmDispatch({ type: 'CLEAR_PM_UNREAD', username: pmState.activePM });
@@ -340,6 +377,7 @@ export default function ChatPage() {
                     messages={activeMessages}
                     onScrollToBottom={handleRoomScrollBottom}
                     currentUser={user?.username}
+                    lastReadMessageId={lastReadMessageId}
                     onEditMessage={handleEditMessage}
                     onDeleteMessage={handleDeleteMessage}
                     onAddReaction={handleAddReaction}

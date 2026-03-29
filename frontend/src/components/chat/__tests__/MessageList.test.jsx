@@ -80,4 +80,37 @@ describe('MessageList', () => {
     const { container } = render(<MessageList messages={messages} />);
     expect(container.querySelector('.mention')).toBeNull();
   });
+
+  it('renders "New messages" divider after the last-read message', () => {
+    const messages = [
+      { from: 'alice', text: 'old message', msg_id: 'msg-1' },
+      { from: 'bob', text: 'new message', msg_id: 'msg-2' },
+    ];
+    const { container } = render(
+      <MessageList messages={messages} lastReadMessageId="msg-1" />
+    );
+    const divider = container.querySelector('.new-messages-divider');
+    expect(divider).toBeInTheDocument();
+    expect(divider.textContent).toBe('New messages');
+  });
+
+  it('does not render divider when lastReadMessageId is the last message', () => {
+    const messages = [
+      { from: 'alice', text: 'old message', msg_id: 'msg-1' },
+      { from: 'bob', text: 'latest', msg_id: 'msg-2' },
+    ];
+    const { container } = render(
+      <MessageList messages={messages} lastReadMessageId="msg-2" />
+    );
+    expect(container.querySelector('.new-messages-divider')).toBeNull();
+  });
+
+  it('does not render divider when lastReadMessageId is not provided', () => {
+    const messages = [
+      { from: 'alice', text: 'msg', msg_id: 'msg-1' },
+      { from: 'bob', text: 'msg2', msg_id: 'msg-2' },
+    ];
+    const { container } = render(<MessageList messages={messages} />);
+    expect(container.querySelector('.new-messages-divider')).toBeNull();
+  });
 });

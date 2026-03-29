@@ -50,7 +50,7 @@ function groupReactions(reactions, currentUser) {
   return Object.values(map);
 }
 
-export default function MessageList({ messages, onScrollToBottom, currentUser, onEditMessage, onDeleteMessage, onAddReaction, onRemoveReaction }) {
+export default function MessageList({ messages, onScrollToBottom, currentUser, lastReadMessageId, onEditMessage, onDeleteMessage, onAddReaction, onRemoveReaction }) {
   const endRef = useRef(null);
   const containerRef = useRef(null);
   const [pickerMsgId, setPickerMsgId] = useState(null);
@@ -109,17 +109,28 @@ export default function MessageList({ messages, onScrollToBottom, currentUser, o
 
   return (
     <div ref={containerRef} onScroll={handleScroll} className="message-list">
-      {(messages || []).map((msg, i) => {
+      {(messages || []).flatMap((msg, i, arr) => {
+        // Render "New messages" divider after the last-read message
+        const showDivider = lastReadMessageId && msg.msg_id === lastReadMessageId && i < arr.length - 1;
+        const dividerEl = showDivider ? (
+          <div key={`divider-${i}`} className="new-messages-divider">
+            <span>New messages</span>
+          </div>
+        ) : null;
+
+        let msgEl;
+
         if (msg.isSystem) {
-          return (
+          msgEl = (
             <div key={i} className="msg msg-system">
               <span className="msg-system-text">{msg.text}</span>
             </div>
           );
+          return dividerEl ? [msgEl, dividerEl] : [msgEl];
         }
 
         if (msg.isFile) {
-          return (
+          msgEl = (
             <div key={i} className="msg">
               <div className="msg-avatar">{getInitials(msg.from)}</div>
               <div className="msg-body">
@@ -176,11 +187,12 @@ export default function MessageList({ messages, onScrollToBottom, currentUser, o
               </div>
             </div>
           );
+          return dividerEl ? [msgEl, dividerEl] : [msgEl];
         }
 
         if (msg.isPrivate) {
           const label = msg.isSelf ? `You \u2192 ${msg.to}` : `${msg.from} \u2192 You`;
-          return (
+          msgEl = (
             <div key={i} className="msg msg-private">
               <div className="msg-avatar">{getInitials(msg.isSelf ? msg.to : msg.from)}</div>
               <div className="msg-body">
@@ -189,11 +201,12 @@ export default function MessageList({ messages, onScrollToBottom, currentUser, o
               </div>
             </div>
           );
+          return dividerEl ? [msgEl, dividerEl] : [msgEl];
         }
 
         // Deleted message — render in muted style
         if (msg.is_deleted) {
-          return (
+          msgEl = (
             <div key={i} className="msg">
               <div className="msg-avatar">{getInitials(msg.from)}</div>
               <div className="msg-body">
@@ -202,12 +215,13 @@ export default function MessageList({ messages, onScrollToBottom, currentUser, o
               </div>
             </div>
           );
+          return dividerEl ? [msgEl, dividerEl] : [msgEl];
         }
 
         const isOwn = currentUser && msg.from === currentUser;
         const grouped = groupReactions(msg.reactions, currentUser);
 
-        return (
+        msgEl = (
           <div key={i} className="msg">
             <div className="msg-avatar">{getInitials(msg.from)}</div>
             <div className="msg-body">
@@ -282,6 +296,7 @@ export default function MessageList({ messages, onScrollToBottom, currentUser, o
             )}
           </div>
         );
+        return dividerEl ? [msgEl, dividerEl] : [msgEl];
       })}
       <div ref={endRef} />
     </div>
