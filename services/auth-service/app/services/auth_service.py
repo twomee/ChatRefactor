@@ -8,9 +8,12 @@ Key differences from monolith:
 4. 2FA (TOTP) support: setup, verify-setup, disable, and verify-login flows.
 """
 
+import base64
+import io
 import secrets
 
 import pyotp
+import qrcode
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -27,6 +30,7 @@ from app.infrastructure.metrics import (
     auth_registrations_total,
 )
 from app.schemas.auth import TokenResponse, UserLogin, UserRegister
+from app.utils.encryption import decrypt_totp_secret, encrypt_totp_secret
 
 logger = get_logger("services.auth")
 
@@ -197,19 +201,35 @@ def _store_2fa_temp_token(user_id: int, username: str) -> str:
     return token
 
 
-def _consume_2fa_temp_token(token: str) -> dict | None:
-    """Retrieve and delete a 2FA temp token from Redis (single-use).
+def _peek_2fa_temp_token(temp_token: str) -> dict | None:
+    """Read temp token data without consuming it.
+
+    Used to validate the token before TOTP verification so that a wrong TOTP
+    code does not force the user to restart the entire login flow.
+    """
+    import json
+
+    raw = _get_redis().get(f"{_2FA_TEMP_TOKEN_PREFIX}{temp_token}")
+    if raw is None:
+        return None
+    return json.loads(raw)
+
+
+def _consume_2fa_temp_token(temp_token: str) -> dict | None:
+    """Read and delete a 2FA temp token from Redis (single-use).
 
     Returns the stored user info dict or None if the token is expired/invalid.
+    Call this ONLY after TOTP verification succeeds to ensure users can retry
+    a failed code without restarting the login flow.
     """
     import json
 
     r = _get_redis()
-    key = f"{_2FA_TEMP_TOKEN_PREFIX}{token}"
+    key = f"{_2FA_TEMP_TOKEN_PREFIX}{temp_token}"
     raw = r.get(key)
     if raw is None:
         return None
-    r.delete(key)  # single-use: consume immediately
+    r.delete(key)  # single-use: consume only on success
     return json.loads(raw)
 
 
@@ -232,13 +252,43 @@ def verify_totp(secret: str, code: str) -> bool:
     return totp.verify(code, valid_window=1)
 
 
+def _check_and_mark_totp_replay(user_id: int, code: str) -> bool:
+    """Check for TOTP replay attack and mark the code as used.
+
+    Returns True if the code was already used (replay detected), False otherwise.
+    Marks the code as used in Redis with a 90-second TTL (valid_window=1 means
+    the code is valid for ±30 seconds = 90-second total window).
+    """
+    r = _get_redis()
+    replay_key = f"totp_used:{user_id}:{code}"
+    already_used = r.get(replay_key)
+    if already_used:
+        return True
+    r.setex(replay_key, 90, "1")
+    return False
+
+
+def generate_qr_code_data_uri(otpauth_uri: str) -> str:
+    """Generate a QR code PNG as a base64 data URI."""
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(otpauth_uri)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    b64 = base64.b64encode(buffer.getvalue()).decode()
+    return f"data:image/png;base64,{b64}"
+
+
 # ── 2FA service functions ────────────────────────────────────────────────
 
 
 def setup_2fa(db: Session, user_info: dict) -> dict:
-    """Generate a TOTP secret and store it (not yet enabled).
+    """Generate a TOTP secret, encrypt it, and store it (not yet enabled).
 
-    Returns the secret and otpauth URI so the frontend can show a QR code.
+    Returns a server-generated QR code image (base64 PNG) and the manual entry
+    key. The raw otpauth URI is NOT returned to avoid leaking it in the DOM.
     The user must call verify-setup with a valid code to actually enable 2FA.
     """
     user = user_dal.get_by_id(db, user_info["user_id"])
@@ -248,13 +298,18 @@ def setup_2fa(db: Session, user_info: dict) -> dict:
         raise HTTPException(status_code=400, detail="2FA is already enabled")
 
     secret = generate_totp_secret()
-    user_dal.update_2fa_secret(db, user.id, secret)
+    # Encrypt before storing — plaintext secret never hits the database
+    user_dal.update_2fa_secret(db, user.id, encrypt_totp_secret(secret))
 
     uri = get_totp_uri(secret, user.username)
     logger.info("2fa_setup_initiated", username=user.username, user_id=user.id)
     auth_2fa_operations_total.labels(operation="setup", status="initiated").inc()
 
-    return {"secret": secret, "otpauth_uri": uri}
+    return {
+        "qr_code": generate_qr_code_data_uri(uri),
+        "manual_entry_key": secret,  # Required for manual authenticator entry
+        # NOTE: otpauth_uri intentionally omitted — QR code is served server-side
+    }
 
 
 def verify_2fa_setup(db: Session, user_info: dict, code: str) -> dict:
@@ -267,7 +322,9 @@ def verify_2fa_setup(db: Session, user_info: dict, code: str) -> dict:
     if not user.totp_secret:
         raise HTTPException(status_code=400, detail="Call /auth/2fa/setup first")
 
-    if not verify_totp(user.totp_secret, code):
+    plaintext_secret = decrypt_totp_secret(user.totp_secret)
+
+    if not verify_totp(plaintext_secret, code):
         logger.warning(
             "2fa_setup_verification_failed",
             username=user.username,
@@ -295,12 +352,31 @@ def disable_2fa(db: Session, user_info: dict, code: str) -> dict:
     if not user.is_2fa_enabled:
         raise HTTPException(status_code=400, detail="2FA is not enabled")
 
-    if not verify_totp(user.totp_secret, code):
+    # Null check: totp_secret must be present if 2FA is flagged as enabled
+    if not user.totp_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="Authentication state corrupted: 2FA enabled but no secret configured",
+        )
+
+    plaintext_secret = decrypt_totp_secret(user.totp_secret)
+
+    if not verify_totp(plaintext_secret, code):
         logger.warning(
             "2fa_disable_failed", username=user.username, user_id=user.id
         )
         auth_2fa_operations_total.labels(
             operation="disable", status="invalid_code"
+        ).inc()
+        raise HTTPException(status_code=400, detail="Invalid TOTP code")
+
+    # Replay attack protection for disable flow
+    if _check_and_mark_totp_replay(user.id, code):
+        logger.warning(
+            "2fa_disable_replay_detected", username=user.username, user_id=user.id
+        )
+        auth_2fa_operations_total.labels(
+            operation="disable", status="replay_detected"
         ).inc()
         raise HTTPException(status_code=400, detail="Invalid TOTP code")
 
@@ -314,10 +390,13 @@ def disable_2fa(db: Session, user_info: dict, code: str) -> dict:
 async def verify_login_2fa(db: Session, temp_token: str, code: str) -> TokenResponse:
     """Complete a 2FA-protected login by verifying the temp_token + TOTP code.
 
-    Consumes the single-use temp_token from Redis, verifies the TOTP code, and
-    returns a full JWT if both are valid.
+    Peeks at (but does not consume) the single-use temp_token first, so that
+    a wrong TOTP code does not force the user to restart the entire login flow.
+    Only consumes (deletes) the token after successful TOTP verification.
     """
-    user_data = _consume_2fa_temp_token(temp_token)
+    # Peek first — do not consume the token before TOTP is verified.
+    # This ensures a wrong code lets the user retry without re-entering credentials.
+    user_data = _peek_2fa_temp_token(temp_token)
     if user_data is None:
         auth_2fa_operations_total.labels(
             operation="verify_login", status="expired_token"
@@ -333,7 +412,9 @@ async def verify_login_2fa(db: Session, temp_token: str, code: str) -> TokenResp
         ).inc()
         raise HTTPException(status_code=401, detail="Invalid authentication state")
 
-    if not verify_totp(user.totp_secret, code):
+    plaintext_secret = decrypt_totp_secret(user.totp_secret)
+
+    if not verify_totp(plaintext_secret, code):
         logger.warning(
             "2fa_login_verification_failed",
             username=user.username,
@@ -342,7 +423,21 @@ async def verify_login_2fa(db: Session, temp_token: str, code: str) -> TokenResp
         auth_2fa_operations_total.labels(
             operation="verify_login", status="invalid_code"
         ).inc()
+        # Token is NOT consumed — user can retry with a new code
         raise HTTPException(status_code=401, detail="Invalid TOTP code")
+
+    # Replay attack protection: reject a code that was already used
+    if _check_and_mark_totp_replay(user.id, code):
+        logger.warning(
+            "2fa_login_replay_detected", username=user.username, user_id=user.id
+        )
+        auth_2fa_operations_total.labels(
+            operation="verify_login", status="replay_detected"
+        ).inc()
+        raise HTTPException(status_code=401, detail="Invalid TOTP code")
+
+    # TOTP verified and not a replay — now consume the temp token (single-use)
+    _consume_2fa_temp_token(temp_token)
 
     # 2FA verified — issue the real JWT
     token = create_access_token({"sub": str(user.id), "username": user.username})

@@ -81,11 +81,12 @@ class TestSetup2FA:
         resp = client.post("/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 200
         data = resp.json()
-        assert "secret" in data
-        assert "otpauth_uri" in data
-        assert len(data["secret"]) == 32
-        assert "otpauth://totp/" in data["otpauth_uri"]
-        assert "cHATBOX" in data["otpauth_uri"]
+        assert "manual_entry_key" in data
+        assert "qr_code" in data
+        assert len(data["manual_entry_key"]) == 32
+        # QR code is now a server-side generated PNG data URI
+        assert data["qr_code"].startswith("data:image/png;base64,")
+        # otpauth_uri is intentionally omitted from the response to avoid DOM exposure
 
     def test_setup_requires_auth(self, client):
         """Setup without a token should return 401."""
@@ -101,7 +102,7 @@ class TestSetup2FA:
 
         # Setup and verify
         setup_resp = client.post("/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"})
-        secret = setup_resp.json()["secret"]
+        secret = setup_resp.json()["manual_entry_key"]
         code = pyotp.TOTP(secret).now()
         client.post(
             "/auth/2fa/verify-setup",
@@ -126,7 +127,7 @@ class TestVerifySetup2FA:
         ).json()["access_token"]
 
         setup_resp = client.post("/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"})
-        secret = setup_resp.json()["secret"]
+        secret = setup_resp.json()["manual_entry_key"]
         code = pyotp.TOTP(secret).now()
 
         resp = client.post(
@@ -184,7 +185,7 @@ class TestDisable2FA:
         ).json()["access_token"]
 
         setup_resp = client.post("/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"})
-        secret = setup_resp.json()["secret"]
+        secret = setup_resp.json()["manual_entry_key"]
         code = pyotp.TOTP(secret).now()
         client.post(
             "/auth/2fa/verify-setup",
@@ -247,7 +248,7 @@ class TestLoginWith2FA:
         ).json()["access_token"]
 
         setup_resp = client.post("/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"})
-        secret = setup_resp.json()["secret"]
+        secret = setup_resp.json()["manual_entry_key"]
         code = pyotp.TOTP(secret).now()
         client.post(
             "/auth/2fa/verify-setup",

@@ -24,6 +24,6 @@ class User(Base):
     )
 
     # ── Two-Factor Authentication (TOTP) ─────────────────────────────
-    totp_secret = Column(String(32), nullable=True)
+    totp_secret = Column(String(256), nullable=True)  # Encrypted with AES-256-GCM
     is_2fa_enabled = Column(Boolean, default=False, nullable=False)
     backup_codes = Column(Text, nullable=True)  # JSON array of hashed codes

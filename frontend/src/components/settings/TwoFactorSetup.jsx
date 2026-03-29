@@ -13,11 +13,12 @@ import * as authApi from '../../services/authApi';
  */
 export default function TwoFactorSetup() {
   const [status, setStatus] = useState(null); // null = loading
-  const [setupData, setSetupData] = useState(null); // { secret, otpauth_uri }
+  const [setupData, setSetupData] = useState(null); // { qr_code, manual_entry_key }
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showManualKey, setShowManualKey] = useState(false);
 
   useEffect(() => {
     fetchStatus();
@@ -86,6 +87,7 @@ export default function TwoFactorSetup() {
     setSetupData(null);
     setCode('');
     setError('');
+    setShowManualKey(false);
   }
 
   if (status === null) {
@@ -117,35 +119,44 @@ export default function TwoFactorSetup() {
         </div>
       )}
 
-      {/* ── Setup in progress: show secret + verification ────────── */}
+      {/* ── Setup in progress: show QR code + verification ──────── */}
       {!status && setupData && (
         <div>
           <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: 8 }}>
-            Scan the URI below with your authenticator app, or enter the secret key manually.
+            Scan this QR code with your authenticator app (e.g. Google Authenticator, Authy).
           </p>
-          <div style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 'var(--radius)',
-            padding: '10px 12px',
-            marginBottom: 12,
-            wordBreak: 'break-all',
-            fontSize: '0.75rem',
-            color: 'var(--text)',
-          }}>
-            <strong>Secret:</strong> {setupData.secret}
+          <div style={{ marginBottom: 12, textAlign: 'center' }}>
+            <img
+              src={setupData.qr_code}
+              alt="Scan this QR code with your authenticator app"
+              style={{ width: 180, height: 180, borderRadius: 'var(--radius)', background: '#fff', padding: 4 }}
+            />
           </div>
-          <div style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 'var(--radius)',
-            padding: '10px 12px',
-            marginBottom: 12,
-            wordBreak: 'break-all',
-            fontSize: '0.7rem',
-            color: 'var(--text-muted)',
-          }}>
-            <strong>URI:</strong> {setupData.otpauth_uri}
+          <div style={{ marginBottom: 12 }}>
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              onClick={() => setShowManualKey(v => !v)}
+              style={{ fontSize: '0.75rem' }}
+            >
+              {showManualKey ? 'Hide manual key' : 'Cannot scan? Show manual entry key'}
+            </button>
+            {showManualKey && (
+              <div style={{
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 'var(--radius)',
+                padding: '10px 12px',
+                marginTop: 8,
+                wordBreak: 'break-all',
+                fontSize: '0.75rem',
+                color: 'var(--text)',
+                fontFamily: 'monospace',
+                letterSpacing: '0.1em',
+              }}>
+                {setupData.manual_entry_key}
+              </div>
+            )}
           </div>
           <form onSubmit={handleVerifySetup} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input
