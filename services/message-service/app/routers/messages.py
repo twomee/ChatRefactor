@@ -35,6 +35,47 @@ class EditMessageBody(BaseModel):
     content: str
 
 
+# ── Search endpoint (defined BEFORE /{message_id}/* routes to avoid
+#    FastAPI matching "search" as a path parameter) ──────────────────
+
+
+@router.get("/search")
+def search_messages_endpoint(
+    q: str = Query(..., min_length=1, max_length=200),
+    room_id: int | None = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Search messages by text content with optional room filter.
+
+    Uses PostgreSQL full-text search (tsvector + GIN index) for relevance-ranked
+    results. Only public, non-deleted messages are searched.
+
+    Query params:
+      - q: search terms (1-200 chars)
+      - room_id: optional filter to a specific room
+      - limit: max results (1-100, default 50)
+    """
+    stripped = q.strip()
+    if not stripped:
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    results = message_dal.search_messages(
+        db, query=stripped, room_id=room_id, limit=limit
+    )
+    return [
+        {
+            "message_id": m.message_id,
+            "sender_name": m.sender_name,
+            "content": m.content,
+            "room_id": m.room_id,
+            "sent_at": m.sent_at.isoformat() if m.sent_at else None,
+        }
+        for m in results
+    ]
+
+
 @router.get("/rooms/{room_id}", response_model=list[MessageWithReactionsResponse])
 def get_room_messages(
     room_id: int,

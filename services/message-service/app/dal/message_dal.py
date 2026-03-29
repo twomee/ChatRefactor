@@ -1,6 +1,7 @@
 # app/dal/message_dal.py — Data Access Layer for Message model
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -96,6 +97,54 @@ def soft_delete_message(db: Session, message_id: str, sender_id: int) -> bool:
     msg.content = "[deleted]"
     db.commit()
     return True
+
+
+def search_messages(
+    db: Session,
+    query: str,
+    room_id: int | None = None,
+    limit: int = 50,
+) -> list[Message]:
+    """Full-text search across messages using PostgreSQL tsvector.
+
+    On PostgreSQL, uses the GIN-indexed search_vector column with plainto_tsquery
+    for relevance-ranked results. Falls back to case-insensitive LIKE on SQLite
+    (used in tests) since tsvector is PostgreSQL-specific.
+
+    Only searches public, non-deleted messages. Results are ordered by relevance
+    (ts_rank on PG) then recency.
+    """
+    capped_limit = min(limit, 100)
+    dialect = db.bind.dialect.name if db.bind else "unknown"
+
+    base_filters = [
+        Message.is_private == False,  # noqa: E712
+        Message.is_deleted == False,  # noqa: E712
+    ]
+    if room_id is not None:
+        base_filters.append(Message.room_id == room_id)
+
+    if dialect == "postgresql":
+        ts_query = func.plainto_tsquery("english", query)
+        q = (
+            db.query(Message)
+            .filter(*base_filters)
+            .filter(Message.search_vector.op("@@")(ts_query))
+            .order_by(
+                func.ts_rank(Message.search_vector, ts_query).desc(),
+                Message.sent_at.desc(),
+            )
+        )
+    else:
+        # SQLite fallback — simple case-insensitive LIKE search
+        q = (
+            db.query(Message)
+            .filter(*base_filters)
+            .filter(Message.content.ilike(f"%{query}%"))
+            .order_by(Message.sent_at.desc())
+        )
+
+    return q.limit(capped_limit).all()
 
 
 def delete_all(db: Session):

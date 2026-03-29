@@ -8,8 +8,23 @@
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy.types import UserDefinedType
 
 from app.core.database import Base
+
+
+class TSVector(UserDefinedType):
+    """PostgreSQL tsvector type.
+
+    Falls back to TEXT on databases that don't support tsvector (e.g. SQLite
+    in tests). This lets the ORM model stay portable while the real FTS
+    functionality is PostgreSQL-specific (migration + trigger).
+    """
+
+    cache_ok = True
+
+    def get_col_spec(self):
+        return "TSVECTOR"
 
 
 class Message(Base):
@@ -30,6 +45,7 @@ class Message(Base):
     sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     edited_at = Column(DateTime, nullable=True)
     is_deleted = Column(Boolean, default=False, nullable=False)
+    search_vector = Column(TSVector, nullable=True)  # populated by PG trigger
 
 
 class Reaction(Base):
