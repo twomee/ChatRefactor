@@ -59,6 +59,9 @@ func TestSendHistoryWithRealMessageService(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
+	// Register lobby so HandleRoomWS doesn't reject the connection.
+	t.Cleanup(registerTestLobby(t, manager, 1, "alice"))
+
 	token := makeToken(1, "alice")
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/1?token=" + token
 	c, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
@@ -132,6 +135,9 @@ func TestSendHistoryMessageServiceNonOK(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
+	// Register lobby so HandleRoomWS doesn't reject the connection.
+	t.Cleanup(registerTestLobby(t, manager, 1, "alice"))
+
 	token := makeToken(1, "alice")
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/1?token=" + token
 	c, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
@@ -179,6 +185,9 @@ func TestSendHistoryMessageServiceBadJSON(t *testing.T) {
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
 	srv := httptest.NewServer(r)
 	defer srv.Close()
+
+	// Register lobby so HandleRoomWS doesn't reject the connection.
+	t.Cleanup(registerTestLobby(t, manager, 1, "alice"))
 
 	token := makeToken(1, "alice")
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/1?token=" + token
@@ -241,6 +250,9 @@ func TestSendReadPositionWithData(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
+	// Register lobby so HandleRoomWS doesn't reject the connection.
+	t.Cleanup(registerTestLobby(t, manager, 1, "alice"))
+
 	token := makeToken(1, "alice")
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/1?token=" + token
 	c, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
@@ -275,11 +287,11 @@ func TestSendReadPositionWithData(t *testing.T) {
 // TestSendReadPositionNoStore verifies that when no read position store is configured,
 // no read_position frame is sent (graceful degradation).
 func TestSendReadPositionNoStore(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
 	// The setupWSServerWithDelivery uses nil for readPositionStore.
-	c := dialWS(t, srvURL, 1, "alice")
+	c := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	// Drain join + history. Should not receive a read_position frame.
@@ -314,7 +326,7 @@ func TestSendReadPositionStoreReturnsError(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
-	c := dialWS(t, srv.URL, 1, "alice")
+	c := dialWS(t, srv.URL, manager, 1, "alice")
 	defer c.Close()
 
 	drainMessages(c, 2) // join + history

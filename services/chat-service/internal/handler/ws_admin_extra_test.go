@@ -14,14 +14,14 @@ import (
 
 // TestWSMuteTargetIsAdmin verifies that an admin cannot mute another admin.
 func TestWSMuteTargetIsAdmin(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)
@@ -45,14 +45,14 @@ func TestWSMuteTargetIsAdmin(t *testing.T) {
 
 // TestWSMuteAlreadyMuted verifies that muting an already-muted user returns an error.
 func TestWSMuteAlreadyMuted(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)
@@ -76,10 +76,10 @@ func TestWSMuteAlreadyMuted(t *testing.T) {
 
 // TestWSMuteEmptyTarget verifies that mute with empty target returns an error.
 func TestWSMuteEmptyTarget(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
@@ -96,14 +96,14 @@ func TestWSMuteEmptyTarget(t *testing.T) {
 
 // TestWSMuteNonAdmin verifies that a non-admin cannot mute other users.
 func TestWSMuteNonAdmin(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)
@@ -122,10 +122,10 @@ func TestWSMuteNonAdmin(t *testing.T) {
 
 // TestWSMuteUserNotInRoom verifies that muting a user not in the room returns an error.
 func TestWSMuteUserNotInRoom(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
@@ -157,11 +157,11 @@ func TestWSMuteDatabaseError(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
-	c1 := dialWS(t, srv.URL, 1, "alice")
+	c1 := dialWS(t, srv.URL, manager, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
-	c2 := dialWS(t, srv.URL, 2, "bob")
+	c2 := dialWS(t, srv.URL, manager, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)
@@ -184,14 +184,14 @@ func TestWSMuteDatabaseError(t *testing.T) {
 
 // TestWSKickTargetIsAdmin verifies that an admin cannot kick another admin.
 func TestWSKickTargetIsAdmin(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)
@@ -215,10 +215,10 @@ func TestWSKickTargetIsAdmin(t *testing.T) {
 
 // TestWSKickEmptyTarget verifies that kick with empty target returns an error.
 func TestWSKickEmptyTarget(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
@@ -235,14 +235,14 @@ func TestWSKickEmptyTarget(t *testing.T) {
 
 // TestWSKickNonAdmin verifies that a non-admin cannot kick other users.
 func TestWSKickNonAdmin(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)
@@ -261,10 +261,10 @@ func TestWSKickNonAdmin(t *testing.T) {
 
 // TestWSKickUserNotInRoom verifies that kicking a user not in the room returns an error.
 func TestWSKickUserNotInRoom(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 

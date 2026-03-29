@@ -61,7 +61,8 @@ func (m *mockReadPositionStore) lastUpsertCall() (upsertCall, bool) {
 
 // setupWSServerWithReadPositions creates a test WebSocket server that has a
 // real mockReadPositionStore wired up, so mark_read tests can assert on Upsert.
-func setupWSServerWithReadPositions(t *testing.T) (srvURL string, rpStore *mockReadPositionStore, cleanup func()) {
+// Returns the manager so callers can pass it to dialWS.
+func setupWSServerWithReadPositions(t *testing.T) (srvURL string, mgr *ws.Manager, rpStore *mockReadPositionStore, cleanup func()) {
 	t.Helper()
 	logger := newLogger()
 	manager := ws.NewManager(logger)
@@ -77,16 +78,16 @@ func setupWSServerWithReadPositions(t *testing.T) (srvURL string, rpStore *mockR
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
 	srv := httptest.NewServer(r)
-	return srv.URL, rpStore, srv.Close
+	return srv.URL, manager, rpStore, srv.Close
 }
 
 // TestWSMarkReadEmptyMsgID verifies that sending mark_read with an empty msg_id
 // returns an error frame and does NOT call Upsert.
 func TestWSMarkReadEmptyMsgID(t *testing.T) {
-	srvURL, rpStore, cleanup := setupWSServerWithReadPositions(t)
+	srvURL, mgr, rpStore, cleanup := setupWSServerWithReadPositions(t)
 	defer cleanup()
 
-	c := dialWS(t, srvURL, 1, "alice")
+	c := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 	drainMessages(c, 2) // join + history
 
@@ -109,10 +110,10 @@ func TestWSMarkReadEmptyMsgID(t *testing.T) {
 // TestWSMarkReadInvalidMsgID verifies that sending mark_read with a non-UUID
 // msg_id returns an error frame and does NOT call Upsert.
 func TestWSMarkReadInvalidMsgID(t *testing.T) {
-	srvURL, rpStore, cleanup := setupWSServerWithReadPositions(t)
+	srvURL, mgr, rpStore, cleanup := setupWSServerWithReadPositions(t)
 	defer cleanup()
 
-	c := dialWS(t, srvURL, 1, "alice")
+	c := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 	drainMessages(c, 2)
 
@@ -135,12 +136,12 @@ func TestWSMarkReadInvalidMsgID(t *testing.T) {
 // TestWSMarkReadValidUUID verifies that sending mark_read with a valid UUID
 // calls Upsert with the correct user_id, room_id, and msg_id.
 func TestWSMarkReadValidUUID(t *testing.T) {
-	srvURL, rpStore, cleanup := setupWSServerWithReadPositions(t)
+	srvURL, mgr, rpStore, cleanup := setupWSServerWithReadPositions(t)
 	defer cleanup()
 
 	const validUUID = "550e8400-e29b-41d4-a716-446655440000"
 
-	c := dialWS(t, srvURL, 1, "alice")
+	c := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 	drainMessages(c, 2)
 

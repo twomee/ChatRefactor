@@ -14,8 +14,8 @@ import (
 )
 
 // setupWSServerWithDelivery creates a test WebSocket server and returns the
-// delivery mock so tests can assert on how many Kafka messages were sent.
-func setupWSServerWithDelivery(t *testing.T) (srvURL string, del *mockDelivery, cleanup func()) {
+// ws.Manager (needed by dialWS), delivery mock, and a cleanup function.
+func setupWSServerWithDelivery(t *testing.T) (srvURL string, mgr *ws.Manager, del *mockDelivery, cleanup func()) {
 	t.Helper()
 	logger := newLogger()
 	manager := ws.NewManager(logger)
@@ -30,12 +30,18 @@ func setupWSServerWithDelivery(t *testing.T) (srvURL string, del *mockDelivery, 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
 	srv := httptest.NewServer(r)
-	return srv.URL, del, srv.Close
+	return srv.URL, manager, del, srv.Close
 }
 
-// dialAndDrain connects a WebSocket client and drains the initial join+history frames.
-func dialAndDrain(t *testing.T, srvURL string, userID int, username string) *websocket.Conn {
+// dialAndDrain connects a WebSocket client, registers a lobby connection (required
+// by HandleRoomWS since the lobby-check was added), and drains the initial
+// join+history frames.
+func dialAndDrain(t *testing.T, srvURL string, mgr *ws.Manager, userID int, username string) *websocket.Conn {
 	t.Helper()
+	// Register lobby so HandleRoomWS doesn't reject the connection.
+	lobbyCleanup := registerTestLobby(t, mgr, userID, username)
+	t.Cleanup(lobbyCleanup)
+
 	token := makeToken(userID, username)
 	wsURL := "ws" + strings.TrimPrefix(srvURL, "http") + "/ws/1?token=" + token
 	c, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
@@ -52,12 +58,12 @@ func dialAndDrain(t *testing.T, srvURL string, userID int, username string) *web
 // TestWSEditMessageSuccess verifies that a valid edit_message command broadcasts
 // a message_edited event to all clients in the room and calls DeliverChat.
 func TestWSEditMessageSuccess(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialAndDrain(t, srvURL, 1, "alice")
+	c1 := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
-	c2 := dialAndDrain(t, srvURL, 2, "bob")
+	c2 := dialAndDrain(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c1, 1) // alice gets bob's join
 
@@ -84,10 +90,10 @@ func TestWSEditMessageSuccess(t *testing.T) {
 // TestWSEditMessageEmptyMsgID verifies that edit_message with an empty msg_id
 // returns an error frame and does NOT broadcast.
 func TestWSEditMessageEmptyMsgID(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	c.WriteJSON(map[string]string{
@@ -108,10 +114,10 @@ func TestWSEditMessageEmptyMsgID(t *testing.T) {
 
 // TestWSEditMessageEmptyText verifies that edit_message with empty text returns an error.
 func TestWSEditMessageEmptyText(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	c.WriteJSON(map[string]string{
@@ -133,10 +139,10 @@ func TestWSEditMessageEmptyText(t *testing.T) {
 // TestWSEditMessageTooLong verifies that edit_message with text exceeding maxContentLength
 // returns an error.
 func TestWSEditMessageTooLong(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	longText := strings.Repeat("a", maxContentLength+1)
@@ -161,12 +167,12 @@ func TestWSEditMessageTooLong(t *testing.T) {
 // TestWSDeleteMessageSuccess verifies that a valid delete_message command broadcasts
 // a message_deleted event to all clients in the room.
 func TestWSDeleteMessageSuccess(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialAndDrain(t, srvURL, 1, "alice")
+	c1 := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
-	c2 := dialAndDrain(t, srvURL, 2, "bob")
+	c2 := dialAndDrain(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c1, 1) // alice gets bob's join
 
@@ -188,10 +194,10 @@ func TestWSDeleteMessageSuccess(t *testing.T) {
 // TestWSDeleteMessageEmptyMsgID verifies that delete_message with an empty msg_id
 // returns an error frame and does NOT broadcast.
 func TestWSDeleteMessageEmptyMsgID(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	c.WriteJSON(map[string]string{
@@ -228,7 +234,7 @@ func TestWSDeleteMessageDeliveryFailure(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
-	c := dialAndDrain(t, srv.URL, 1, "alice")
+	c := dialAndDrain(t, srv.URL, manager, 1, "alice")
 	defer c.Close()
 
 	c.WriteJSON(map[string]string{

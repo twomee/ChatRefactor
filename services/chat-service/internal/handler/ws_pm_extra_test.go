@@ -8,12 +8,12 @@ import (
 
 // TestWSPrivateMsgEmptyText verifies that PM with empty text returns an error.
 func TestWSPrivateMsgEmptyText(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialAndDrain(t, srvURL, 1, "alice")
+	c1 := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
-	c2 := dialAndDrain(t, srvURL, 2, "bob")
+	c2 := dialAndDrain(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c1, 1)
 
@@ -30,12 +30,12 @@ func TestWSPrivateMsgEmptyText(t *testing.T) {
 
 // TestWSPrivateMsgTooLong verifies that PM text exceeding maxContentLength returns an error.
 func TestWSPrivateMsgTooLong(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialAndDrain(t, srvURL, 1, "alice")
+	c1 := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
-	c2 := dialAndDrain(t, srvURL, 2, "bob")
+	c2 := dialAndDrain(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c1, 1)
 
@@ -56,10 +56,10 @@ func TestWSPrivateMsgTooLong(t *testing.T) {
 
 // TestWSPrivateMsgEmptyTo verifies that PM with empty recipient returns an error.
 func TestWSPrivateMsgEmptyTo(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	c.WriteJSON(map[string]string{"type": "private_message", "to": "", "text": "hello"})
@@ -75,10 +75,10 @@ func TestWSPrivateMsgEmptyTo(t *testing.T) {
 
 // TestWSPrivateMsgTargetNotInRoom verifies that PM to a user not in the room returns an error.
 func TestWSPrivateMsgTargetNotInRoom(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	c.WriteJSON(map[string]string{"type": "private_message", "to": "ghost", "text": "hello"})

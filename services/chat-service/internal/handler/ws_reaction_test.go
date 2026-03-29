@@ -16,12 +16,12 @@ import (
 // TestWSAddReactionSuccess verifies that a valid add_reaction command broadcasts
 // a reaction_added event to all clients in the room.
 func TestWSAddReactionSuccess(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialAndDrain(t, srvURL, 1, "alice")
+	c1 := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
-	c2 := dialAndDrain(t, srvURL, 2, "bob")
+	c2 := dialAndDrain(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c1, 1) // alice gets bob's join
 
@@ -47,10 +47,10 @@ func TestWSAddReactionSuccess(t *testing.T) {
 
 // TestWSAddReactionEmptyMsgID verifies that add_reaction with empty msg_id returns an error.
 func TestWSAddReactionEmptyMsgID(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	c.WriteJSON(map[string]string{
@@ -71,10 +71,10 @@ func TestWSAddReactionEmptyMsgID(t *testing.T) {
 
 // TestWSAddReactionEmptyEmoji verifies that add_reaction with empty emoji returns an error.
 func TestWSAddReactionEmptyEmoji(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	c.WriteJSON(map[string]string{
@@ -96,10 +96,10 @@ func TestWSAddReactionEmptyEmoji(t *testing.T) {
 // TestWSAddReactionEmojiTooLong verifies that add_reaction with an emoji exceeding 32
 // characters returns an error.
 func TestWSAddReactionEmojiTooLong(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	longEmoji := strings.Repeat("x", 33)
@@ -140,7 +140,7 @@ func TestWSAddReactionMutedUser(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
-	c := dialAndDrain(t, srv.URL, 1, "alice")
+	c := dialAndDrain(t, srv.URL, manager, 1, "alice")
 	defer c.Close()
 
 	c.WriteJSON(map[string]string{
@@ -164,12 +164,12 @@ func TestWSAddReactionMutedUser(t *testing.T) {
 // TestWSRemoveReactionSuccess verifies that a valid remove_reaction command broadcasts
 // a reaction_removed event to all clients in the room.
 func TestWSRemoveReactionSuccess(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialAndDrain(t, srvURL, 1, "alice")
+	c1 := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
-	c2 := dialAndDrain(t, srvURL, 2, "bob")
+	c2 := dialAndDrain(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c1, 1)
 
@@ -191,10 +191,10 @@ func TestWSRemoveReactionSuccess(t *testing.T) {
 
 // TestWSRemoveReactionEmptyMsgID verifies that remove_reaction with empty msg_id returns an error.
 func TestWSRemoveReactionEmptyMsgID(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	c.WriteJSON(map[string]string{
@@ -215,10 +215,10 @@ func TestWSRemoveReactionEmptyMsgID(t *testing.T) {
 
 // TestWSRemoveReactionEmptyEmoji verifies that remove_reaction with empty emoji returns an error.
 func TestWSRemoveReactionEmptyEmoji(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	c.WriteJSON(map[string]string{
@@ -240,10 +240,10 @@ func TestWSRemoveReactionEmptyEmoji(t *testing.T) {
 // TestWSRemoveReactionEmojiTooLong verifies that remove_reaction with an emoji exceeding 32
 // characters returns an error.
 func TestWSRemoveReactionEmojiTooLong(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	longEmoji := strings.Repeat("z", 33)

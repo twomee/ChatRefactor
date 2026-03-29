@@ -10,12 +10,12 @@ import (
 // TestWSTypingBroadcastExcludesSender verifies that the typing indicator is sent
 // to other clients in the room but NOT echoed back to the sender.
 func TestWSTypingBroadcastExcludesSender(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c1 := dialAndDrain(t, srvURL, 1, "alice")
+	c1 := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
-	c2 := dialAndDrain(t, srvURL, 2, "bob")
+	c2 := dialAndDrain(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c1, 1) // alice gets bob's join
 
@@ -44,10 +44,10 @@ func TestWSTypingBroadcastExcludesSender(t *testing.T) {
 // TestWSTypingSingleUser verifies that typing with only one user in the room
 // does not panic (no recipients = no-op).
 func TestWSTypingSingleUser(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	// Only alice is in the room — typing should be a no-op.
@@ -129,10 +129,10 @@ func TestRateLimiterAllowNewKey(t *testing.T) {
 // TestWSUnknownMessageType verifies that sending an unknown message type
 // results in an error response from the server.
 func TestWSUnknownMessageType(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	c.WriteJSON(map[string]string{"type": "not_a_real_type"})
@@ -150,10 +150,10 @@ func TestWSUnknownMessageType(t *testing.T) {
 // TestWSInvalidJSONMessage verifies that a non-JSON message from client
 // returns an error to the client and the connection remains open.
 func TestWSInvalidJSONMessage(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	// Send raw non-JSON bytes.

@@ -8,10 +8,10 @@ import (
 // TestWSMessageRateLimitExceeded verifies that when a user sends more messages
 // than the rate limit allows within the window, an error is returned.
 func TestWSMessageRateLimitExceeded(t *testing.T) {
-	srvURL, _, cleanup := setupWSServerWithDelivery(t)
+	srvURL, mgr, _, cleanup := setupWSServerWithDelivery(t)
 	defer cleanup()
 
-	c := dialAndDrain(t, srvURL, 1, "alice")
+	c := dialAndDrain(t, srvURL, mgr, 1, "alice")
 	defer c.Close()
 
 	// rateLimitMax = 30 messages per 10s window.
