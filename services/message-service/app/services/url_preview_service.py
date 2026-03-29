@@ -98,7 +98,7 @@ async def _resolve_safe_ip(url: str) -> str | None:
             return None
 
         # Resolve hostname to IPs off the event loop (socket.getaddrinfo is blocking)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         addr_infos = await loop.run_in_executor(
             None,
             lambda: socket.getaddrinfo(
@@ -122,7 +122,7 @@ async def _resolve_safe_ip(url: str) -> str | None:
                 first_safe_ip = str(ip)
 
         return first_safe_ip
-    except (socket.gaierror, ValueError, OSError):
+    except (ValueError, OSError):
         # DNS resolution failed or invalid URL — treat as unsafe
         return None
 

@@ -1,4 +1,5 @@
 // src/components/chat/TypingIndicator.jsx
+import PropTypes from 'prop-types';
 
 /**
  * Displays an animated "X is typing..." indicator below the message list.
@@ -30,3 +31,7 @@ export default function TypingIndicator({ typingUsers }) {
     </div>
   );
 }
+
+TypingIndicator.propTypes = {
+  typingUsers: PropTypes.objectOf(PropTypes.number),
+};

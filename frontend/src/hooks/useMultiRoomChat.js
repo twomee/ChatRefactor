@@ -298,7 +298,7 @@ export function useMultiRoomChat() {
         break;
     }
 
-  }, [dispatch, pmDispatch]);
+  }, [dispatch, pmDispatch, user?.username]);
 
   // ── Stable refs for functions that call each other ──────────────────
   const handleMessageRef = useRef(handleMessage);

@@ -364,7 +364,7 @@ func configurePingPong(conn *websocket.Conn, mgr *ws.Manager) func() {
 
 // sendError sends an error message to a single connection.
 func (h *WSHandler) sendError(conn *websocket.Conn, detail string) {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"type":   "error",
 		"detail": detail,
 	}

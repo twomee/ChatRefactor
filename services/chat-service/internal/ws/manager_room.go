@@ -105,7 +105,7 @@ func (m *Manager) DisconnectRoom(roomID int, conn *websocket.Conn) {
 }
 
 // BroadcastRoom sends a JSON message to every connection in a room.
-func (m *Manager) BroadcastRoom(roomID int, msg interface{}) {
+func (m *Manager) BroadcastRoom(roomID int, msg any) {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		m.logger.Error("broadcast_marshal_error", zap.Error(err))
@@ -150,21 +150,14 @@ func (m *Manager) BroadcastRoom(roomID int, msg interface{}) {
 // BroadcastRoomExcept sends a JSON message to every connection in a room
 // except the given connection. Used for ephemeral events like typing
 // indicators where echoing back to the sender is unnecessary.
-func (m *Manager) BroadcastRoomExcept(roomID int, except *websocket.Conn, msg interface{}) {
+func (m *Manager) BroadcastRoomExcept(roomID int, except *websocket.Conn, msg any) {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		m.logger.Error("broadcast_except_marshal_error", zap.Error(err))
 		return
 	}
 
-	m.mu.RLock()
-	conns := make([]*websocket.Conn, 0, len(m.rooms[roomID]))
-	for c := range m.rooms[roomID] {
-		if c != except {
-			conns = append(conns, c)
-		}
-	}
-	m.mu.RUnlock()
+	conns := m.collectConnsExcept(roomID, except)
 
 	var failed []*websocket.Conn
 	for _, c := range conns {
@@ -174,24 +167,45 @@ func (m *Manager) BroadcastRoomExcept(roomID int, except *websocket.Conn, msg in
 	}
 
 	if len(failed) > 0 {
-		m.mu.Lock()
-		for _, c := range failed {
-			user, ok := m.connUser[c]
-			if ok {
-				delete(m.rooms[roomID], c)
-				delete(m.connUser, c)
-				delete(m.connMu, c)
-				delete(m.userConns[user.UserID], c)
-				if len(m.userConns[user.UserID]) == 0 {
-					delete(m.userConns, user.UserID)
-				}
-				metrics.WSConnectionsActive.WithLabelValues("room").Dec()
-			}
-			_ = c.Close()
-		}
-		metrics.WSActiveRooms.Set(float64(len(m.rooms)))
-		m.mu.Unlock()
+		m.removeFailedConns(roomID, failed)
 	}
+}
+
+// collectConnsExcept returns all connections in a room except the given one.
+// Caller must not hold m.mu.
+func (m *Manager) collectConnsExcept(roomID int, except *websocket.Conn) []*websocket.Conn {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	conns := make([]*websocket.Conn, 0, len(m.rooms[roomID]))
+	for c := range m.rooms[roomID] {
+		if c != except {
+			conns = append(conns, c)
+		}
+	}
+	return conns
+}
+
+// removeFailedConns cleans up a list of dead connections from the room maps
+// and closes each connection. Caller must not hold m.mu.
+func (m *Manager) removeFailedConns(roomID int, failed []*websocket.Conn) {
+	m.mu.Lock()
+	for _, c := range failed {
+		user, ok := m.connUser[c]
+		if ok {
+			delete(m.rooms[roomID], c)
+			delete(m.connUser, c)
+			delete(m.connMu, c)
+			delete(m.userConns[user.UserID], c)
+			if len(m.userConns[user.UserID]) == 0 {
+				delete(m.userConns, user.UserID)
+			}
+			metrics.WSConnectionsActive.WithLabelValues("room").Dec()
+		}
+		_ = c.Close()
+	}
+	metrics.WSActiveRooms.Set(float64(len(m.rooms)))
+	m.mu.Unlock()
 }
 
 // GetUsersInRoom returns the set of user IDs currently connected to a room.
@@ -303,7 +317,7 @@ func (m *Manager) CloseUserConnsInRoom(roomID, userID int) {
 }
 
 // SendToUserInRoom sends a message to all of a user's connections in a room.
-func (m *Manager) SendToUserInRoom(roomID, userID int, msg interface{}) {
+func (m *Manager) SendToUserInRoom(roomID, userID int, msg any) {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		m.logger.Error("send_to_user_marshal_error", zap.Error(err))

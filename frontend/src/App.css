@@ -1684,7 +1684,7 @@
   border-radius: 3px;
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
   font-size: 0.85em;
-  color: #e8912d;
+  color: var(--code-color);
 }
 
 .code-block {

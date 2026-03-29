@@ -51,6 +51,10 @@ export default function LoginPage() {
     }
   }
 
+  function handleTotpChange(e) {
+    setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+  }
+
   async function handle2FASubmit(e) {
     e.preventDefault();
     setError('');
@@ -93,9 +97,10 @@ export default function LoginPage() {
               Enter the 6-digit code from your authenticator app.
             </p>
             <input
+              type="text"
               placeholder="000000"
               value={totpCode}
-              onChange={e => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onChange={handleTotpChange}
               required
               autoFocus
               maxLength={6}

@@ -21,8 +21,9 @@ function renderMessageText(text, currentUser) {
   return parts.map((part, i) => {
     if (part.startsWith('@')) {
       const isSelf = part.toLowerCase() === `@${currentUser?.toLowerCase()}`;
+      const className = isSelf ? 'mention mention-self' : 'mention';
       return (
-        <span key={i} className={`mention ${isSelf ? 'mention-self' : ''}`}>
+        <span key={i} className={className}>
           {part}
         </span>
       );
@@ -159,7 +160,8 @@ function renderDeletedMessage(msg, key) {
   );
 }
 
-function renderReactionChips(msg, grouped, pickerMsgId, onAddReaction, handleReactionChipClick, setPickerMsgId, handlePickerSelect) {
+function renderReactionChips(msg, grouped, pickerMsgId, handlers) {
+  const { onAddReaction, handleReactionChipClick, setPickerMsgId, handlePickerSelect } = handlers;
   if (grouped.length === 0 && !msg.msg_id) return null;
   return (
     <div className="msg-reactions">
@@ -174,7 +176,7 @@ function renderReactionChips(msg, grouped, pickerMsgId, onAddReaction, handleRea
           <span className="reaction-count">{g.count}</span>
         </button>
       ))}
-      {msg.msg_id && onAddReaction && (
+      {Boolean(msg.msg_id) && Boolean(onAddReaction) && (
         <div style={{ position: 'relative', display: 'inline-block' }}>
           <button
             className="reaction-add-btn"
@@ -201,8 +203,9 @@ function renderReactionChips(msg, grouped, pickerMsgId, onAddReaction, handleRea
   );
 }
 
-function renderRegularMessage(msg, key, currentUser, pickerMsgId, onEditMessage, onDeleteMessage, onAddReaction, handleReactionChipClick, setPickerMsgId, handlePickerSelect) {
-  const isOwn = currentUser && msg.from === currentUser;
+function renderRegularMessage(msg, key, currentUser, pickerMsgId, handlers) {
+  const { onEditMessage, onDeleteMessage, onAddReaction, handleReactionChipClick, setPickerMsgId, handlePickerSelect } = handlers;
+  const isOwn = Boolean(currentUser) && msg.from === currentUser;
   const grouped = groupReactions(msg.reactions, currentUser);
 
   return (
@@ -213,9 +216,9 @@ function renderRegularMessage(msg, key, currentUser, pickerMsgId, onEditMessage,
         {msg.edited_at && <span className="msg-edited-badge">(edited)</span>}
         <div className="msg-text"><span className="msg-text-content">{renderMessageText(msg.text, currentUser)}</span></div>
         <LinkPreview text={msg.text} />
-        {renderReactionChips(msg, grouped, pickerMsgId, onAddReaction, handleReactionChipClick, setPickerMsgId, handlePickerSelect)}
+        {renderReactionChips(msg, grouped, pickerMsgId, { onAddReaction, handleReactionChipClick, setPickerMsgId, handlePickerSelect })}
       </div>
-      {isOwn && msg.msg_id && (
+      {isOwn && Boolean(msg.msg_id) && (
         <div className="msg-actions">
           <button
             className="msg-action-btn"
@@ -318,7 +321,7 @@ export default function MessageList({ messages, onScrollToBottom, currentUser, l
         } else if (msg.is_deleted) {
           msgEl = renderDeletedMessage(msg, key);
         } else {
-          msgEl = renderRegularMessage(msg, key, currentUser, pickerMsgId, onEditMessage, onDeleteMessage, onAddReaction, handleReactionChipClick, setPickerMsgId, handlePickerSelect);
+          msgEl = renderRegularMessage(msg, key, currentUser, pickerMsgId, { onEditMessage, onDeleteMessage, onAddReaction, handleReactionChipClick, setPickerMsgId, handlePickerSelect });
         }
 
         return dividerEl ? [msgEl, dividerEl] : [msgEl];

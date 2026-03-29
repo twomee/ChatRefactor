@@ -24,8 +24,8 @@ import { searchMessages } from '../../services/searchApi';
  */
 function highlightMatch(text, q) {
   if (!q || !text) return text;
-  const escaped = q.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.split(new RegExp(`(${escaped})`, 'gi')); // NOSONAR - input is sanitized on the line above
   return parts.map((part, i) => {
     const key = `part-${i}`;
     if (part.toLowerCase() === q.toLowerCase()) {
@@ -84,8 +84,8 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
         onClose();
       }
     }
-    globalThis.addEventListener('keydown', handleKeyDown);
-    return () => globalThis.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
   // Debounced search — fires after 300 ms of inactivity.
@@ -163,6 +163,14 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
     }
   }
 
+  function handleOverlayKeyDown(e) {
+    if (e.key === 'Escape') onClose();
+  }
+
+  function handleResultKeyDown(e, result) {
+    if (e.key === 'Enter') handleResultClick(result);
+  }
+
   function getRoomName(roomId) {
     const room = rooms.find((r) => r.id === roomId);
     if (room) return `#${room.name}`;
@@ -173,8 +181,8 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
   if (!isOpen) return null;
 
   return (
-    <div className="search-modal-overlay" onClick={handleOverlayClick} onKeyDown={e => { if (e.key === 'Escape') onClose(); }} role="dialog" aria-modal="true" aria-label="Search messages">
-      <div className="search-modal">
+    <div className="search-modal-overlay" onClick={handleOverlayClick} onKeyDown={handleOverlayKeyDown} role="presentation">
+      <div className="search-modal" role="dialog" aria-modal="true" aria-label="Search messages">
         {/* Search input */}
         <div className="search-modal-input-wrapper">
           <svg className="search-modal-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -199,26 +207,23 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
             <div className="search-modal-status">Searching...</div>
           )}
 
-          {error && (
+          {Boolean(error) && (
             <div className="search-modal-status search-modal-error">{error}</div>
           )}
 
-          {!loading && !error && query.trim() && results.length === 0 && (
+          {!loading && !error && query.trim().length > 0 && results.length === 0 && (
             <div className="search-modal-status">No messages found</div>
           )}
 
           {!loading && results.length > 0 && (
-            <ul className="search-result-list" role="listbox">
+            <ul className="search-result-list">
               {results.map((r) => (
                 <li
                   key={r.message_id}
                   className="search-result-item"
                   onClick={() => handleResultClick(r)}
-                  role="option"
                   tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleResultClick(r);
-                  }}
+                  onKeyDown={(e) => handleResultKeyDown(e, r)}
                 >
                   <div className="search-result-header">
                     <span className="search-result-sender">

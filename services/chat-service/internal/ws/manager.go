@@ -184,7 +184,7 @@ func (m *Manager) safeWrite(conn *websocket.Conn, data []byte) error {
 }
 
 // SendToConn sends a raw JSON-encodable message to a single connection.
-func (m *Manager) SendToConn(conn *websocket.Conn, msg interface{}) error {
+func (m *Manager) SendToConn(conn *websocket.Conn, msg any) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return err

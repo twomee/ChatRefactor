@@ -61,9 +61,9 @@ describe('SearchModal', () => {
       <SearchModal isOpen={true} onClose={onClose} rooms={rooms} onNavigate={vi.fn()} />,
     );
 
-    // Click the overlay (the element with role="dialog")
-    const overlay = screen.getByRole('dialog');
-    await user.click(overlay);
+    // Click the backdrop overlay (parent of the dialog)
+    const dialog = screen.getByRole('dialog');
+    await user.click(dialog.parentElement);
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -171,8 +171,8 @@ describe('SearchModal', () => {
       expect(screen.getByText('bob')).toBeInTheDocument();
     });
 
-    // Click the result item (text is split by highlight <mark>, so use role)
-    await user.click(screen.getByRole('option'));
+    // Click the result item
+    await user.click(screen.getByText('bob').closest('li'));
 
     expect(onNavigate).toHaveBeenCalledWith(2);
     expect(onClose).toHaveBeenCalled();

@@ -340,24 +340,13 @@ func (h *WSHandler) sendHistory(conn *websocket.Conn, roomID int, token string) 
 	resp, err := client.Do(req)
 	if err != nil {
 		h.logger.Warn("history_fetch_failed", zap.Error(err))
-		// Send empty history instead of failing silently.
-		historyMsg := map[string]interface{}{
-			"type":     "history",
-			"messages": []interface{}{},
-			"room_id":  roomID,
-		}
-		_ = h.manager.SendToConn(conn, historyMsg)
+		h.sendEmptyHistory(conn, roomID)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		historyMsg := map[string]interface{}{
-			"type":     "history",
-			"messages": []interface{}{},
-			"room_id":  roomID,
-		}
-		_ = h.manager.SendToConn(conn, historyMsg)
+		h.sendEmptyHistory(conn, roomID)
 		return
 	}
 
@@ -366,8 +355,28 @@ func (h *WSHandler) sendHistory(conn *websocket.Conn, roomID int, token string) 
 		rawMessages = []map[string]interface{}{}
 	}
 
-	// Transform field names from message-service format (sender_id, content)
-	// to frontend format (from, text) so MessageList can render them.
+	historyMsg := map[string]interface{}{
+		"type":     "history",
+		"messages": transformHistoryMessages(rawMessages),
+		"room_id":  roomID,
+	}
+	_ = h.manager.SendToConn(conn, historyMsg)
+}
+
+// sendEmptyHistory sends an empty history payload to the client.
+// Used when the message service is unavailable or returns a non-OK status.
+func (h *WSHandler) sendEmptyHistory(conn *websocket.Conn, roomID int) {
+	historyMsg := map[string]interface{}{
+		"type":     "history",
+		"messages": []interface{}{},
+		"room_id":  roomID,
+	}
+	_ = h.manager.SendToConn(conn, historyMsg)
+}
+
+// transformHistoryMessages converts raw message-service records (sender_id,
+// content) into the frontend wire format (from, text) expected by MessageList.
+func transformHistoryMessages(rawMessages []map[string]interface{}) []map[string]interface{} {
 	transformed := make([]map[string]interface{}, 0, len(rawMessages))
 	for _, m := range rawMessages {
 		msg := map[string]interface{}{
@@ -392,13 +401,7 @@ func (h *WSHandler) sendHistory(conn *websocket.Conn, roomID int, token string) 
 		}
 		transformed = append(transformed, msg)
 	}
-
-	historyMsg := map[string]interface{}{
-		"type":     "history",
-		"messages": transformed,
-		"room_id":  roomID,
-	}
-	_ = h.manager.SendToConn(conn, historyMsg)
+	return transformed
 }
 
 // getAdminUsernames returns a list of admin usernames for a room by cross-referencing

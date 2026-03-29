@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import LinkPreview, { previewCache } from '../LinkPreview';
+import LinkPreview from '../LinkPreview';
+import { previewCache } from '../../../utils/linkPreviewUtils';
 
 // Mock the messageApi module
 vi.mock('../../../services/messageApi', () => ({

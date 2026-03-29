@@ -7,10 +7,7 @@
 // re-fetching on re-renders. The cache lives for the duration of the SPA session.
 import { useState, useEffect } from 'react';
 import { fetchLinkPreview } from '../../services/messageApi';
-
-// Module-level cache — survives re-renders, lives for the SPA session.
-// Exported for testing (cache clearing between tests).
-export const previewCache = new Map();
+import { previewCache } from '../../utils/linkPreviewUtils';
 
 // Simple URL regex for detecting links in message text.
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/;

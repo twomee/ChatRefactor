@@ -1,6 +1,14 @@
 // src/components/MessageInput.jsx
 import { useRef, useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { uploadFile } from '../../services/fileApi';
+
+function getPlaceholder(editingMessage, isPM, roomName) {
+  if (editingMessage) return 'Edit your message...';
+  if (isPM) return `Message ${roomName}\u2026`;
+  if (roomName) return `Message #${roomName}...`;
+  return 'Type a message...';
+}
 
 export default function MessageInput({ onSend, roomName, roomId, isPM = false, onTyping, editingMessage, onCancelEdit }) {
   const [text, setText] = useState('');
@@ -125,7 +133,7 @@ export default function MessageInput({ onSend, roomName, roomId, isPM = false, o
           className="message-input"
           value={text}
           onChange={handleChange}
-          placeholder={editingMessage ? 'Edit your message...' : isPM ? `Message ${roomName}\u2026` : roomName ? `Message #${roomName}...` : 'Type a message...'}
+          placeholder={getPlaceholder(editingMessage, isPM, roomName)}
         />
 
         {/* right-side icon actions */}
@@ -162,3 +170,16 @@ export default function MessageInput({ onSend, roomName, roomId, isPM = false, o
     </div>
   );
 }
+
+MessageInput.propTypes = {
+  onSend: PropTypes.func.isRequired,
+  roomName: PropTypes.string,
+  roomId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  isPM: PropTypes.bool,
+  onTyping: PropTypes.func,
+  editingMessage: PropTypes.shape({
+    msg_id: PropTypes.string,
+    text: PropTypes.string,
+  }),
+  onCancelEdit: PropTypes.func,
+};
