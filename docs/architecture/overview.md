@@ -49,6 +49,7 @@ Why we chose every piece of technology in cHATBOX — from infrastructure to ind
    - [Two-Factor Authentication (2FA)](#88-two-factor-authentication-2fa)
    - [Browser Notifications](#89-browser-notifications)
    - [Online Presence](#810-online-presence)
+   - [Technology Choices Per Service](#811-technology-choices-per-service)
 
 ---
 
@@ -1206,3 +1207,49 @@ Phase 1 adds 10 production features that transform cHATBOX from a basic chat app
 - **Accurate**: WebSocket close events fire immediately when the connection drops. Polling would require waiting for the next heartbeat interval.
 - **Decoupled from rooms**: A user can be online without being in any room (e.g. browsing the room list). Lobby presence captures this.
 - **Efficient**: One connection per user for presence vs. polling every N seconds from every client.
+
+---
+
+### 8.11 Technology Choices Per Service
+
+Phase 1 introduced new libraries and modules across all four services. Here's why each was chosen over alternatives.
+
+#### Auth Service (Python/FastAPI)
+
+| Library | What it does | Why this over alternatives |
+|---------|-------------|---------------------------|
+| **pyotp** | Generates and verifies TOTP codes (RFC 6238) | Only TOTP library needed. Lightweight (no dependencies), RFC-compliant, compatible with Google Authenticator, Authy, and 1Password. Alternative: `django-otp` — too heavy, pulls in Django. Alternative: `python-u2f` — FIDO/U2F requires hardware keys, overkill for a chat app. |
+| **qrcode** + **Pillow** | Generates QR code images for the TOTP setup flow | `qrcode` is the standard Python QR library. Pillow is needed as the image backend. The QR is rendered as a base64 data URI so the frontend doesn't need a separate image endpoint. Alternative: client-side QR generation (e.g. `qrcode.react`) — would expose the TOTP secret to the browser's JavaScript context before setup is confirmed, slightly widening the attack surface. |
+| **cryptography** (Fernet) | Encrypts TOTP secrets at rest with AES-256-GCM | TOTP secrets must be stored encrypted because they need to be decrypted for verification (unlike passwords which are one-way hashed). `cryptography` is the gold standard for Python crypto — maintained by the PyCA team, audited, and used by pip itself. Alternative: `pycryptodome` — also solid but `cryptography` has better API ergonomics. Alternative: storing secrets in a vault (HashiCorp Vault) — adds operational complexity for marginal security gain at this scale. |
+| **Alembic** (migrations 003, 004) | Schema migrations for 2FA columns (`totp_secret`, `is_2fa_enabled`, `backup_codes`) | Already used for auth-service migrations. Migration 003 adds the columns, 004 widens `totp_secret` from 32 chars to 256 to accommodate encrypted ciphertext (base64-encoded AES output is longer than the plaintext). |
+
+#### Chat Service (Go)
+
+| Module/Pattern | What it does | Why this over alternatives |
+|----------------|-------------|---------------------------|
+| **`net/http` Client** (cross-service calls) | Validates edit/delete ownership by calling message-service REST API | The chat-service (Go) calls `PUT /messages/{id}` and `DELETE /messages/{id}` on the message-service (Python) to validate that the requesting user is the original sender. Alternative: duplicate the ownership check in the chat-service's own database — violates the database-per-service pattern and creates a consistency risk. Alternative: Kafka command/response — too slow for synchronous operations where the user is waiting. |
+| **`context.WithCancel`** (grace period) | Manages the 10-second reconnect grace period for room disconnects | Each room disconnect creates a cancellable context. If the user reconnects within 10 seconds (page refresh), the context is cancelled and no `user_left` is broadcast. On full logout, `flushPendingLeaves` cancels all pending contexts. Alternative: `time.Timer` — works but `context.WithCancel` + `select` is more idiomatic Go and composes better with the existing context propagation. |
+| **`sync.Mutex`** (pendingLeaves map) | Thread-safe access to the map of pending leave timers | Standard Go mutex for protecting shared state accessed by multiple goroutines (one per WebSocket connection). Alternative: channel-based synchronization — would require a central coordinator goroutine, adding complexity without benefit for a simple map. Alternative: `sync.Map` — optimized for read-heavy workloads with stable keys, but pending leaves are write-heavy (added and deleted frequently). |
+| **`BroadcastRoomExcept`** (typing) | Sends typing indicators to all room connections except the sender | A new broadcast variant that skips the originating connection. The sender doesn't need to see their own typing indicator. Alternative: broadcast to everyone and filter client-side — wastes bandwidth and requires the frontend to identify and suppress its own events. |
+| **`ReadPositionRepository`** (interface) | Abstracts read position storage behind a Go interface | Allows swapping storage backends (PostgreSQL in production, in-memory mock in tests) without changing the handler code. Follows the Dependency Inversion Principle. Alternative: hardcode Redis/PostgreSQL calls in the handler — couples the handler to a specific storage technology and makes testing harder. |
+
+#### Message Service (Python/FastAPI)
+
+| Library/Module | What it does | Why this over alternatives |
+|----------------|-------------|---------------------------|
+| **PostgreSQL `tsvector` + GIN index** | Full-text search with relevance ranking | Built into PostgreSQL — no additional infrastructure. `plainto_tsquery` handles natural language input, `ts_rank` sorts by relevance. GIN index makes searches O(log n) instead of O(n). Alternative: Elasticsearch — more powerful (fuzzy search, faceted results, auto-suggestions) but requires deploying, syncing, and monitoring a separate cluster. At our message volume (< 1M), PostgreSQL FTS is fast enough. Alternative: `LIKE '%query%'` — no relevance ranking, no stemming (searching "running" won't find "run"), and full table scans on large datasets. |
+| **`beautifulsoup4` + `httpx`** | Parses OpenGraph meta tags from URLs for link previews | `beautifulsoup4` is the standard Python HTML parser — battle-tested, handles malformed HTML gracefully. `httpx` is the modern async HTTP client (replaces `requests` for async code). Alternative: `lxml` — faster parsing but requires C dependencies that complicate Docker builds. Alternative: using a headless browser (Puppeteer) — handles JavaScript-rendered pages but is extremely heavy (200MB+ Chrome binary, 2+ seconds per URL). OpenGraph tags are always in the HTML `<head>` so a simple HTML parser is sufficient. |
+| **`ipaddress` module** (SSRF protection) | Validates resolved IPs against blocked network ranges | Python's built-in `ipaddress` module provides `ip_address()` and network containment checks (`ip in network`). Used to block private IPs (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), loopback (127.0.0.0/8), link-local (169.254.0.0/16), and cloud metadata (169.254.169.254/32). Alternative: regex-based URL validation — cannot catch DNS rebinding attacks where a public hostname resolves to a private IP. Our approach resolves DNS first, then validates the IP. |
+| **`asyncio.get_running_loop()`** | Runs blocking DNS resolution off the event loop | `socket.getaddrinfo` is blocking (can take seconds for DNS timeouts). Running it in an executor (`loop.run_in_executor`) prevents blocking the FastAPI event loop. Alternative: `aiodns` — async DNS library, but adds a dependency for something we only do occasionally (link preview fetches). The executor approach uses Python's built-in capabilities. |
+| **`datetime.now(timezone.utc)`** | Timezone-aware timestamps for `edited_at` | Replaced `datetime.utcnow()` which is deprecated in Python 3.12. `datetime.now(timezone.utc)` returns a timezone-aware datetime, avoiding the "naive vs aware" datetime bugs that plague Python applications. |
+
+#### Frontend (React)
+
+| Library/Module | What it does | Why this over alternatives |
+|----------------|-------------|---------------------------|
+| **emoji-mart** (`@emoji-mart/data` + `@emoji-mart/react`) | Full-featured emoji picker with search, categories, skin tones, and recent emojis | Renders as a Web Component with Shadow DOM — styles are completely isolated from the app's CSS. Provides 1,800+ emojis with native rendering (no sprite sheets). Alternative: `emoji-picker-react` — renders as regular React components (styles can leak), fewer features, less maintained. Alternative: native OS emoji keyboard — can't be triggered programmatically, varies across platforms, and doesn't work on all browsers. |
+| **`useReducer`** (ChatContext) | Manages complex chat state (messages, typing, reactions, read positions, presence per room) | Chat state has 15+ fields with cross-cutting updates (e.g. `USER_LEFT_ROOM` updates `onlineUsers` and optionally `admins` and `mutedUsers` simultaneously). `useReducer` centralizes all state transitions in one place, making them predictable and testable. Alternative: `useState` — would require 15+ separate state variables with interleaved `setState` calls, making race conditions likely. Alternative: Redux/Zustand — adds a dependency for something React's built-in `useReducer` handles perfectly at this scale. |
+| **`useCallback` + `useRef`** (WebSocket handlers) | Prevents stale closures in WebSocket message handlers | WebSocket `onmessage` callbacks capture variables from their closure scope. Without `useRef`, the callback would use stale values of `dispatch`, `state`, and `user`. The `handleMessageRef` pattern ensures the callback always calls the latest version. Alternative: recreating WebSocket connections when dependencies change — would cause disconnects and missed messages during re-renders. |
+| **`Notification` Web API** | Desktop push notifications for @mentions | Built into all modern browsers — zero dependencies. Shows a native OS notification with title and body. Alternative: Firebase Cloud Messaging (FCM) — requires a server-side push infrastructure, service worker registration, and Firebase project setup. For a web-only app where users are connected via WebSocket, the `Notification` API is simpler. Alternative: in-app toast notifications — don't work when the tab is in the background, which is the primary use case for @mention notifications. |
+| **`previewCache` (module-level Map)** | Caches link preview API responses for the session duration | A simple `Map` stored outside the component tree. When a user scrolls through messages, URLs that were already previewed don't trigger new API calls. Alternative: React state/context — would cause re-renders across the component tree when the cache updates. Alternative: `localStorage` — preview data is ephemeral (pages change), so persistent caching would serve stale data. Alternative: server-side Redis cache — adds complexity without significant benefit since each user's session is independent. |
+| **CSS `var()` tokens** (glassmorphism theme) | Design tokens for the liquid glass UI | All colors, radii, and blur values are defined as CSS custom properties (`--glass-bg`, `--accent`, `--radius-lg`). This enables the entire theme to be changed by modifying ~20 variables. Alternative: CSS-in-JS (styled-components) — adds runtime overhead and a build dependency. Alternative: Tailwind CSS — would require a major refactor and doesn't naturally support the glassmorphism blur effects. |
