@@ -213,7 +213,11 @@ func (h *WSHandler) broadcastLeave(ctx context.Context, roomID, userID int, user
 	h.manager.BroadcastRoom(roomID, leaveBroadcast)
 
 	h.produceEvent(ctx, "user_left", roomID, userID, username)
-	h.handleAdminSuccession(ctx, roomID, userID, username)
+
+	// Admin succession only on active leave — not on logout/disconnect.
+	if !silent {
+		h.handleAdminSuccession(ctx, roomID, userID, username)
+	}
 }
 
 // flushPendingLeaves cancels all pending grace-period leave timers for a user
