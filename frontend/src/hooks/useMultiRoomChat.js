@@ -56,7 +56,7 @@ export function useMultiRoomChat() {
   useEffect(() => { pmStateRef.current = pmState; }, [pmState]);
 
   // ── Message replay after reconnect ────────────────────────────────────────
-  function replayMissedMessages(roomId) {
+  const replayMissedMessages = useCallback((roomId) => {
     const since = lastMsgTimeRef.current.get(roomId);
     if (!since) return;
 
@@ -75,7 +75,7 @@ export function useMultiRoomChat() {
         }
       }
     }).catch(() => {});
-  }
+  }, [dispatch]);
 
   // ── Track last message timestamp ──────────────────────────────────────────
   function trackTimestamp(roomId) {
@@ -92,11 +92,11 @@ export function useMultiRoomChat() {
 
       case 'user_join':
         dispatch({ type: 'USER_JOINED_ROOM', roomId: msg.room_id, users: msg.users, admins: msg.admins, muted: msg.muted, username: msg.username });
-        if (msg.username) dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { isSystem: true, text: `${msg.username} joined the room` } });
+        if (msg.username && !msg.silent) dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { isSystem: true, text: `${msg.username} joined the room` } });
         break;
       case 'user_left':
         dispatch({ type: 'USER_LEFT_ROOM', roomId: msg.room_id, users: msg.users, admins: msg.admins, muted: msg.muted, username: msg.username });
-        if (msg.username) dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { isSystem: true, text: `${msg.username} left the room` } });
+        if (msg.username && !msg.silent) dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { isSystem: true, text: `${msg.username} left the room` } });
         break;
 
       case 'system':
@@ -282,6 +282,14 @@ export function useMultiRoomChat() {
         });
         break;
 
+      case 'user_online':
+        dispatch({ type: 'USER_ONLINE', username: msg.username });
+        break;
+
+      case 'user_offline':
+        dispatch({ type: 'USER_OFFLINE', username: msg.username });
+        break;
+
       case 'error':
         window.alert(msg.detail);
         break;
@@ -300,7 +308,8 @@ export function useMultiRoomChat() {
   const exitAllRoomsRef = useRef(() => {});
 
   // ── joinRoom (with exponential backoff on reconnect) ──────────────────────
-  const joinRoom = useCallback((roomId, isRetry = false) => {
+  // silent: true when auto-rejoining from localStorage on login (no system messages)
+  const joinRoom = useCallback((roomId, { isRetry = false, silent = false } = {}) => {
     if (socketsRef.current.has(roomId)) return;
 
     if (!isRetry) {
@@ -309,7 +318,8 @@ export function useMultiRoomChat() {
       retryCountsRef.current.set(roomId, 0);
     }
 
-    const ws = new WebSocket(`${WS_BASE}/ws/${roomId}?token=${token}`);
+    const silentParam = silent ? '&silent=1' : '';
+    const ws = new WebSocket(`${WS_BASE}/ws/${roomId}?token=${token}${silentParam}`);
     let wasOpen = false;
 
     ws.onopen = () => {
@@ -337,8 +347,8 @@ export function useMultiRoomChat() {
         reconnectingRoomsRef.current.add(roomId);
         updateConnectionStatus();
         setTimeout(() => {
-          if (getJoinedRooms(username).includes(roomId)) {
-            joinRoom(roomId, true);
+          if (!closingAllRef.current && getJoinedRooms(username).includes(roomId)) {
+            joinRoom(roomId, { isRetry: true });
           }
         }, 1000);
       } else if (event.code === 4003 && isRetry) {
@@ -370,20 +380,25 @@ export function useMultiRoomChat() {
         updateConnectionStatus();
 
         setTimeout(() => {
-          if (!socketsRef.current.has(roomId) && getJoinedRooms(username).includes(roomId)) {
-            joinRoom(roomId, true);
+          if (!closingAllRef.current && !socketsRef.current.has(roomId) && getJoinedRooms(username).includes(roomId)) {
+            joinRoom(roomId, { isRetry: true });
           }
         }, delay);
       }
     };
 
     socketsRef.current.set(roomId, ws);
-  }, [token, username, dispatch]);
+  }, [token, username, dispatch, replayMissedMessages]);
 
   // ── exitRoom ───────────────────────────────────────────────────────
   const exitRoom = useCallback((roomId) => {
     const ws = socketsRef.current.get(roomId);
     if (ws) {
+      // Tell the server this is an intentional leave so it skips the
+      // reconnect grace period and broadcasts user_left immediately.
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'leave' }));
+      }
       ws.close();
       socketsRef.current.delete(roomId);
     }
@@ -404,15 +419,19 @@ export function useMultiRoomChat() {
   const disconnectAll = useCallback(() => {
     // Prevent onclose handlers from scheduling reconnections
     closingAllRef.current = true;
-    // Close all room sockets
+    // Just close sockets — don't send "leave" commands so the server
+    // handles it silently (no "X left the room" system messages).
+    // Keep localStorage joined rooms so the user auto-rejoins on login.
     socketsRef.current.forEach(ws => ws.close());
     socketsRef.current.clear();
-    // Close the lobby socket so the server removes us from the online list
     if (lobbyRef.current) {
       lobbyRef.current.close();
       lobbyRef.current = null;
     }
-  }, []);
+    // Clear chat state so the next login starts fresh (ChatProvider
+    // persists across logout/login since it wraps the entire app).
+    dispatch({ type: 'RESET' });
+  }, [dispatch]);
 
   useEffect(() => { exitRoomRef.current = exitRoom; }, [exitRoom]);
   useEffect(() => { exitAllRoomsRef.current = exitAllRooms; }, [exitAllRooms]);
@@ -458,6 +477,9 @@ export function useMultiRoomChat() {
 
   // ── Lobby connection — always-on with exponential backoff ────────────
   useEffect(() => {
+    // A new token means a fresh login — reset the logout guard so room
+    // onclose handlers can schedule reconnects normally.
+    closingAllRef.current = false;
     let intentionallyClosed = false;
 
     function connectLobby() {
@@ -480,11 +502,11 @@ export function useMultiRoomChat() {
           lobbyRef.current = null;
         }
         if (event.code === 4001) authRejected = true;
-        if (!intentionallyClosed && !authRejected) {
+        if (!intentionallyClosed && !authRejected && !closingAllRef.current) {
           const attempt = lobbyRetryRef.current++;
           const delay = wasOpen ? getBackoffDelay(attempt) : 5000;
           setTimeout(() => {
-            if (!lobbyRef.current) connectLobby();
+            if (!closingAllRef.current && !lobbyRef.current) connectLobby();
           }, delay);
         }
       };
@@ -503,15 +525,22 @@ export function useMultiRoomChat() {
   useEffect(() => {
     requestNotificationPermission();
     const saved = getJoinedRooms(username);
-    saved.forEach(roomId => joinRoom(roomId));
+    saved.forEach(roomId => joinRoom(roomId, { silent: true }));
+
+    // Capture refs so cleanup closes over the correct values.
+    const sockets = socketsRef.current;
+    const seenIds = seenMsgIdsRef.current;
+    const retryCounts = retryCountsRef.current;
+    const reconnecting = reconnectingRoomsRef.current;
+    const lastMsg = lastMsgTimeRef.current;
 
     return () => {
-      socketsRef.current.forEach(ws => ws.close());
-      socketsRef.current.clear();
-      seenMsgIdsRef.current.clear();
-      retryCountsRef.current.clear();
-      reconnectingRoomsRef.current.clear();
-      lastMsgTimeRef.current.clear();
+      sockets.forEach(ws => ws.close());
+      sockets.clear();
+      seenIds.clear();
+      retryCounts.clear();
+      reconnecting.clear();
+      lastMsg.clear();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

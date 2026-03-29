@@ -5,9 +5,20 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
+
+// drainOneBroadcast reads and discards one JSON message from a client.
+// Used to skip the user_online broadcast from ConnectLobby.
+func drainOneBroadcast(t *testing.T, c *websocket.Conn) {
+	t.Helper()
+	c.SetReadDeadline(time.Now().Add(time.Second))
+	var discard map[string]interface{}
+	_ = c.ReadJSON(&discard)
+	c.SetReadDeadline(time.Time{})
+}
 
 // ---- BroadcastRoom tests ----
 
@@ -139,7 +150,10 @@ func TestBroadcastLobbyMultipleClients(t *testing.T) {
 	}
 
 	m.ConnectLobby(serverConns[0], UserInfo{UserID: 10, Username: "alice"})
+	drainOneBroadcast(t, client1) // alice user_online
 	m.ConnectLobby(serverConns[1], UserInfo{UserID: 20, Username: "bob"})
+	drainOneBroadcast(t, client1) // bob user_online
+	drainOneBroadcast(t, client2) // bob user_online
 
 	msg := map[string]string{"type": "room_list_updated", "action": "created"}
 	m.BroadcastLobby(msg)

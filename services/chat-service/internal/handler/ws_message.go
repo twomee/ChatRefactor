@@ -103,6 +103,9 @@ func (h *WSHandler) readLoop(conn *websocket.Conn, roomID, userID int, username 
 			h.handleRemoveReaction(ctx, conn, roomID, userID, username, incoming)
 		case "mark_read":
 			h.handleMarkRead(ctx, conn, roomID, userID, incoming.MessageID)
+		case "leave":
+			h.handleLeave(ctx, conn, roomID, userID, username)
+			return // exit readLoop — connection is being closed
 		default:
 			h.sendError(conn, "Unknown message type")
 		}

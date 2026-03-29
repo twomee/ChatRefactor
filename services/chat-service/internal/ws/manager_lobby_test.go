@@ -126,6 +126,83 @@ func TestGetLobbyUsernamesAfterDisconnect(t *testing.T) {
 	}
 }
 
+// ---- Lobby disconnect triggers room cleanup on full logout ----
+
+func TestDisconnectLobbyEvictsRoomConnsOnFullLogout(t *testing.T) {
+	m := newTestManager()
+	lobbyConn, cleanup1 := newWSConn(t)
+	defer cleanup1()
+	roomConn, cleanup2 := newWSConn(t)
+	defer cleanup2()
+
+	user := UserInfo{UserID: 1, Username: "alice"}
+	m.ConnectLobby(lobbyConn, user)
+	m.ConnectRoom(1, roomConn, user)
+
+	// Verify alice is in the room.
+	if !m.IsUserInRoom(1, 1) {
+		t.Fatal("expected alice to be in room 1")
+	}
+
+	// Disconnect lobby — alice has no remaining lobby connections → full logout.
+	result := m.DisconnectLobby(lobbyConn)
+
+	// Room connection should have been evicted.
+	if m.IsUserInRoom(1, 1) {
+		t.Error("expected alice to be removed from room 1 after full logout")
+	}
+	if result == nil {
+		t.Fatal("expected RoomCleanup to be returned")
+	}
+	if len(result.RoomIDs) != 1 || result.RoomIDs[0] != 1 {
+		t.Errorf("expected room 1 in cleanup, got %v", result.RoomIDs)
+	}
+	if result.Username != "alice" {
+		t.Errorf("expected username 'alice', got %q", result.Username)
+	}
+}
+
+func TestDisconnectLobbyDoesNotEvictWithRemainingLobby(t *testing.T) {
+	m := newTestManager()
+	lobby1, cleanup1 := newWSConn(t)
+	defer cleanup1()
+	lobby2, cleanup2 := newWSConn(t)
+	defer cleanup2()
+	roomConn, cleanup3 := newWSConn(t)
+	defer cleanup3()
+
+	user := UserInfo{UserID: 1, Username: "alice"}
+	m.ConnectLobby(lobby1, user)
+	m.ConnectLobby(lobby2, user)
+	m.ConnectRoom(1, roomConn, user)
+
+	// Disconnect one lobby — alice still has another lobby connection.
+	result := m.DisconnectLobby(lobby1)
+
+	// Room connection should still exist.
+	if !m.IsUserInRoom(1, 1) {
+		t.Error("expected alice to still be in room 1")
+	}
+	if result != nil {
+		t.Error("expected nil RoomCleanup when lobby connections remain")
+	}
+}
+
+func TestDisconnectLobbyNoRoomConnsReturnsNil(t *testing.T) {
+	m := newTestManager()
+	lobbyConn, cleanup1 := newWSConn(t)
+	defer cleanup1()
+
+	user := UserInfo{UserID: 1, Username: "alice"}
+	m.ConnectLobby(lobbyConn, user)
+
+	// Disconnect lobby — no room connections to evict.
+	result := m.DisconnectLobby(lobbyConn)
+	if result != nil {
+		t.Error("expected nil RoomCleanup when no room connections exist")
+	}
+}
+
 func TestGetUsersInRoomEmpty(t *testing.T) {
 	m := newTestManager()
 	users := m.GetUsersInRoom(99)
@@ -163,6 +240,37 @@ func TestRoomCount(t *testing.T) {
 
 	if m.RoomCount() != 2 {
 		t.Errorf("expected 2 rooms, got %d", m.RoomCount())
+	}
+}
+
+func TestHasLobbyConnectionTrue(t *testing.T) {
+	m := newTestManager()
+	conn, cleanup := newWSConn(t)
+	defer cleanup()
+
+	m.ConnectLobby(conn, UserInfo{UserID: 1, Username: "alice"})
+	if !m.HasLobbyConnection(1) {
+		t.Error("expected HasLobbyConnection to return true")
+	}
+}
+
+func TestHasLobbyConnectionFalseAfterDisconnect(t *testing.T) {
+	m := newTestManager()
+	conn, cleanup := newWSConn(t)
+	defer cleanup()
+
+	m.ConnectLobby(conn, UserInfo{UserID: 1, Username: "alice"})
+	m.DisconnectLobby(conn)
+
+	if m.HasLobbyConnection(1) {
+		t.Error("expected HasLobbyConnection to return false after disconnect")
+	}
+}
+
+func TestHasLobbyConnectionFalseForUnknownUser(t *testing.T) {
+	m := newTestManager()
+	if m.HasLobbyConnection(999) {
+		t.Error("expected HasLobbyConnection to return false for unknown user")
 	}
 }
 

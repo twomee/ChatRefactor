@@ -229,6 +229,32 @@ describe('chatReducer', () => {
       expect(next.admins.r1).toEqual(['alice']);
       expect(next.mutedUsers.r1).toEqual([]);
     });
+
+    it('adds disappeared users to knownOfflineUsers when absent from all rooms', () => {
+      const state = { ...initialState, onlineUsers: { r1: ['alice', 'bob', 'charlie'] } };
+      const next = chatReducer(state, {
+        type: 'USER_JOINED_ROOM', roomId: 'r1', users: ['alice', 'charlie'], username: 'alice',
+      });
+      // bob disappeared from the room and is not in any other room
+      expect(next.knownOfflineUsers.has('bob')).toBe(true);
+    });
+
+    it('does NOT mark disappeared user offline if still in another room', () => {
+      const state = { ...initialState, onlineUsers: { r1: ['alice', 'bob'], r2: ['bob', 'charlie'] } };
+      const next = chatReducer(state, {
+        type: 'USER_JOINED_ROOM', roomId: 'r1', users: ['alice'], username: 'alice',
+      });
+      // bob disappeared from r1 but is still in r2
+      expect(next.knownOfflineUsers.has('bob')).toBe(false);
+    });
+
+    it('handles first join with no previous user list', () => {
+      const next = chatReducer(initialState, {
+        type: 'USER_JOINED_ROOM', roomId: 'r1', users: ['alice'], username: 'alice',
+      });
+      // No previous users → no one to mark offline
+      expect(next.knownOfflineUsers.size).toBe(0);
+    });
   });
 
   describe('USER_LEFT_ROOM', () => {
@@ -240,12 +266,13 @@ describe('chatReducer', () => {
       expect(next.onlineUsers.r1).toEqual(['alice']);
     });
 
-    it('adds username to knownOfflineUsers when absent from all rooms', () => {
+    it('does NOT add username to knownOfflineUsers when leaving all rooms (user may still be logged in)', () => {
       const state = { ...initialState, onlineUsers: { r1: ['alice', 'bob'] } };
       const next = chatReducer(state, {
         type: 'USER_LEFT_ROOM', roomId: 'r1', users: ['alice'], username: 'bob',
       });
-      expect(next.knownOfflineUsers.has('bob')).toBe(true);
+      // Leaving a room doesn't mean logged out — only USER_OFFLINE marks users offline
+      expect(next.knownOfflineUsers.has('bob')).toBe(false);
     });
 
     it('does NOT add username to knownOfflineUsers when still in another room', () => {
@@ -491,6 +518,32 @@ describe('chatReducer', () => {
         emoji: '👍', username: 'alice',
       });
       expect(next.messages.r1[0].reactions).toHaveLength(0);
+    });
+  });
+
+  describe('USER_ONLINE', () => {
+    it('removes username from knownOfflineUsers', () => {
+      const state = { ...initialState, knownOfflineUsers: new Set(['bob']) };
+      const next = chatReducer(state, { type: 'USER_ONLINE', username: 'bob' });
+      expect(next.knownOfflineUsers.has('bob')).toBe(false);
+    });
+
+    it('is a no-op if user is not in knownOfflineUsers', () => {
+      const next = chatReducer(initialState, { type: 'USER_ONLINE', username: 'bob' });
+      expect(next).toBe(initialState);
+    });
+  });
+
+  describe('USER_OFFLINE', () => {
+    it('adds username to knownOfflineUsers', () => {
+      const next = chatReducer(initialState, { type: 'USER_OFFLINE', username: 'bob' });
+      expect(next.knownOfflineUsers.has('bob')).toBe(true);
+    });
+
+    it('is a no-op if user is already in knownOfflineUsers', () => {
+      const state = { ...initialState, knownOfflineUsers: new Set(['bob']) };
+      const next = chatReducer(state, { type: 'USER_OFFLINE', username: 'bob' });
+      expect(next).toBe(state);
     });
   });
 

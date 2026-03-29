@@ -41,3 +41,8 @@ loadtests/reports/*.csv
 loadtests/reports/*.html
 loadtests/reports/*.json
 !loadtests/reports/.gitkeep
+
+# Claude Code artifacts
+.claude/hooks/
+.claude/skills/
+.claude/worktrees/
