@@ -54,7 +54,7 @@ Base.metadata.create_all(bind=test_engine)
 # ── Mock Redis ───────────────────────────────────────────────────────────
 
 class MockRedis:
-    """In-memory mock for Redis. Tracks blacklisted tokens."""
+    """In-memory mock for Redis. Tracks blacklisted tokens and 2FA temp tokens."""
 
     def __init__(self):
         self._store = {}
@@ -64,6 +64,10 @@ class MockRedis:
 
     def setex(self, key, ttl, value):
         self._store[key] = value
+
+    def delete(self, key):
+        """Remove a key from the store (used by 2FA single-use temp tokens)."""
+        self._store.pop(key, None)
 
     def ping(self):
         return True
