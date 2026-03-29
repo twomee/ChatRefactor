@@ -130,7 +130,7 @@ def get_message_reactions(
 
 @router.get("/preview")
 async def get_link_preview(
-    url: str = Query(..., min_length=5),
+    url: str = Query(..., min_length=10, max_length=2048),
     current_user: dict = Depends(get_current_user),
 ):
     """Fetch link preview metadata (Open Graph) for a URL.

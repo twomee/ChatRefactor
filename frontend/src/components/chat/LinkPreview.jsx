@@ -16,6 +16,16 @@ export const previewCache = new Map();
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/;
 
 /**
+ * Return true only for http:// or https:// image URLs.
+ * Rejects javascript:, data:, and any other scheme to prevent XSS.
+ * This is defence-in-depth: the backend already validates scheme,
+ * but we double-check on the client before setting src on an <img>.
+ */
+function isSafeImageUrl(url) {
+  return typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'));
+}
+
+/**
  * Extract the display domain from a URL string.
  * e.g. "https://www.example.com/path" → "example.com"
  */
@@ -110,7 +120,7 @@ export default function LinkPreview({ text }) {
         )}
         <div className="link-preview-domain">{getDomain(url)}</div>
       </div>
-      {preview.image && (
+      {preview.image && isSafeImageUrl(preview.image) && (
         <img
           src={preview.image}
           alt=""

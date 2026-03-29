@@ -6,9 +6,14 @@
 # Security considerations:
 # - Only http/https URLs are accepted
 # - SSRF protection: private/internal IPs are blocked before fetching
+# - Redirects are refused to prevent SSRF bypass via open-redirect chains
 # - Response size capped at 500KB to prevent memory exhaustion
 # - 5-second timeout to prevent slow-loris style hangs
 # - All extracted text is stripped of HTML to prevent XSS
+# - og:image URL is scheme-validated to prevent javascript:/data: injection
+# - Cache keys are SHA-256 hashed to prevent key injection via crafted URLs
+import asyncio
+import hashlib
 import ipaddress
 import json
 import re
@@ -63,12 +68,15 @@ _BLOCKED_HOSTNAMES = frozenset(
 )
 
 
-def _is_url_safe(url: str) -> bool:
+async def _is_url_safe(url: str) -> bool:
     """Return True if the URL targets a public, non-internal address.
 
     Resolves the hostname to an IP and checks it against the private IP blocklist.
     This prevents Server-Side Request Forgery (SSRF) attacks where an attacker
     could trick the server into fetching internal resources.
+
+    DNS resolution is offloaded to a thread via run_in_executor so it does not
+    block the async event loop.
     """
     try:
         parsed = urlparse(url)
@@ -80,8 +88,12 @@ def _is_url_safe(url: str) -> bool:
         if hostname.lower() in _BLOCKED_HOSTNAMES:
             return False
 
-        # Resolve hostname to IPs and check each one
-        addr_infos = socket.getaddrinfo(hostname, parsed.port or 80, proto=socket.IPPROTO_TCP)
+        # Resolve hostname to IPs off the event loop (socket.getaddrinfo is blocking)
+        loop = asyncio.get_event_loop()
+        addr_infos = await loop.run_in_executor(
+            None,
+            lambda: socket.getaddrinfo(hostname, parsed.port or 80, proto=socket.IPPROTO_TCP),
+        )
         for family, _type, _proto, _canonname, sockaddr in addr_infos:
             ip = ipaddress.ip_address(sockaddr[0])
             for network in _BLOCKED_NETWORKS:
@@ -163,20 +175,37 @@ def _sanitize(text: str, max_len: int) -> str | None:
     return html_escape(cleaned)[:max_len]
 
 
+def _sanitize_url(raw: str | None, max_len: int) -> str | None:
+    """Sanitize a URL value extracted from a page's metadata.
+
+    Only http:// and https:// schemes are accepted.  Anything else
+    (javascript:, data:, etc.) is rejected outright to prevent XSS.
+    """
+    if not raw:
+        return None
+    cleaned = raw.strip()
+    if not cleaned.startswith(("http://", "https://")):
+        return None
+    return cleaned[:max_len]
+
+
 async def fetch_preview(url: str) -> dict | None:
     """Fetch a URL and extract Open Graph metadata for a link preview card.
 
     Returns a dict with url, title, description, image — or None on failure.
+
+    Redirects are refused: a server returning 3xx is treated as a failure.
+    This closes the SSRF-via-open-redirect attack vector where a public domain
+    DNS-checks clean but then redirects to an internal address.
     """
     # SSRF check before making any HTTP request
-    if not _is_url_safe(url):
+    if not await _is_url_safe(url):
         return None
 
     try:
         async with httpx.AsyncClient(
-            follow_redirects=True,
+            follow_redirects=False,
             timeout=FETCH_TIMEOUT,
-            max_redirects=5,
         ) as client:
             response = await client.get(
                 url,
@@ -185,6 +214,10 @@ async def fetch_preview(url: str) -> dict | None:
                     "Accept": "text/html",
                 },
             )
+            # Refuse to follow redirects — the destination is unknown and could
+            # point to an internal address that bypassed the SSRF DNS check.
+            if response.status_code in (301, 302, 303, 307, 308):
+                return None
             if response.status_code != 200:
                 return None
             content_type = response.headers.get("content-type", "")
@@ -202,10 +235,17 @@ async def fetch_preview(url: str) -> dict | None:
             "url": url,
             "title": _sanitize(parser.title, 200),
             "description": _sanitize(parser.description, 500),
-            "image": _sanitize(parser.image, 1000),
+            # Use _sanitize_url (not _sanitize) so javascript:/data: are rejected
+            "image": _sanitize_url(parser.image, 1000),
         }
+    except httpx.TimeoutException:
+        logger.warning("fetch_preview_timeout", url=url)
+        return None
+    except httpx.RequestError as exc:
+        logger.info("fetch_preview_network_error", url=url, error=str(exc))
+        return None
     except Exception:
-        logger.debug("fetch_preview_failed", url=url, exc_info=True)
+        logger.error("fetch_preview_unexpected_error", url=url, exc_info=True)
         return None
 
 
@@ -215,12 +255,22 @@ CACHE_TTL = 3600  # 1 hour
 NEGATIVE_CACHE_TTL = 300  # 5 minutes for failed lookups
 
 
+def _cache_key(url: str) -> str:
+    """Return a stable, injection-safe Redis key for a URL.
+
+    Raw URLs as Redis keys can be exploited via crafted URLs containing
+    newlines or colons.  Hashing with SHA-256 produces a fixed-length,
+    safe alphanumeric key regardless of URL content.
+    """
+    return f"preview:{hashlib.sha256(url.encode()).hexdigest()}"
+
+
 async def get_cached_preview(redis_client, url: str) -> dict | None:
     """Return cached preview data for a URL, or None if not cached."""
     if redis_client is None:
         return None
     try:
-        key = f"preview:{url}"
+        key = _cache_key(url)
         cached = await redis_client.get(key)
         if cached:
             return json.loads(cached)
@@ -234,7 +284,7 @@ async def cache_preview(redis_client, url: str, data: dict | None):
     if redis_client is None:
         return
     try:
-        key = f"preview:{url}"
+        key = _cache_key(url)
         if data is not None:
             await redis_client.setex(key, CACHE_TTL, json.dumps(data))
         else:
