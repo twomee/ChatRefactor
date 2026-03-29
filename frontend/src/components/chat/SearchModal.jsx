@@ -24,7 +24,7 @@ import { searchMessages } from '../../services/searchApi';
  */
 function highlightMatch(text, q) {
   if (!q || !text) return text;
-  const escaped = q.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = q.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
   const parts = text.split(new RegExp(`(${escaped})`, 'gi')); // NOSONAR - input is sanitized on the line above
   return parts.map((part, i) => {
     const key = `part-${i}`;
@@ -218,28 +218,28 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
           {!loading && results.length > 0 && (
             <ul className="search-result-list">
               {results.map((r) => (
-                <li
-                  key={r.message_id}
-                  className="search-result-item"
-                  role="button"
-                  onClick={() => handleResultClick(r)}
-                  tabIndex={0}
-                  onKeyDown={(e) => handleResultKeyDown(e, r)}
-                >
-                  <div className="search-result-header">
-                    <span className="search-result-sender">
-                      {r.sender_name || 'Unknown'}
-                    </span>
-                    <span className="search-result-room">
-                      {getRoomName(r.room_id)}
-                    </span>
-                    <span className="search-result-time">
-                      {formatTime(r.sent_at)}
-                    </span>
-                  </div>
-                  <div className="search-result-content">
-                    {highlightMatch(r.content, query.trim())}
-                  </div>
+                <li key={r.message_id}>
+                  <button
+                    type="button"
+                    className="search-result-item"
+                    onClick={() => handleResultClick(r)}
+                    onKeyDown={(e) => handleResultKeyDown(e, r)}
+                  >
+                    <div className="search-result-header">
+                      <span className="search-result-sender">
+                        {r.sender_name || 'Unknown'}
+                      </span>
+                      <span className="search-result-room">
+                        {getRoomName(r.room_id)}
+                      </span>
+                      <span className="search-result-time">
+                        {formatTime(r.sent_at)}
+                      </span>
+                    </div>
+                    <div className="search-result-content">
+                      {highlightMatch(r.content, query.trim())}
+                    </div>
+                  </button>
                 </li>
               ))}
             </ul>

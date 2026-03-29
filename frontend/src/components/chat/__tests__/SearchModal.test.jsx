@@ -172,7 +172,7 @@ describe('SearchModal', () => {
     });
 
     // Click the result item
-    await user.click(screen.getByText('bob').closest('li'));
+    await user.click(screen.getByText('bob').closest('button'));
 
     expect(onNavigate).toHaveBeenCalledWith(2);
     expect(onClose).toHaveBeenCalled();
