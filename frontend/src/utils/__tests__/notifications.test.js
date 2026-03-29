@@ -65,4 +65,84 @@ describe('notifications', () => {
       document.hasFocus = originalHasFocus;
     }
   });
+
+  it('sendBrowserNotification creates a Notification when unfocused and permission granted', async () => {
+    const mockClose = vi.fn();
+    let createdInstance;
+    // vi.fn() must be used with mockImplementation (not mockReturnValue) for `new` calls
+    const MockNotificationClass = vi.fn().mockImplementation(function(title, opts) {
+      this.title = title;
+      this.opts = opts;
+      this.close = mockClose;
+      createdInstance = this;
+    });
+    globalThis.Notification = Object.assign(MockNotificationClass, { permission: 'granted' });
+
+    const { requestNotificationPermission, sendBrowserNotification } = await import('../notifications.js');
+    await requestNotificationPermission();
+
+    const originalHasFocus = document.hasFocus;
+    document.hasFocus = () => false;
+    try {
+      sendBrowserNotification('Test Title', 'Test body');
+      expect(MockNotificationClass).toHaveBeenCalledWith('Test Title', expect.objectContaining({
+        body: 'Test body',
+        icon: '/favicon.ico',
+      }));
+      // Auto-close fires after 5 seconds
+      vi.advanceTimersByTime(5001);
+      expect(mockClose).toHaveBeenCalled();
+    } finally {
+      document.hasFocus = originalHasFocus;
+    }
+  });
+
+  it('sendBrowserNotification wires up onClick handler when provided', async () => {
+    const mockClose = vi.fn();
+    let createdInstance;
+    const MockNotificationClass = vi.fn().mockImplementation(function(title, opts) {
+      this.title = title;
+      this.opts = opts;
+      this.close = mockClose;
+      createdInstance = this;
+    });
+    globalThis.Notification = Object.assign(MockNotificationClass, { permission: 'granted' });
+
+    const { requestNotificationPermission, sendBrowserNotification } = await import('../notifications.js');
+    await requestNotificationPermission();
+
+    const originalHasFocus = document.hasFocus;
+    const originalFocus = window.focus;
+    const mockFocus = vi.fn();
+    window.focus = mockFocus;
+    document.hasFocus = () => false;
+    try {
+      const onClickFn = vi.fn();
+      sendBrowserNotification('Title', 'Body', onClickFn);
+      expect(typeof createdInstance.onclick).toBe('function');
+      // Simulate click on the notification
+      createdInstance.onclick();
+      expect(mockFocus).toHaveBeenCalled();
+      expect(onClickFn).toHaveBeenCalled();
+      expect(mockClose).toHaveBeenCalled();
+    } finally {
+      document.hasFocus = originalHasFocus;
+      window.focus = originalFocus;
+    }
+  });
+
+  it('sendBrowserNotification does nothing when permissionGranted is false', async () => {
+    const mockConstructor = vi.fn();
+    globalThis.Notification = Object.assign(mockConstructor, { permission: 'default' });
+    const { sendBrowserNotification } = await import('../notifications.js');
+
+    const originalHasFocus = document.hasFocus;
+    document.hasFocus = () => false;
+    try {
+      sendBrowserNotification('Title', 'Body');
+      expect(mockConstructor).not.toHaveBeenCalled();
+    } finally {
+      document.hasFocus = originalHasFocus;
+    }
+  });
 });
