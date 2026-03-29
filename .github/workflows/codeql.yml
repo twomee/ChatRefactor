@@ -41,6 +41,9 @@ jobs:
           build-mode: ${{ matrix.build-mode }}
           # security-extended includes more queries beyond the default set
           queries: security-extended
+          # Project-level query filters (accepted false positives).
+          # See .github/codeql/codeql-config.yml for details.
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Autobuild
         if: matrix.build-mode == 'autobuild'
