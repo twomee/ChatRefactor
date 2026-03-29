@@ -57,8 +57,8 @@ async def close_producer():
         try:
             await _producer.stop()
             logger.info("kafka_producer_stopped")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("kafka_producer_stop_failed", error=str(e))
     _producer = None
     _kafka_available = None
 
@@ -79,7 +79,7 @@ async def produce_event(event_type: str, data: dict) -> bool:
             **data,
         }
         key = data.get("username", str(data.get("user_id", "")))
-        await _producer.send_and_wait(AUTH_EVENTS_TOPIC, key=key, value=event)
+        await _producer.send(AUTH_EVENTS_TOPIC, key=key, value=event)
         kafka_events_produced_total.labels(topic="auth.events", status="success").inc()
         logger.info("auth_event_produced", event_type=event_type, key=key)
         return True

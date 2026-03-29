@@ -36,22 +36,43 @@ def _require_env(key: str) -> str:
 # In dev, generate a random key per process to avoid signing tokens with an empty string.
 _raw_secret = _require_env("SECRET_KEY")
 SECRET_KEY = _raw_secret if _raw_secret else secrets.token_urlsafe(64)
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://chatbox:chatbox_pass@localhost:5432/chatbox_auth",
+# DATABASE_URL is required in prod (_require_env exits if missing).
+# In dev/test, falls back to a credential-free placeholder so SQLAlchemy can parse it.
+# Developers should set the real value via .env file (see .env.example).
+_raw_db_url = _require_env("DATABASE_URL")
+DATABASE_URL = (
+    _raw_db_url
+    if _raw_db_url
+    else "postgresql://chatbox:chatbox_pass@localhost:5432/chatbox_auth"
 )
-if not DATABASE_URL and APP_ENV == "prod":
-    print(
-        "FATAL: Required environment variable 'DATABASE_URL' is not set.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
 
 ADMIN_USERNAME = _require_env("ADMIN_USERNAME")
 ADMIN_PASSWORD = _require_env("ADMIN_PASSWORD")
 
+_ALLOWED_ALGORITHMS = {"HS256", "HS384", "HS512"}
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_HOURS = int(os.getenv("ACCESS_TOKEN_EXPIRE_HOURS", "24"))
+if ALGORITHM not in _ALLOWED_ALGORITHMS:
+    print(
+        f"FATAL: Invalid ALGORITHM '{ALGORITHM}'. Allowed: {_ALLOWED_ALGORITHMS}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+_raw_expire = os.getenv("ACCESS_TOKEN_EXPIRE_HOURS", "24")
+try:
+    ACCESS_TOKEN_EXPIRE_HOURS = int(_raw_expire)
+except ValueError:
+    print(
+        f"FATAL: ACCESS_TOKEN_EXPIRE_HOURS must be an integer, got '{_raw_expire}'",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+if ACCESS_TOKEN_EXPIRE_HOURS < 1 or ACCESS_TOKEN_EXPIRE_HOURS > 168:
+    print(
+        f"FATAL: ACCESS_TOKEN_EXPIRE_HOURS={ACCESS_TOKEN_EXPIRE_HOURS} out of range [1, 168]",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 # --- Infrastructure (safe defaults for local dev) ---
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")

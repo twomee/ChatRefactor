@@ -8,12 +8,15 @@ If no X-Request-ID is provided, generates a new UUID. This ensures every request
 has a traceable ID even when called directly (not through Kong).
 """
 
+import re
 import uuid
 
 import structlog
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
+
+_CORRELATION_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_\-]{1,128}$")
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
@@ -23,7 +26,11 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
         # Read correlation ID from header, or generate a new one
-        correlation_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        # Validate format to prevent log injection via crafted headers
+        raw_id = request.headers.get("X-Request-ID", "")
+        correlation_id = (
+            raw_id if _CORRELATION_ID_PATTERN.match(raw_id) else str(uuid.uuid4())
+        )
 
         # Bind to structlog context so all log lines in this request include it
         structlog.contextvars.clear_contextvars()

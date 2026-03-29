@@ -46,11 +46,16 @@ export function sanitizeFilename(rawName: string): SanitizeResult {
 /**
  * Validate that the file extension is in the allowlist.
  * Returns the lowercase extension if valid, throws a descriptive error if not.
+ *
+ * SECURITY: The extension value is sanitized before embedding in error messages
+ * to prevent log injection or unexpected content in JSON error responses.
  */
 export function validateExtension(extension: string): void {
   if (!config.allowedExtensions.has(extension)) {
+    // Sanitize extension for error message — only allow alphanumeric and dots
+    const safeExt = extension.replace(/[^a-z0-9.]/g, "").slice(0, 20);
     throw new FileValidationError(
-      `File type '${extension}' is not allowed`,
+      `File type '${safeExt}' is not allowed`,
       400
     );
   }
@@ -90,13 +95,22 @@ const EXTENSION_MIME_MAP: Record<string, string[]> = {
  * Validate that the file's magic bytes match the claimed extension.
  * Uses the `file-type` package to detect MIME type from the buffer.
  *
- * Text-based extensions (.txt, .csv, .md, .log, .svg) are skipped because
+ * Text-based extensions (.txt, .csv, .md, .log) are skipped because
  * they have no reliable magic bytes — `file-type` returns undefined for them.
+ *
+ * SECURITY: SVG files get content scanning instead of MIME detection — they are
+ * XML-based text files that can contain embedded JavaScript. See validateSvgContent().
  */
 export async function validateMimeType(
   buffer: Buffer,
   extension: string
 ): Promise<void> {
+  // SVG files need content-level scanning, not magic-byte detection
+  if (extension === ".svg") {
+    validateSvgContent(buffer);
+    return;
+  }
+
   const expectedMimes = EXTENSION_MIME_MAP[extension];
   if (!expectedMimes) {
     // Text-based format with no magic bytes — skip validation
@@ -113,15 +127,54 @@ export async function validateMimeType(
     );
   }
 
-  const matches = expectedMimes.some(
-    (mime) => detected.mime === mime || detected.mime.startsWith(mime.split("/")[0] + "/")
-  );
+  // SECURITY: Use exact MIME match only — no prefix matching.
+  // Previous code used `detected.mime.startsWith(mime.split("/")[0] + "/")`
+  // which allowed type confusion (e.g., image/svg+xml passing for image/png).
+  const matches = expectedMimes.some((mime) => detected.mime === mime);
 
   if (!matches) {
     throw new FileValidationError(
       `File content (${detected.mime}) does not match claimed type '${extension}'`,
       400
     );
+  }
+}
+
+/**
+ * Scan SVG file content for dangerous patterns.
+ *
+ * SVG is XML-based and can contain embedded JavaScript via <script> tags,
+ * event handler attributes (onload, onclick, etc.), and other XSS vectors.
+ * This function rejects SVGs containing known dangerous patterns.
+ *
+ * SECURITY: This is a defense-in-depth measure. The primary defense is serving
+ * all downloads with Content-Type: application/octet-stream and
+ * Content-Disposition: attachment, which prevents browser rendering.
+ */
+export function validateSvgContent(buffer: Buffer): void {
+  const content = buffer.toString("utf-8").toLowerCase();
+
+  // Patterns that indicate embedded scripting in SVG files.
+  // Case-insensitive flag is defense-in-depth — content is already lowercased
+  // above, but the flag ensures safety even if .toLowerCase() is removed later.
+  const dangerousPatterns = [
+    /<script[\s>]/i,           // <script> tags
+    /\bon\w+\s*=/i,            // Event handlers: onload=, onclick=, onerror=, etc.
+    /javascript\s*:/i,         // javascript: protocol in href/xlink:href
+    /data\s*:\s*text\/html/i,  // data: URIs with HTML content
+    /<iframe[\s>]/i,           // Embedded iframes
+    /<object[\s>]/i,           // Embedded objects
+    /<embed[\s>]/i,            // Embedded content
+    /<foreignobject[\s>]/i,    // foreignObject can contain arbitrary HTML
+  ];
+
+  for (const pattern of dangerousPatterns) {
+    if (pattern.test(content)) {
+      throw new FileValidationError(
+        "SVG file contains potentially dangerous content",
+        400
+      );
+    }
   }
 }
 

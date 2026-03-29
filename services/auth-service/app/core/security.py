@@ -86,8 +86,15 @@ def decode_token(token: str) -> dict | None:
         if sub is None:
             return None
 
+        try:
+            user_id = int(sub)
+        except (ValueError, TypeError):
+            return None
+        if user_id <= 0:
+            return None
+
         return {
-            "user_id": int(sub),
+            "user_id": user_id,
             "username": payload.get("username", ""),
         }
     except (PyJWTError, ValueError):

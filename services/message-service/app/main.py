@@ -12,6 +12,7 @@
 #   - Health endpoints (/health liveness, /ready readiness)
 #   - Global exception handler with structured logging
 import asyncio
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -50,6 +51,7 @@ async def lifespan(app):
                 msg="SECRET_KEY is set to the default value! "
                 "Set a strong SECRET_KEY via environment variable before deploying.",
             )
+            sys.exit(1)
         else:
             logger.warning(
                 "default_secret_key",
@@ -100,7 +102,13 @@ async def lifespan(app):
     logger.info("message_service_shutdown_complete")
 
 
-app = FastAPI(title="cHATBOX Message Service", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="cHATBOX Message Service",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/docs" if APP_ENV == "dev" else None,
+    redoc_url="/redoc" if APP_ENV == "dev" else None,
+)
 
 # ── Prometheus metrics ────────────────────────────────────────────────
 instrumentator = Instrumentator(
@@ -135,19 +143,21 @@ def ready():
     """
     checks = {}
 
-    # Database check (required)
+    # Database check (required) — log details internally, return generic status to client
     try:
         with Session(engine) as db:
             db.execute(text("SELECT 1"))
         checks["database"] = "ok"
     except Exception as e:
-        checks["database"] = str(e)
+        logger.error("readiness_db_check_failed", error=str(e))
+        checks["database"] = "unavailable"
 
     # Kafka check (optional — degraded is acceptable)
     try:
         checks["kafka"] = "ok" if is_kafka_available() else "degraded"
     except Exception as e:
-        checks["kafka"] = f"degraded: {e}"
+        logger.error("readiness_kafka_check_failed", error=str(e))
+        checks["kafka"] = "degraded"
 
     # Only DB is required for readiness
     all_ok = checks.get("database") == "ok"

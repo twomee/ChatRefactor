@@ -83,7 +83,7 @@ func TestCheckOriginProdNoAllowedOriginsConfig(t *testing.T) {
 	req.Header.Set("Origin", "http://any.com")
 
 	if checkOrigin(req) {
-		t.Error("expected fail-closed (deny all) when ALLOWED_ORIGINS is empty in prod")
+		t.Error("expected all origins rejected when ALLOWED_ORIGINS is empty in prod (fail-closed)")
 	}
 }
 

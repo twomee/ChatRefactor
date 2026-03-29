@@ -11,10 +11,17 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => sessionStorage.getItem('token'));
   const [user, setUser] = useState(() => {
     const raw = sessionStorage.getItem('user');
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      sessionStorage.removeItem('user');
+      return null;
+    }
   });
 
-  // Re-register with backend on every app load so logged_in_users survives server restarts
+  // Re-register with backend on every app load so logged_in_users survives server restarts.
+  // Stale token detection is handled by the global 401 interceptor in http.js.
   useEffect(() => {
     if (token) {
       ping().catch(() => {});

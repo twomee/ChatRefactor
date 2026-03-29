@@ -127,12 +127,42 @@ func (h *RoomHandler) GetRoomUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"room_id": roomID, "user_ids": users})
 }
 
-// SetActive toggles a room's active flag.
+// isCallerRoomOrGlobalAdmin checks if the caller is a room admin or a global admin.
+// Returns true if authorized, false otherwise (and writes the HTTP error response).
+func (h *RoomHandler) isCallerRoomOrGlobalAdmin(c *gin.Context, roomID int) bool {
+	callerID, _ := c.Get(middleware.CtxUserID)
+
+	// Check room admin first (fast, local DB query).
+	isAdmin, _ := h.store.IsAdmin(c.Request.Context(), roomID, callerID.(int))
+	if isAdmin {
+		return true
+	}
+
+	// Fall back to global admin check via auth service.
+	caller, err := h.authClient.GetUserByID(c.Request.Context(), callerID.(int))
+	if err != nil {
+		h.logger.Error("admin_check_failed", zap.Error(err))
+		c.JSON(http.StatusBadGateway, gin.H{"detail": "failed to verify admin status"})
+		return false
+	}
+	if caller != nil && caller.IsGlobalAdmin {
+		return true
+	}
+
+	c.JSON(http.StatusForbidden, gin.H{"detail": "admin access required"})
+	return false
+}
+
+// SetActive toggles a room's active flag. Requires room admin or global admin.
 // PUT /rooms/:id/active
 func (h *RoomHandler) SetActive(c *gin.Context) {
 	roomID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "invalid room id"})
+		return
+	}
+
+	if !h.isCallerRoomOrGlobalAdmin(c, roomID) {
 		return
 	}
 
@@ -160,12 +190,16 @@ func (h *RoomHandler) SetActive(c *gin.Context) {
 
 // ---------- Admin operations ----------
 
-// AddAdmin appoints a user as room admin.
+// AddAdmin appoints a user as room admin. Requires room admin or global admin.
 // POST /rooms/:id/admins
 func (h *RoomHandler) AddAdmin(c *gin.Context) {
 	roomID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "invalid room id"})
+		return
+	}
+
+	if !h.isCallerRoomOrGlobalAdmin(c, roomID) {
 		return
 	}
 
@@ -184,7 +218,7 @@ func (h *RoomHandler) AddAdmin(c *gin.Context) {
 	c.JSON(http.StatusCreated, admin)
 }
 
-// RemoveAdmin removes a user's admin role.
+// RemoveAdmin removes a user's admin role. Requires room admin or global admin.
 // DELETE /rooms/:id/admins/:userId
 func (h *RoomHandler) RemoveAdmin(c *gin.Context) {
 	roomID, err := strconv.Atoi(c.Param("id"))
@@ -192,6 +226,11 @@ func (h *RoomHandler) RemoveAdmin(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "invalid room id"})
 		return
 	}
+
+	if !h.isCallerRoomOrGlobalAdmin(c, roomID) {
+		return
+	}
+
 	userID, err := strconv.Atoi(c.Param("userId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "invalid user id"})

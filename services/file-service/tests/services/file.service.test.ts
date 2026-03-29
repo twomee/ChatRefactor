@@ -22,6 +22,12 @@ const { mockExistsSync, mockWriteFileSync, mockMkdirSync } = vi.hoisted(() => ({
   mockMkdirSync: vi.fn(),
 }));
 
+const { mockWriteFile, mockMkdir, mockUnlink } = vi.hoisted(() => ({
+  mockWriteFile: vi.fn().mockResolvedValue(undefined),
+  mockMkdir: vi.fn().mockResolvedValue(undefined),
+  mockUnlink: vi.fn().mockResolvedValue(undefined),
+}));
+
 const mockProduceEvent = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock("@prisma/client", () => ({
@@ -38,6 +44,12 @@ vi.mock("node:fs", () => ({
     mkdirSync: (...args: unknown[]) => mockMkdirSync(...args),
     createReadStream: vi.fn(),
   },
+}));
+
+vi.mock("node:fs/promises", () => ({
+  writeFile: (...args: unknown[]) => mockWriteFile(...args),
+  mkdir: (...args: unknown[]) => mockMkdir(...args),
+  unlink: (...args: unknown[]) => mockUnlink(...args),
 }));
 
 vi.mock("../../src/kafka/events.js", () => ({
@@ -96,7 +108,7 @@ describe("services/file.service", () => {
       expect(result.id).toBe(1);
       expect(result.originalName).toBe("test.txt");
       expect(result.fileSize).toBe(11);
-      expect(mockWriteFileSync).toHaveBeenCalled();
+      expect(mockWriteFile).toHaveBeenCalled();
       expect(mockProduceEvent).toHaveBeenCalled();
     });
 

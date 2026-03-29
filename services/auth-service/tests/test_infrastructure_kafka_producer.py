@@ -153,15 +153,15 @@ class TestProduceEvent:
         )
 
         assert result is True
-        mock_producer.send_and_wait.assert_awaited_once()
-        call_args = mock_producer.send_and_wait.call_args
+        mock_producer.send.assert_awaited_once()
+        call_args = mock_producer.send.call_args
         assert call_args.args[0] == "auth.events"  # topic
         assert call_args.kwargs["key"] == "alice"
 
     @pytest.mark.asyncio
     async def test_produce_event_returns_false_on_send_failure(self):
         mock_producer = AsyncMock()
-        mock_producer.send_and_wait.side_effect = Exception("broker down")
+        mock_producer.send.side_effect = Exception("broker down")
         kafka_producer._producer = mock_producer
         kafka_producer._kafka_available = True
 
@@ -179,7 +179,7 @@ class TestProduceEvent:
 
         await _real_produce_event("user_registered", {"user_id": 42})
 
-        call_args = mock_producer.send_and_wait.call_args
+        call_args = mock_producer.send.call_args
         assert call_args.kwargs["key"] == "42"
 
     @pytest.mark.asyncio
@@ -192,7 +192,7 @@ class TestProduceEvent:
             "user_registered", {"user_id": 1, "username": "dave"}
         )
 
-        call_args = mock_producer.send_and_wait.call_args
+        call_args = mock_producer.send.call_args
         event_value = call_args.kwargs["value"]
         assert event_value["event_type"] == "user_registered"
         assert "timestamp" in event_value

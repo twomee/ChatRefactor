@@ -1,0 +1,147 @@
+{
+  "version": "1.0",
+  "skills": {
+    "dev-docs": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "high",
+      "promptTriggers": {
+        "keywords": [
+          "dev docs",
+          "dev-docs",
+          "session notes",
+          "save context",
+          "save session",
+          "document progress",
+          "capture decisions",
+          "context compaction",
+          "session summary",
+          "session memory",
+          "where were we",
+          "what did we do",
+          "pick up where",
+          "promote dev doc"
+        ],
+        "intentPatterns": [
+          "(save|capture|document|record|write).*(session|context|progress|decisions|state|notes)",
+          "(where|what).*(were we|did we|left off|working on)",
+          "(pick up|resume|continue).*(where|from|session)",
+          "(promote|share|move).*(dev.doc|doc|notes).*(repo|team)"
+        ]
+      }
+    },
+    "architecture": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "high",
+      "promptTriggers": {
+        "keywords": [
+          "system design",
+          "service boundary",
+          "modular monolith",
+          "deployment topology",
+          "scaling strategy",
+          "architecture decision",
+          "ADR",
+          "how should I structure"
+        ],
+        "intentPatterns": [
+          "(design|plan|architect).*(system|service|module|architecture)",
+          "(should).*(be|become).*(separate|own|its own).*(service|module)",
+          "(new|create|build|start).*(micro.?service|backend.service|frontend.project|system.from.scratch)",
+          "(split|separate|extract).*(service|module|component)"
+        ]
+      }
+    },
+    "api-design": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "high",
+      "promptTriggers": {
+        "keywords": [
+          "api design",
+          "API design",
+          "new endpoint",
+          "new route",
+          "API contract",
+          "API versioning",
+          "OpenAPI",
+          "swagger"
+        ],
+        "intentPatterns": [
+          "(design|create|build).*(new).*(api|endpoint|route)",
+          "(new|add).*(endpoint|route|api)",
+          "(how).*(design|version|structure).*(api|endpoint)",
+          "(what).*(status.code|http.method|error.code).*(should|for)"
+        ]
+      }
+    },
+    "backend-dev-guidelines": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "high",
+      "promptTriggers": {
+        "keywords": [
+          "new handler",
+          "new service layer",
+          "new repository",
+          "new middleware",
+          "new controller",
+          "health check endpoint",
+          "graceful shutdown",
+          "dependency injection setup"
+        ],
+        "intentPatterns": [
+          "(create|build|add|implement).*(new).*(handler|service|repository|middleware|controller)",
+          "(setup|configure|add|implement).*(health.check|graceful.shutdown|structured.logging|dependency.injection)",
+          "(design|structure|organize).*(backend|server|service)",
+          "(new).*(backend|server).*(service|project|module)"
+        ]
+      }
+    },
+    "frontend-dev-guidelines": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "high",
+      "promptTriggers": {
+        "keywords": [
+          "new component",
+          "new page",
+          "new hook",
+          "new form",
+          "design system",
+          "state management design",
+          "component architecture"
+        ],
+        "intentPatterns": [
+          "(create|build|add|write).*(new).*(component|page|view|form|modal|hook)",
+          "(design|structure|organize).*(frontend|ui|client|react)",
+          "(setup|implement).*(state.management|data.fetching|routing|form.handling)",
+          "(new).*(frontend|react|ui).*(project|module|feature)"
+        ]
+      }
+    },
+    "testing-philosophy": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "medium",
+      "promptTriggers": {
+        "keywords": [
+          "test strategy",
+          "test philosophy",
+          "testing approach",
+          "what to test",
+          "worth testing",
+          "should I mock",
+          "test boundary",
+          "write tests for new"
+        ],
+        "intentPatterns": [
+          "(write|create|add).*(new).*(test|tests|test.suite|test.file)",
+          "(what|how|should).*(test|mock).*(strategy|approach|decision)",
+          "(setup|design|plan).*(test|testing).*(strategy|suite|framework)"
+        ]
+      }
+    }
+  }
+}
