@@ -123,6 +123,10 @@ func TestWSHandlerRoomWSUpgradeAndMessage(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
+	// Register lobby so HandleRoomWS doesn't reject with "no lobby connection".
+	cleanupLobby := registerTestLobby(t, manager, 1, "alice")
+	defer cleanupLobby()
+
 	token := makeToken(1, "alice")
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/1?token=" + token
 
@@ -198,6 +202,9 @@ func TestWSHandlerMutedUserCannotSend(t *testing.T) {
 
 	srv := httptest.NewServer(r)
 	defer srv.Close()
+
+	cleanupLobby := registerTestLobby(t, manager, 1, "alice")
+	defer cleanupLobby()
 
 	token := makeToken(1, "alice")
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/1?token=" + token

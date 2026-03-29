@@ -112,6 +112,12 @@ type WSHandler struct {
 	kickedMu    sync.Mutex
 	kickedUsers map[string]bool
 
+	// leftUsers tracks users that sent an intentional "leave" command.
+	// When readLoop exits after handleLeave, handleDisconnect checks this
+	// and skips the grace period (leave was already broadcast).
+	leftMu    sync.Mutex
+	leftUsers map[string]bool
+
 	// pendingLeaves tracks delayed leave broadcasts for reconnect grace period.
 	// Key: "room:user" → cancel function. If the user reconnects within the
 	// grace period, the pending leave is cancelled silently.
@@ -129,7 +135,7 @@ func NewWSHandler(
 	messageServiceURL string,
 	logger *zap.Logger,
 ) *WSHandler {
-	return &WSHandler{
+	h := &WSHandler{
 		manager:       manager,
 		store:         store,
 		delivery:      delivery,
@@ -139,8 +145,16 @@ func NewWSHandler(
 		limiter:       newRateLimiter(),
 		messageSvcURL: messageServiceURL,
 		kickedUsers:   make(map[string]bool),
+		leftUsers:     make(map[string]bool),
 		pendingLeaves: make(map[string]context.CancelFunc),
 	}
+
+	// When a user fully logs out (last lobby closes), cancel any pending
+	// grace-period leave timers and broadcast user_left immediately.
+	// This handles the case where room sockets close before the lobby.
+	manager.OnFullLogout(h.flushPendingLeaves)
+
+	return h
 }
 
 // HandleRoomWS upgrades the connection and enters the read/write loop.
@@ -194,6 +208,19 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 	}
 	if !room.IsActive {
 		c.JSON(http.StatusForbidden, gin.H{"detail": "room is inactive"})
+		return
+	}
+
+	// Reject room connections from users without a lobby connection.
+	// A user without a lobby is logged out — any room connection attempt is a
+	// zombie reconnect from a stale timer and must be refused so it can't
+	// cancel a pending user_left broadcast or create ghost presence.
+	if !h.manager.HasLobbyConnection(userID) {
+		h.logger.Info("room_ws_rejected_no_lobby",
+			zap.Int("room_id", roomID),
+			zap.Int("user_id", userID),
+		)
+		c.JSON(http.StatusForbidden, gin.H{"detail": "no lobby connection"})
 		return
 	}
 
@@ -258,10 +285,11 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 	// handleDisconnect → client's onclose fires, but the new connection is
 	// already in socketsRef, so the retry guard prevents a new connection
 	// from being created and the storm dies in one cycle.
+	silent := c.Query("silent") == "1"
 	user := ws.UserInfo{UserID: userID, Username: username}
 	h.manager.ConnectRoom(roomID, conn, user)
 	go func() {
-		h.handleJoin(ctx, conn, roomID, userID, username, token)
+		h.handleJoin(ctx, conn, roomID, userID, username, token, silent)
 		h.sendHistory(conn, roomID, token)
 	}()
 
