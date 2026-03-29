@@ -26,7 +26,9 @@ export default function SettingsModal({ open, onClose }) {
     <div
       ref={backdropRef}
       className="settings-backdrop"
-      onClick={e => { if (e.target === backdropRef.current) onClose(); }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) onClose(); }}
+      tabIndex={-1}
     >
       <div className="settings-panel glass-panel" role="dialog" aria-label="Settings">
         <div className="settings-header">

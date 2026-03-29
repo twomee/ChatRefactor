@@ -143,10 +143,19 @@ export default function MessageList({ messages, onScrollToBottom, currentUser, l
                         alt={msg.text}
                         className="msg-inline-image"
                         loading="lazy"
+                        tabIndex={0}
                         onClick={() => window.open(
                           `${API_BASE}/files/download/${msg.fileId}?token=${encodeURIComponent(sessionStorage.getItem('token'))}`,
                           '_blank',
                         )}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            window.open(
+                              `${API_BASE}/files/download/${msg.fileId}?token=${encodeURIComponent(sessionStorage.getItem('token'))}`,
+                              '_blank',
+                            );
+                          }
+                        }}
                         onError={(e) => {
                           e.target.style.display = 'none';
                           e.target.nextSibling?.classList?.add('show-fallback');

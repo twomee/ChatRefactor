@@ -110,7 +110,7 @@ export default function LinkPreview({ text }) {
       target="_blank"
       rel="noopener noreferrer"
       className="link-preview-card"
-      aria-label={`Link preview: ${preview.title || url}`}
+      aria-label={`Link preview: ${preview?.title || url}`}
     >
       <div className="link-preview-info">
         {preview.title && (

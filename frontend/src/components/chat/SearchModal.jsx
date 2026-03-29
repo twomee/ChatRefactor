@@ -162,7 +162,7 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
   if (!isOpen) return null;
 
   return (
-    <div className="search-modal-overlay" onClick={handleOverlayClick} role="dialog" aria-modal="true" aria-label="Search messages">
+    <div className="search-modal-overlay" onClick={handleOverlayClick} onKeyDown={e => { if (e.key === 'Escape') onClose(); }} role="dialog" aria-modal="true" aria-label="Search messages">
       <div className="search-modal">
         {/* Search input */}
         <div className="search-modal-input-wrapper">

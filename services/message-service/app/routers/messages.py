@@ -197,7 +197,7 @@ async def get_link_preview(
     Results are cached in Redis for 1 hour to avoid re-fetching.
     """
     # Validate URL scheme — only http/https allowed
-    if not url.startswith(("http://", "https://")):
+    if not url.startswith(("http://", "https://")):  # NOSONAR — validating scheme, not making an insecure request
         raise HTTPException(
             status_code=400, detail="Invalid URL: must start with http:// or https://"
         )
