@@ -209,7 +209,9 @@ def _sanitize_url(raw: str | None, max_len: int) -> str | None:
     if not raw:
         return None
     cleaned = raw.strip()
-    if not cleaned.startswith(("http://", "https://")):  # NOSONAR — validating scheme, not making an insecure request
+    if not cleaned.startswith(
+        ("http://", "https://")  # NOSONAR
+    ):
         return None
     return cleaned[:max_len]
 
