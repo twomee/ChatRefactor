@@ -6,6 +6,7 @@
 // Caching: fetched previews are stored in a module-level Map to avoid
 // re-fetching on re-renders. The cache lives for the duration of the SPA session.
 import { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { fetchLinkPreview } from '../../services/messageApi';
 import { previewCache } from '../../utils/linkPreviewUtils';
 
@@ -130,3 +131,7 @@ export default function LinkPreview({ text }) {
     </a>
   );
 }
+
+LinkPreview.propTypes = {
+  text: PropTypes.string.isRequired,
+};

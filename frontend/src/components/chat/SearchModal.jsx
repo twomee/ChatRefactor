@@ -24,7 +24,7 @@ import { searchMessages } from '../../services/searchApi';
  */
 function highlightMatch(text, q) {
   if (!q || !text) return text;
-  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = q.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const parts = text.split(new RegExp(`(${escaped})`, 'gi')); // NOSONAR - input is sanitized on the line above
   return parts.map((part, i) => {
     const key = `part-${i}`;
@@ -84,8 +84,8 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
         onClose();
       }
     }
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    globalThis.addEventListener('keydown', handleKeyDown);
+    return () => globalThis.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
   // Debounced search — fires after 300 ms of inactivity.
@@ -181,7 +181,7 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
   if (!isOpen) return null;
 
   return (
-    <div className="search-modal-overlay" onClick={handleOverlayClick} onKeyDown={handleOverlayKeyDown} role="presentation">
+    <div className="search-modal-overlay" onClick={handleOverlayClick} onKeyDown={handleOverlayKeyDown}>
       <div className="search-modal" role="dialog" aria-modal="true" aria-label="Search messages">
         {/* Search input */}
         <div className="search-modal-input-wrapper">
@@ -221,6 +221,7 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
                 <li
                   key={r.message_id}
                   className="search-result-item"
+                  role="button"
                   onClick={() => handleResultClick(r)}
                   tabIndex={0}
                   onKeyDown={(e) => handleResultKeyDown(e, r)}

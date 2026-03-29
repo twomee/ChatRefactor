@@ -52,7 +52,7 @@ export default function LoginPage() {
   }
 
   function handleTotpChange(e) {
-    setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+    setTotpCode(e.target.value.replaceAll(/\D/g, '').slice(0, 6));
   }
 
   async function handle2FASubmit(e) {

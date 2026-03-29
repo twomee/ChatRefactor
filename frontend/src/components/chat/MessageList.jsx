@@ -112,14 +112,14 @@ function renderFileMessage(msg, key) {
     </div>
   ) : (
     <>
-      <a
-        href="#"
-        onClick={(e) => { e.preventDefault(); downloadFile(msg.fileId, msg.text); }}
+      <button
+        type="button"
+        onClick={() => downloadFile(msg.fileId, msg.text)}
         className="msg-file-link"
       >
         {attachmentIcon}
         {msg.text}
-      </a>
+      </button>
       {msg.fileSize && <span className="msg-file-size">({formatSize(msg.fileSize)})</span>}
     </>
   );
@@ -223,7 +223,7 @@ function renderRegularMessage(msg, key, currentUser, pickerMsgId, handlers) {
           <button
             className="msg-action-btn"
             title="Edit"
-            onClick={() => onEditMessage && onEditMessage(msg)}
+            onClick={() => onEditMessage?.(msg)}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
@@ -233,7 +233,7 @@ function renderRegularMessage(msg, key, currentUser, pickerMsgId, handlers) {
           <button
             className="msg-action-btn"
             title="Delete"
-            onClick={() => onDeleteMessage && onDeleteMessage(msg)}
+            onClick={() => onDeleteMessage?.(msg)}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="3 6 5 6 21 6" />

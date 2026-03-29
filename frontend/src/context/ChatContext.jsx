@@ -137,7 +137,7 @@ export function chatReducer(state, action) {
       const { [action.roomId]: _a, ...admins } = state.admins;
       const { [action.roomId]: _mu, ...mutedUsers } = state.mutedUsers;
       const { [action.roomId]: _un, ...unreadCounts } = state.unreadCounts;
-      const typingUsers = { ...(state.typingUsers ?? {}) };
+      const typingUsers = { ...state.typingUsers };
       delete typingUsers[action.roomId];
       const readPositions = { ...state.readPositions };
       delete readPositions[action.roomId];

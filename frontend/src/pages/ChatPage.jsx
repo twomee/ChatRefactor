@@ -78,8 +78,8 @@ export default function ChatPage() {
         setSearchOpen(prev => !prev);
       }
     }
-    window.addEventListener('keydown', handleSearchShortcut);
-    return () => window.removeEventListener('keydown', handleSearchShortcut);
+    globalThis.addEventListener('keydown', handleSearchShortcut);
+    return () => globalThis.removeEventListener('keydown', handleSearchShortcut);
   }, []);
 
   function handleLayoutChange(_current, allLayouts) {

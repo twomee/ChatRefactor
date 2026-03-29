@@ -1,7 +1,7 @@
 let permissionGranted = false;
 
 export async function requestNotificationPermission() {
-  if (!('Notification' in window)) return false;
+  if (!('Notification' in globalThis)) return false;
   if (Notification.permission === 'granted') {
     permissionGranted = true;
     return true;

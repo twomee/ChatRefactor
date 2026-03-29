@@ -13,7 +13,7 @@ import * as authApi from '../../services/authApi';
  */
 export default function TwoFactorSetup() {
   const [status, setStatus] = useState(null); // null = loading
-  const [setupData, setSetupData] = useState(null); // { qr_code, manual_entry_key }
+  const [setupData, setSetupData] = useState(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');

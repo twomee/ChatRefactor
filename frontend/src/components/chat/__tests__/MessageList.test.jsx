@@ -38,7 +38,7 @@ describe('MessageList', () => {
     const messages = [{ isFile: true, from: 'bob', text: 'report.pdf', fileId: 'f1', fileSize: 2048 }];
     render(<MessageList messages={messages} />);
     const link = screen.getByText('report.pdf');
-    expect(link.closest('a')).toBeInTheDocument();
+    expect(link.closest('button')).toBeInTheDocument();
     expect(screen.getByText('(2.0 KB)')).toBeInTheDocument();
   });
 
