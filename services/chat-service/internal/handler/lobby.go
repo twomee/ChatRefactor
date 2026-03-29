@@ -43,6 +43,12 @@ func (h *LobbyHandler) HandleLobbyWS(c *gin.Context) {
 		return
 	}
 
+	// Enforce per-user connection limit to prevent resource exhaustion.
+	if h.manager.UserConnectionCount(userID) >= maxConnectionsPerUser {
+		c.JSON(http.StatusTooManyRequests, gin.H{"detail": "too many connections"})
+		return
+	}
+
 	up := newUpgrader()
 	conn, err := up.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -71,6 +77,18 @@ func (h *LobbyHandler) HandleLobbyWS(c *gin.Context) {
 		}
 	}
 
-	h.manager.DisconnectLobby(conn)
+	cleanup := h.manager.DisconnectLobby(conn)
 	_ = conn.Close()
+
+	// If the user fully logged out (no remaining lobby connections), the
+	// manager evicted their zombie room connections. The closed connections
+	// will trigger handleDisconnect in each room handler, which detects
+	// the missing lobby and broadcasts user_left immediately (no grace period).
+	if cleanup != nil {
+		h.logger.Info("zombie_room_conns_evicted",
+			zap.Int("user_id", cleanup.UserID),
+			zap.String("username", cleanup.Username),
+			zap.Int("rooms_cleaned", len(cleanup.RoomIDs)),
+		)
+	}
 }

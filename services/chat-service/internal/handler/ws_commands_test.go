@@ -19,7 +19,7 @@ import (
 // These use a real WebSocket connection via httptest, following the same
 // pattern as TestWSHandlerRoomWSUpgradeAndMessage.
 
-func setupWSServer(t *testing.T) (srvURL string, cleanup func()) {
+func setupWSServer(t *testing.T) (srvURL string, mgr *ws.Manager, cleanup func()) {
 	t.Helper()
 	logger := newLogger()
 	manager := ws.NewManager(logger)
@@ -34,11 +34,15 @@ func setupWSServer(t *testing.T) (srvURL string, cleanup func()) {
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
 	srv := httptest.NewServer(r)
-	return srv.URL, srv.Close
+	return srv.URL, manager, srv.Close
 }
 
-func dialWS(t *testing.T, srvURL string, userID int, username string) *websocket.Conn {
+func dialWS(t *testing.T, srvURL string, mgr *ws.Manager, userID int, username string) *websocket.Conn {
 	t.Helper()
+	// Register a lobby connection so HandleRoomWS doesn't reject us.
+	lobbyCleanup := registerTestLobby(t, mgr, userID, username)
+	t.Cleanup(lobbyCleanup)
+
 	token := makeToken(userID, username)
 	wsURL := "ws" + strings.TrimPrefix(srvURL, "http") + "/ws/1?token=" + token
 	c, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
@@ -73,14 +77,14 @@ func readMsg(t *testing.T, c *websocket.Conn) map[string]interface{} {
 }
 
 func TestWSMuteCommand(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2) // join + history
 
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2) // join + history
 	drainMessages(c1, 1) // alice gets bob's join
@@ -103,13 +107,13 @@ func TestWSMuteCommand(t *testing.T) {
 }
 
 func TestWSUnmuteCommand(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)
@@ -127,13 +131,13 @@ func TestWSUnmuteCommand(t *testing.T) {
 }
 
 func TestWSPromoteCommand(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)
@@ -146,13 +150,13 @@ func TestWSPromoteCommand(t *testing.T) {
 }
 
 func TestWSKickCommand(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)
@@ -165,10 +169,10 @@ func TestWSKickCommand(t *testing.T) {
 }
 
 func TestWSKickSelfRejected(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
@@ -180,10 +184,10 @@ func TestWSKickSelfRejected(t *testing.T) {
 }
 
 func TestWSMuteSelfRejected(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
@@ -195,13 +199,13 @@ func TestWSMuteSelfRejected(t *testing.T) {
 }
 
 func TestWSPrivateMessage(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)
@@ -224,10 +228,10 @@ func TestWSPrivateMessage(t *testing.T) {
 }
 
 func TestWSPrivateMessageSelfRejected(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
@@ -241,10 +245,10 @@ func TestWSPrivateMessageSelfRejected(t *testing.T) {
 // ---- handleUnmute edge case tests ----
 
 func TestWSUnmuteEmptyTarget(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
@@ -260,14 +264,14 @@ func TestWSUnmuteEmptyTarget(t *testing.T) {
 }
 
 func TestWSUnmuteNonAdmin(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)
@@ -284,10 +288,10 @@ func TestWSUnmuteNonAdmin(t *testing.T) {
 }
 
 func TestWSUnmuteUserNotInRoom(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
@@ -303,14 +307,14 @@ func TestWSUnmuteUserNotInRoom(t *testing.T) {
 }
 
 func TestWSUnmuteUserNotMuted(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)
@@ -329,10 +333,10 @@ func TestWSUnmuteUserNotMuted(t *testing.T) {
 // ---- handlePromote edge case tests ----
 
 func TestWSPromoteEmptyTarget(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
@@ -347,14 +351,14 @@ func TestWSPromoteEmptyTarget(t *testing.T) {
 }
 
 func TestWSPromoteNonAdmin(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)
@@ -371,10 +375,10 @@ func TestWSPromoteNonAdmin(t *testing.T) {
 }
 
 func TestWSPromoteSelfRejected(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
@@ -389,10 +393,10 @@ func TestWSPromoteSelfRejected(t *testing.T) {
 }
 
 func TestWSPromoteUserNotInRoom(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
@@ -407,14 +411,14 @@ func TestWSPromoteUserNotInRoom(t *testing.T) {
 }
 
 func TestWSPromoteAlreadyAdmin(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)
@@ -436,14 +440,14 @@ func TestWSPromoteAlreadyAdmin(t *testing.T) {
 }
 
 func TestWSPromoteMutedUser(t *testing.T) {
-	srvURL, cleanup := setupWSServer(t)
+	srvURL, mgr, cleanup := setupWSServer(t)
 	defer cleanup()
 
-	c1 := dialWS(t, srvURL, 1, "alice")
+	c1 := dialWS(t, srvURL, mgr, 1, "alice")
 	defer c1.Close()
 	drainMessages(c1, 2)
 
-	c2 := dialWS(t, srvURL, 2, "bob")
+	c2 := dialWS(t, srvURL, mgr, 2, "bob")
 	defer c2.Close()
 	drainMessages(c2, 2)
 	drainMessages(c1, 1)

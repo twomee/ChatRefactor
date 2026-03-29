@@ -91,6 +91,9 @@ func (h *WSHandler) readLoop(conn *websocket.Conn, roomID, userID int, username 
 			h.handlePromote(ctx, conn, roomID, userID, username, incoming.Target)
 		case "private_message":
 			h.handlePrivateMessage(ctx, conn, roomID, userID, username, incoming.To, incoming.Text)
+		case "leave":
+			h.handleLeave(ctx, conn, roomID, userID, username)
+			return // exit readLoop — connection is being closed
 		default:
 			h.sendError(conn, "Unknown message type")
 		}

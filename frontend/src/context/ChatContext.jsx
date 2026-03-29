@@ -18,6 +18,11 @@ const initialState = {
 export function chatReducer(state, action) {
   switch (action.type) {
 
+    // ── Session lifecycle ──────────────────────────────────────────────
+    case 'RESET':
+      return { ...initialState, rooms: state.rooms };
+
+
     // ── Existing actions (unchanged) ──────────────────────────────────────
     case 'SET_ROOMS':
       return { ...state, rooms: action.rooms };
@@ -77,10 +82,22 @@ export function chatReducer(state, action) {
 
     // ── Presence-aware room join/leave (atomically update onlineUsers + knownOfflineUsers) ──
     case 'USER_JOINED_ROOM': {
+      const prevRoomUsers = state.onlineUsers[action.roomId] || [];
       const newOnlineUsers = { ...state.onlineUsers, [action.roomId]: action.users };
-      // User is confirmed online — remove from offline set
       const nextOffline = new Set(state.knownOfflineUsers);
+      // User is confirmed online — remove from offline set
       if (action.username) nextOffline.delete(action.username);
+      // Detect users who disappeared from this room's list (e.g. missed user_left
+      // events during a reconnect). Mark them offline if absent from ALL rooms.
+      const newUsersSet = new Set(action.users);
+      for (const prevUser of prevRoomUsers) {
+        if (!newUsersSet.has(prevUser)) {
+          const stillOnline = Object.entries(newOnlineUsers).some(
+            ([rid, list]) => String(rid) !== String(action.roomId) && list.includes(prevUser),
+          );
+          if (!stillOnline) nextOffline.add(prevUser);
+        }
+      }
       let next = { ...state, onlineUsers: newOnlineUsers, knownOfflineUsers: nextOffline };
       if (action.admins !== undefined) next = { ...next, admins: { ...state.admins, [action.roomId]: action.admins } };
       if (action.muted !== undefined) next = { ...next, mutedUsers: { ...state.mutedUsers, [action.roomId]: action.muted } };
@@ -89,13 +106,10 @@ export function chatReducer(state, action) {
 
     case 'USER_LEFT_ROOM': {
       const newOnlineUsers = { ...state.onlineUsers, [action.roomId]: action.users };
-      // Only mark offline if user is absent from every tracked room after this update
-      const nextOffline = new Set(state.knownOfflineUsers);
-      if (action.username) {
-        const stillOnline = Object.values(newOnlineUsers).some(list => list.includes(action.username));
-        if (!stillOnline) nextOffline.add(action.username);
-      }
-      let next = { ...state, onlineUsers: newOnlineUsers, knownOfflineUsers: nextOffline };
+      // Don't mark users offline when they leave a room — they may still be
+      // logged in (lobby connected). Only USER_OFFLINE (from lobby disconnect)
+      // should mark users as truly offline.
+      let next = { ...state, onlineUsers: newOnlineUsers };
       if (action.admins !== undefined) next = { ...next, admins: { ...state.admins, [action.roomId]: action.admins } };
       if (action.muted !== undefined) next = { ...next, mutedUsers: { ...state.mutedUsers, [action.roomId]: action.muted } };
       return next;
@@ -141,6 +155,21 @@ export function chatReducer(state, action) {
         ...state,
         unreadCounts: { ...state.unreadCounts, [action.roomId]: 0 },
       };
+
+    // ── Lobby-level presence (independent of room membership) ──────────
+    case 'USER_ONLINE': {
+      if (!state.knownOfflineUsers.has(action.username)) return state;
+      const nextOffline = new Set(state.knownOfflineUsers);
+      nextOffline.delete(action.username);
+      return { ...state, knownOfflineUsers: nextOffline };
+    }
+
+    case 'USER_OFFLINE': {
+      if (state.knownOfflineUsers.has(action.username)) return state;
+      const nextOffline = new Set(state.knownOfflineUsers);
+      nextOffline.add(action.username);
+      return { ...state, knownOfflineUsers: nextOffline };
+    }
 
     default:
       return state;

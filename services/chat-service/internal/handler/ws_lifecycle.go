@@ -20,7 +20,7 @@ const reconnectGrace = 10 * time.Second
 // handleJoin broadcasts the user_join event and updates room state for the
 // newly connected client. Message history is sent separately (see sendHistory
 // in websocket.go) so it does not block readLoop from starting.
-func (h *WSHandler) handleJoin(ctx context.Context, conn *websocket.Conn, roomID, userID int, username, token string) {
+func (h *WSHandler) handleJoin(ctx context.Context, conn *websocket.Conn, roomID, userID int, username, token string, silent bool) {
 	// Check if this is a reconnect (pending leave exists).
 	leaveKey := fmt.Sprintf("%d:%d", roomID, userID)
 	h.pendingLeaveMu.Lock()
@@ -36,6 +36,7 @@ func (h *WSHandler) handleJoin(ctx context.Context, conn *websocket.Conn, roomID
 	adminNames := h.getAdminUsernames(ctx, roomID)
 	mutedNames := h.getMutedUsernames(ctx, roomID)
 
+	isSilent := isReconnect || silent
 	roomState := map[string]interface{}{
 		"type":     "user_join",
 		"username": username,
@@ -43,16 +44,16 @@ func (h *WSHandler) handleJoin(ctx context.Context, conn *websocket.Conn, roomID
 		"admins":   adminNames,
 		"muted":    mutedNames,
 		"room_id":  roomID,
+		"silent":   isSilent,
 	}
 
-	if isReconnect {
-		// Reconnect (e.g. page refresh): send room state only to the
-		// reconnecting user so their UI rebuilds, but don't notify others.
-		_ = h.manager.SendToConn(conn, roomState)
-	} else {
-		// First-time join: broadcast to everyone and persist.
-		h.manager.BroadcastRoom(roomID, roomState)
+	// Always broadcast the updated room state to ALL clients so every
+	// user's online list stays in sync.
+	h.manager.BroadcastRoom(roomID, roomState)
 
+	// System message ("X joined the room") only for active joins — not for
+	// reconnects (page refresh) or silent joins (auto-rejoin on login).
+	if !isReconnect && !silent {
 		joinMsgID := uuid.New().String()
 		joinNow := time.Now().UTC().Format(time.RFC3339)
 		joinKafka := map[string]interface{}{
@@ -69,7 +70,79 @@ func (h *WSHandler) handleJoin(ctx context.Context, conn *websocket.Conn, roomID
 
 		h.produceEvent(ctx, "user_joined", roomID, userID, username)
 	}
+}
 
+// handleLeave processes an intentional room exit (user clicked "Leave Room").
+// Disconnects immediately without the reconnect grace period.
+// Marks the user as "left" so handleDisconnect (which runs after readLoop
+// exits) skips the duplicate leave broadcast.
+func (h *WSHandler) handleLeave(ctx context.Context, conn *websocket.Conn, roomID, userID int, username string) {
+	// Mark as intentionally left BEFORE disconnect so handleDisconnect skips.
+	key := fmt.Sprintf("%d:%d", roomID, userID)
+	h.leftMu.Lock()
+	h.leftUsers[key] = true
+	h.leftMu.Unlock()
+
+	h.manager.DisconnectRoom(roomID, conn)
+	_ = conn.Close()
+
+	if h.manager.IsUserInRoom(roomID, userID) {
+		return // multi-tab: user still connected via another tab
+	}
+
+	// Cancel any pending grace-period leave.
+	leaveKey := fmt.Sprintf("%d:%d", roomID, userID)
+	h.pendingLeaveMu.Lock()
+	if cancel, ok := h.pendingLeaves[leaveKey]; ok {
+		cancel()
+		delete(h.pendingLeaves, leaveKey)
+	}
+	h.pendingLeaveMu.Unlock()
+
+	// Active leave: broadcast with silent=false so frontend shows the message.
+	remainingUsers := h.manager.GetUsernamesInRoom(roomID)
+	updatedAdmins := h.getAdminUsernames(ctx, roomID)
+	updatedMuted := h.getMutedUsernames(ctx, roomID)
+	leaveBroadcast := map[string]interface{}{
+		"type":     "user_left",
+		"username": username,
+		"users":    remainingUsers,
+		"admins":   updatedAdmins,
+		"muted":    updatedMuted,
+		"room_id":  roomID,
+		"silent":   false,
+	}
+	h.manager.BroadcastRoom(roomID, leaveBroadcast)
+
+	h.produceEvent(ctx, "user_left", roomID, userID, username)
+	h.handleAdminSuccession(ctx, roomID, userID, username)
+
+	// Persist the "X left the room" system message.
+	leaveMsgID := uuid.New().String()
+	leaveNow := time.Now().UTC().Format(time.RFC3339)
+	leaveKafka := map[string]interface{}{
+		"type":      "message",
+		"room_id":   roomID,
+		"sender_id": 0,
+		"username":  "system",
+		"text":      fmt.Sprintf("%s left the room", username),
+		"msg_id":    leaveMsgID,
+		"timestamp": leaveNow,
+	}
+	leavePayload, _ := json.Marshal(leaveKafka)
+	_ = h.delivery.DeliverChat(ctx, roomID, leavePayload)
+}
+
+// wasLeft checks and clears the intentional-leave flag for a room/user pair.
+func (h *WSHandler) wasLeft(roomID, userID int) bool {
+	key := fmt.Sprintf("%d:%d", roomID, userID)
+	h.leftMu.Lock()
+	defer h.leftMu.Unlock()
+	if h.leftUsers[key] {
+		delete(h.leftUsers, key)
+		return true
+	}
+	return false
 }
 
 // handleDisconnect cleans up the connection and schedules a delayed leave
@@ -85,8 +158,21 @@ func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, 
 		return
 	}
 
+	// Intentional leave: already handled by handleLeave.
+	if h.wasLeft(roomID, userID) {
+		return
+	}
+
 	// Check if user still has other connections in this room (multi-tab).
 	if h.manager.IsUserInRoom(roomID, userID) {
+		return
+	}
+
+	// If the user has no lobby connection they are fully logged out.
+	// Skip the reconnect grace period — broadcast leave immediately so
+	// zombie reconnects (from stale frontend timers) can't cancel the leave.
+	if !h.manager.HasLobbyConnection(userID) {
+		h.broadcastLeaveImmediate(ctx, roomID, userID, username)
 		return
 	}
 
@@ -100,13 +186,29 @@ func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, 
 	h.pendingLeaveMu.Unlock()
 
 	go func() {
-		select {
-		case <-leaveCtx.Done():
-			// Cancelled — user reconnected. Do nothing.
-			return
-		case <-time.After(reconnectGrace):
-			// Grace period expired — user truly left.
+		// Wait for either: cancellation, full grace period, or lobby loss.
+		// The lobby-loss ticker catches the race where DisconnectLobby's
+		// flushPendingLeaves runs before this pending leave is registered.
+		lobbyTicker := time.NewTicker(500 * time.Millisecond)
+		defer lobbyTicker.Stop()
+		graceTimer := time.After(reconnectGrace)
+
+		for {
+			select {
+			case <-leaveCtx.Done():
+				// Cancelled — user reconnected or flushPendingLeaves fired.
+				return
+			case <-graceTimer:
+				// Grace period expired — user truly left.
+				goto broadcast
+			case <-lobbyTicker.C:
+				if !h.manager.HasLobbyConnection(userID) {
+					// User logged out during grace period — leave immediately.
+					goto broadcast
+				}
+			}
 		}
+	broadcast:
 
 		h.pendingLeaveMu.Lock()
 		delete(h.pendingLeaves, leaveKey)
@@ -120,7 +222,7 @@ func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, 
 			return
 		}
 
-		// Broadcast leave with updated room state.
+		// Broadcast leave with updated room state (silent — no system message).
 		bgCtx := context.Background()
 		remainingUsers := h.manager.GetUsernamesInRoom(roomID)
 		updatedAdmins := h.getAdminUsernames(bgCtx, roomID)
@@ -133,26 +235,69 @@ func (h *WSHandler) handleDisconnect(ctx context.Context, conn *websocket.Conn, 
 			"admins":   updatedAdmins,
 			"muted":    updatedMuted,
 			"room_id":  roomID,
+			"silent":   true,
 		}
 		h.manager.BroadcastRoom(roomID, leaveBroadcast)
 
-		// Persist leave system message.
-		leaveMsgID := uuid.New().String()
-		leaveNow := time.Now().UTC().Format(time.RFC3339)
-		leaveKafka := map[string]interface{}{
-			"type":      "message",
-			"room_id":   roomID,
-			"sender_id": 0,
-			"username":  "system",
-			"text":      fmt.Sprintf("%s left the room", username),
-			"msg_id":    leaveMsgID,
-			"timestamp": leaveNow,
-		}
-		leavePayload, _ := json.Marshal(leaveKafka)
-		_ = h.delivery.DeliverChat(bgCtx, roomID, leavePayload)
-
 		h.produceEvent(bgCtx, "user_left", roomID, userID, username)
 	}()
+}
+
+// broadcastLeaveImmediate broadcasts a user_left event without any grace period.
+// This is a silent leave — no system message ("X left the room") is generated.
+// Used for passive disconnects (logout, network loss). For active leaves (user
+// clicks "Leave Room"), handleLeave calls this then adds the system message.
+func (h *WSHandler) broadcastLeaveImmediate(ctx context.Context, roomID, userID int, username string) {
+	// Cancel any existing pending leave for this user/room so we don't
+	// double-broadcast later if a grace timer was already running.
+	leaveKey := fmt.Sprintf("%d:%d", roomID, userID)
+	h.pendingLeaveMu.Lock()
+	if cancel, ok := h.pendingLeaves[leaveKey]; ok {
+		cancel()
+		delete(h.pendingLeaves, leaveKey)
+	}
+	h.pendingLeaveMu.Unlock()
+
+	remainingUsers := h.manager.GetUsernamesInRoom(roomID)
+	updatedAdmins := h.getAdminUsernames(ctx, roomID)
+	updatedMuted := h.getMutedUsernames(ctx, roomID)
+
+	leaveBroadcast := map[string]interface{}{
+		"type":     "user_left",
+		"username": username,
+		"users":    remainingUsers,
+		"admins":   updatedAdmins,
+		"muted":    updatedMuted,
+		"room_id":  roomID,
+		"silent":   true,
+	}
+	h.manager.BroadcastRoom(roomID, leaveBroadcast)
+
+	h.produceEvent(ctx, "user_left", roomID, userID, username)
+}
+
+// flushPendingLeaves cancels all pending grace-period leave timers for a user
+// and broadcasts immediate user_left for each room. Called when a user fully
+// logs out (last lobby closes) to avoid the 10s delay when the room socket
+// happened to close before the lobby socket.
+func (h *WSHandler) flushPendingLeaves(userID int, username string) {
+	h.pendingLeaveMu.Lock()
+	var roomIDs []int
+	for key, cancel := range h.pendingLeaves {
+		var rid, uid int
+		fmt.Sscanf(key, "%d:%d", &rid, &uid)
+		if uid == userID {
+			cancel()
+			delete(h.pendingLeaves, key)
+			roomIDs = append(roomIDs, rid)
+		}
+	}
+	h.pendingLeaveMu.Unlock()
+
+	ctx := context.Background()
+	for _, rid := range roomIDs {
+		h.broadcastLeaveImmediate(ctx, rid, userID, username)
+	}
 }
 
 // handleAdminSuccession handles admin departure and succession logic.
@@ -194,16 +339,31 @@ func (h *WSHandler) handleAdminSuccession(ctx context.Context, roomID, userID in
 	}
 	h.manager.BroadcastRoom(roomID, promoteMsg)
 
-	// Broadcast system message about succession.
+	// Broadcast system message about succession (WS uses "from" for frontend).
+	successionNow := time.Now().UTC().Format(time.RFC3339)
+	successionMsgID := uuid.New().String()
 	systemMsg := map[string]interface{}{
 		"type":      "message",
 		"from":      "system",
 		"text":      fmt.Sprintf("%s left. %s is now admin", username, nextUsername),
 		"room_id":   roomID,
-		"msg_id":    uuid.New().String(),
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"msg_id":    successionMsgID,
+		"timestamp": successionNow,
 	}
 	h.manager.BroadcastRoom(roomID, systemMsg)
+
+	// Persist system message to Kafka (uses "username" to match consumer).
+	successionKafka := map[string]interface{}{
+		"type":      "message",
+		"room_id":   roomID,
+		"sender_id": 0,
+		"username":  "system",
+		"text":      fmt.Sprintf("%s left. %s is now admin", username, nextUsername),
+		"msg_id":    successionMsgID,
+		"timestamp": successionNow,
+	}
+	succPayload, _ := json.Marshal(successionKafka)
+	_ = h.delivery.DeliverChat(ctx, roomID, succPayload)
 }
 
 // sendHistory fetches recent messages from the Message Service and sends them

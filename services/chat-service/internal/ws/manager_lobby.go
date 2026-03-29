@@ -13,7 +13,6 @@ import (
 // ConnectLobby registers a lobby WebSocket connection.
 func (m *Manager) ConnectLobby(conn *websocket.Conn, user UserInfo) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	m.lobbyConns[conn] = user
 	m.connMu[conn] = &sync.Mutex{}
@@ -26,20 +25,43 @@ func (m *Manager) ConnectLobby(conn *websocket.Conn, user UserInfo) {
 	metrics.WSConnectionsActive.WithLabelValues("lobby").Inc()
 	metrics.WSConnectionsTotal.WithLabelValues("lobby").Inc()
 
+	// Check if this is the user's first lobby connection (they just logged in).
+	firstLobby := true
+	for c, info := range m.lobbyConns {
+		if c != conn && info.UserID == user.UserID {
+			firstLobby = false
+			break
+		}
+	}
+
 	m.logger.Info("ws_lobby_connect",
 		zap.Int("user_id", user.UserID),
 		zap.String("username", user.Username),
 	)
+
+	m.mu.Unlock()
+
+	// Broadcast user_online outside the lock (BroadcastLobby takes RLock).
+	if firstLobby {
+		m.BroadcastLobby(map[string]interface{}{
+			"type":     "user_online",
+			"username": user.Username,
+		})
+	}
 }
 
-// DisconnectLobby removes a lobby connection.
-func (m *Manager) DisconnectLobby(conn *websocket.Conn) {
+// DisconnectLobby removes a lobby connection. If the user has no remaining
+// lobby connections (i.e. they fully logged out), all their room connections
+// are also closed to prevent zombie presence. The returned RoomCleanup, if
+// non-nil, contains room IDs that need user_left broadcasts — the caller
+// must handle those outside the manager.
+func (m *Manager) DisconnectLobby(conn *websocket.Conn) *RoomCleanup {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	user, ok := m.lobbyConns[conn]
 	if !ok {
-		return
+		m.mu.Unlock()
+		return nil
 	}
 
 	delete(m.lobbyConns, conn)
@@ -52,7 +74,48 @@ func (m *Manager) DisconnectLobby(conn *websocket.Conn) {
 
 	metrics.WSConnectionsActive.WithLabelValues("lobby").Dec()
 
-	m.logger.Info("ws_lobby_disconnect", zap.Int("user_id", user.UserID))
+	// Check if the user has any remaining lobby connections.
+	// If not, they fully logged out — close zombie room connections.
+	hasLobby := false
+	for _, info := range m.lobbyConns {
+		if info.UserID == user.UserID {
+			hasLobby = true
+			break
+		}
+	}
+
+	var cleanup *RoomCleanup
+	if !hasLobby {
+		cleanup = m.evictUserRoomConnsLocked(user.UserID, user.Username)
+	}
+
+	m.mu.Unlock()
+
+	// Close evicted connections outside the lock.
+	if cleanup != nil {
+		for _, c := range cleanup.Conns {
+			_ = c.Close()
+		}
+	}
+
+	m.logger.Info("ws_lobby_disconnect",
+		zap.Int("user_id", user.UserID),
+		zap.Bool("full_logout", !hasLobby),
+	)
+
+	if !hasLobby {
+		// Broadcast user_offline to all remaining lobby connections.
+		m.BroadcastLobby(map[string]interface{}{
+			"type":     "user_offline",
+			"username": user.Username,
+		})
+		// Fire full-logout callbacks (e.g. cancel pending grace timers).
+		for _, fn := range m.onFullLogout {
+			fn(user.UserID, user.Username)
+		}
+	}
+
+	return cleanup
 }
 
 // BroadcastLobby sends a JSON message to ALL lobby connections.

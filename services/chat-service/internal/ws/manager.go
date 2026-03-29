@@ -51,6 +51,11 @@ type Manager struct {
 	// order is promoted.
 	roomJoinOrder map[int][]int
 
+	// onFullLogout callbacks fire when a user's last lobby connection closes
+	// (full logout). Called OUTSIDE the manager lock so callbacks can safely
+	// call Manager methods. Used by WSHandler to cancel pending grace timers.
+	onFullLogout []func(userID int, username string)
+
 	logger *zap.Logger
 }
 
@@ -64,6 +69,74 @@ func NewManager(logger *zap.Logger) *Manager {
 		connMu:        make(map[*websocket.Conn]*sync.Mutex),
 		roomJoinOrder: make(map[int][]int),
 		logger:        logger,
+	}
+}
+
+// RoomCleanup holds the result of evicting a user's room connections.
+// The caller must broadcast user_left for each affected room.
+type RoomCleanup struct {
+	UserID   int
+	Username string
+	RoomIDs  []int              // rooms the user was removed from
+	Conns    []*websocket.Conn  // connections that were closed
+}
+
+// evictUserRoomConnsLocked removes ALL room connections for a user from
+// internal tracking maps. Must be called while m.mu is write-locked.
+// Connections are returned for closing outside the lock.
+func (m *Manager) evictUserRoomConnsLocked(userID int, username string) *RoomCleanup {
+	var toClose []*websocket.Conn
+	affectedRooms := make(map[int]bool)
+
+	for roomID, conns := range m.rooms {
+		for c := range conns {
+			if u, ok := m.connUser[c]; ok && u.UserID == userID {
+				toClose = append(toClose, c)
+				affectedRooms[roomID] = true
+				delete(conns, c)
+				delete(m.connUser, c)
+				delete(m.connMu, c)
+			}
+		}
+		if len(conns) == 0 {
+			delete(m.rooms, roomID)
+			delete(m.roomJoinOrder, roomID)
+		} else {
+			order := m.roomJoinOrder[roomID]
+			for i, uid := range order {
+				if uid == userID {
+					m.roomJoinOrder[roomID] = append(order[:i], order[i+1:]...)
+					break
+				}
+			}
+		}
+	}
+
+	// Clean up userConns for the evicted room connections.
+	for _, c := range toClose {
+		delete(m.userConns[userID], c)
+	}
+	if len(m.userConns[userID]) == 0 {
+		delete(m.userConns, userID)
+	}
+
+	if len(toClose) == 0 {
+		return nil
+	}
+
+	metrics.WSConnectionsActive.WithLabelValues("room").Sub(float64(len(toClose)))
+	metrics.WSActiveRooms.Set(float64(len(m.rooms)))
+
+	roomIDs := make([]int, 0, len(affectedRooms))
+	for id := range affectedRooms {
+		roomIDs = append(roomIDs, id)
+	}
+
+	return &RoomCleanup{
+		UserID:   userID,
+		Username: username,
+		RoomIDs:  roomIDs,
+		Conns:    toClose,
 	}
 }
 
@@ -115,6 +188,26 @@ func (m *Manager) TotalConnections() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return len(m.connUser) + len(m.lobbyConns)
+}
+
+// OnFullLogout registers a callback that fires when a user fully logs out
+// (last lobby connection closes). Called outside the manager lock.
+func (m *Manager) OnFullLogout(fn func(userID int, username string)) {
+	m.onFullLogout = append(m.onFullLogout, fn)
+}
+
+// HasLobbyConnection returns true if the user has at least one active lobby
+// connection. A user without a lobby connection is considered logged out —
+// they should not be allowed to hold room connections.
+func (m *Manager) HasLobbyConnection(userID int) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, info := range m.lobbyConns {
+		if info.UserID == userID {
+			return true
+		}
+	}
+	return false
 }
 
 // CloseAll gracefully closes every tracked connection with WebSocket close code 1001

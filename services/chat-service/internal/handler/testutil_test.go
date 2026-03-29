@@ -16,6 +16,7 @@ import (
 
 	"github.com/twomee/chatbox/chat-service/internal/client"
 	"github.com/twomee/chatbox/chat-service/internal/model"
+	"github.com/twomee/chatbox/chat-service/internal/ws"
 )
 
 const testSecret = "test-secret-key-for-ci"
@@ -244,6 +245,16 @@ func makeToken(userID int, username string) string {
 func newLogger() *zap.Logger {
 	l, _ := zap.NewDevelopment()
 	return l
+}
+
+// registerTestLobby registers a dummy lobby connection for a user in the
+// manager. Required because HandleRoomWS rejects room connections from users
+// without a lobby connection. Returns a cleanup function that should be deferred.
+func registerTestLobby(t *testing.T, manager *ws.Manager, userID int, username string) func() {
+	t.Helper()
+	conn := createDummyConn(t)
+	manager.ConnectLobby(conn, ws.UserInfo{UserID: userID, Username: username})
+	return func() { _ = conn.Close() }
 }
 
 // createDummyConn creates a WebSocket connection that can be registered with
