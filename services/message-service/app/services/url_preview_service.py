@@ -1,0 +1,244 @@
+# app/services/url_preview_service.py — URL preview / link unfurling service
+#
+# Extracts URLs from message text, fetches HTML, and parses Open Graph metadata
+# for rendering link preview cards in the frontend.
+#
+# Security considerations:
+# - Only http/https URLs are accepted
+# - SSRF protection: private/internal IPs are blocked before fetching
+# - Response size capped at 500KB to prevent memory exhaustion
+# - 5-second timeout to prevent slow-loris style hangs
+# - All extracted text is stripped of HTML to prevent XSS
+import ipaddress
+import json
+import re
+import socket
+from html import escape as html_escape
+from html.parser import HTMLParser
+from urllib.parse import urlparse
+
+import httpx
+
+from app.core.logging import get_logger
+
+logger = get_logger("services.url_preview")
+
+URL_REGEX = re.compile(r"https?://[^\s<>\"{}|\\^`\[\]]+")
+MAX_FETCH_SIZE = 500_000  # 500KB max response
+FETCH_TIMEOUT = 5.0  # seconds
+
+# ── SSRF Protection ──────────────────────────────────────────────────────
+
+# Private/reserved IP ranges that should never be fetched (SSRF prevention).
+_BLOCKED_NETWORKS = [
+    ipaddress.ip_network("0.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("100.64.0.0/10"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.0.0.0/24"),
+    ipaddress.ip_network("192.0.2.0/24"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("198.18.0.0/15"),
+    ipaddress.ip_network("198.51.100.0/24"),
+    ipaddress.ip_network("203.0.113.0/24"),
+    ipaddress.ip_network("224.0.0.0/4"),
+    ipaddress.ip_network("240.0.0.0/4"),
+    ipaddress.ip_network("255.255.255.255/32"),
+    # IPv6
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+    ipaddress.ip_network("ff00::/8"),
+]
+
+# Hostnames that must never be resolved (cloud metadata endpoints).
+_BLOCKED_HOSTNAMES = frozenset(
+    {
+        "metadata.google.internal",
+        "metadata.google.com",
+        "169.254.169.254",
+    }
+)
+
+
+def _is_url_safe(url: str) -> bool:
+    """Return True if the URL targets a public, non-internal address.
+
+    Resolves the hostname to an IP and checks it against the private IP blocklist.
+    This prevents Server-Side Request Forgery (SSRF) attacks where an attacker
+    could trick the server into fetching internal resources.
+    """
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        # Block known cloud metadata hostnames outright
+        if hostname.lower() in _BLOCKED_HOSTNAMES:
+            return False
+
+        # Resolve hostname to IPs and check each one
+        addr_infos = socket.getaddrinfo(hostname, parsed.port or 80, proto=socket.IPPROTO_TCP)
+        for family, _type, _proto, _canonname, sockaddr in addr_infos:
+            ip = ipaddress.ip_address(sockaddr[0])
+            for network in _BLOCKED_NETWORKS:
+                if ip in network:
+                    logger.warning(
+                        "ssrf_blocked",
+                        url=url,
+                        resolved_ip=str(ip),
+                        blocked_network=str(network),
+                    )
+                    return False
+        return True
+    except (socket.gaierror, ValueError, OSError):
+        # DNS resolution failed or invalid URL — treat as unsafe
+        return False
+
+
+# ── HTML Metadata Parser ─────────────────────────────────────────────────
+
+
+class MetadataParser(HTMLParser):
+    """Extract Open Graph and basic meta tags from the HTML <head>.
+
+    Stops parsing once <body> is encountered (we don't need body content).
+    Prioritizes og: tags over generic meta tags for title and description.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.title = ""
+        self.description = ""
+        self.image = ""
+        self.in_title = False
+        self._done = False
+
+    def handle_starttag(self, tag, attrs):
+        if self._done:
+            return
+        attrs_dict = dict(attrs)
+        if tag == "title":
+            self.in_title = True
+        elif tag == "meta":
+            prop = attrs_dict.get("property", "") or attrs_dict.get("name", "")
+            content = attrs_dict.get("content", "")
+            if prop == "og:title":
+                self.title = content
+            elif prop in ("og:description", "description"):
+                # og:description takes priority; only set if not already set by og:
+                if prop == "og:description" or not self.description:
+                    self.description = content
+            elif prop == "og:image":
+                self.image = content
+        elif tag == "body":
+            self._done = True
+
+    def handle_data(self, data):
+        if self.in_title and not self.title:
+            self.title = data.strip()
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self.in_title = False
+
+
+# ── Public API ───────────────────────────────────────────────────────────
+
+
+def extract_urls(text: str) -> list[str]:
+    """Extract unique URLs from message text, capped at 5."""
+    return list(dict.fromkeys(URL_REGEX.findall(text)))[:5]
+
+
+def _sanitize(text: str, max_len: int) -> str | None:
+    """Sanitize extracted text: strip whitespace, escape HTML, truncate."""
+    cleaned = text.strip()
+    if not cleaned:
+        return None
+    # Escape any HTML entities to prevent XSS
+    return html_escape(cleaned)[:max_len]
+
+
+async def fetch_preview(url: str) -> dict | None:
+    """Fetch a URL and extract Open Graph metadata for a link preview card.
+
+    Returns a dict with url, title, description, image — or None on failure.
+    """
+    # SSRF check before making any HTTP request
+    if not _is_url_safe(url):
+        return None
+
+    try:
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=FETCH_TIMEOUT,
+            max_redirects=5,
+        ) as client:
+            response = await client.get(
+                url,
+                headers={
+                    "User-Agent": "cHATBOX-LinkPreview/1.0",
+                    "Accept": "text/html",
+                },
+            )
+            if response.status_code != 200:
+                return None
+            content_type = response.headers.get("content-type", "")
+            if "text/html" not in content_type:
+                return None
+            html = response.text[:MAX_FETCH_SIZE]
+
+        parser = MetadataParser()
+        parser.feed(html)
+
+        if not parser.title and not parser.description:
+            return None
+
+        return {
+            "url": url,
+            "title": _sanitize(parser.title, 200),
+            "description": _sanitize(parser.description, 500),
+            "image": _sanitize(parser.image, 1000),
+        }
+    except Exception:
+        logger.debug("fetch_preview_failed", url=url, exc_info=True)
+        return None
+
+
+# ── Redis Cache Layer ────────────────────────────────────────────────────
+
+CACHE_TTL = 3600  # 1 hour
+NEGATIVE_CACHE_TTL = 300  # 5 minutes for failed lookups
+
+
+async def get_cached_preview(redis_client, url: str) -> dict | None:
+    """Return cached preview data for a URL, or None if not cached."""
+    if redis_client is None:
+        return None
+    try:
+        key = f"preview:{url}"
+        cached = await redis_client.get(key)
+        if cached:
+            return json.loads(cached)
+    except Exception:
+        logger.debug("redis_cache_get_failed", url=url, exc_info=True)
+    return None
+
+
+async def cache_preview(redis_client, url: str, data: dict | None):
+    """Cache preview data (or a negative result) in Redis."""
+    if redis_client is None:
+        return
+    try:
+        key = f"preview:{url}"
+        if data is not None:
+            await redis_client.setex(key, CACHE_TTL, json.dumps(data))
+        else:
+            # Cache the miss too, so we don't keep retrying dead URLs
+            await redis_client.setex(key, NEGATIVE_CACHE_TTL, json.dumps({"_miss": True}))
+    except Exception:
+        logger.debug("redis_cache_set_failed", url=url, exc_info=True)
