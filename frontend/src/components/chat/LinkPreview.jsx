@@ -113,17 +113,17 @@ export default function LinkPreview({ text }) {
       aria-label={`Link preview: ${preview?.title || url}`}
     >
       <div className="link-preview-info">
-        {preview.title && (
-          <div className="link-preview-title">{preview.title}</div>
+        {preview?.title && (
+          <div className="link-preview-title">{preview?.title}</div>
         )}
-        {preview.description && (
-          <div className="link-preview-desc">{preview.description}</div>
+        {preview?.description && (
+          <div className="link-preview-desc">{preview?.description}</div>
         )}
         <div className="link-preview-domain">{getDomain(url)}</div>
       </div>
-      {preview.image && isSafeImageUrl(preview.image) && (
+      {preview?.image && isSafeImageUrl(preview?.image) && (
         <img
-          src={preview.image}
+          src={preview?.image}
           alt=""
           className="link-preview-image"
           loading="lazy"
