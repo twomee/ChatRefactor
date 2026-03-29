@@ -17,6 +17,7 @@ import PMList from '../components/pm/PMList';
 import PMView from '../components/pm/PMView';
 import ConnectionStatus from '../components/common/ConnectionStatus';
 import SettingsModal from '../components/settings/SettingsModal';
+import SearchModal from '../components/chat/SearchModal';
 
 import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
 import { WidthProvider } from 'react-grid-layout/legacy';
@@ -59,6 +60,8 @@ export default function ChatPage() {
   const { joinRoom, exitRoom, disconnectAll, sendMessage, sendTyping, markAsRead, connectionStatus } = useChatConnection();
   const [editingMessage, setEditingMessage] = useState(null);
   const markAsReadTimerRef = useRef(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Add page-active class on mount so the one-shot aurora animation plays,
   // and remove it on unmount so the login page returns to the static gradient.
@@ -460,6 +463,14 @@ export default function ChatPage() {
 
       {/* Settings slide-over panel */}
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      {/* Search modal (Ctrl+K) */}
+      <SearchModal
+        isOpen={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        rooms={state.rooms ?? []}
+        onNavigate={handleSearchNavigate}
+      />
     </div>
   );
 }

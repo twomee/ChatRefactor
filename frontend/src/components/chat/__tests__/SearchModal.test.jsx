@@ -92,7 +92,7 @@ describe('SearchModal', () => {
     vi.advanceTimersByTime(350);
 
     await waitFor(() => {
-      expect(searchApi.searchMessages).toHaveBeenCalledWith('hello');
+      expect(searchApi.searchMessages).toHaveBeenCalledWith('hello', null, 20, expect.any(Object));
     });
   });
 

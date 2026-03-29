@@ -1,0 +1,14 @@
+version: 2
+
+# Exclude test fixtures from secret scanning.
+# Mock/fake credentials used in unit tests are not real secrets.
+paths:
+  ignore:
+    - "**/__tests__/**"
+    - "**/*.test.jsx"
+    - "**/*.test.js"
+    - "**/*.test.ts"
+    - "**/*.test.tsx"
+    - "**/*.spec.js"
+    - "**/*.spec.ts"
+    - "**/*.spec.tsx"

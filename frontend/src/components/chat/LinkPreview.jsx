@@ -58,6 +58,7 @@ export default function LinkPreview({ text }) {
     // Check client-side cache first
     if (previewCache.has(url)) {
       const cached = previewCache.get(url);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (cached) setPreview(cached);
       return;
     }
