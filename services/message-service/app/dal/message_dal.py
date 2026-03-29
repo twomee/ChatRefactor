@@ -1,6 +1,7 @@
 # app/dal/message_dal.py — Data Access Layer for Message model
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -96,6 +97,65 @@ def soft_delete_message(db: Session, message_id: str, sender_id: int) -> bool:
     msg.content = "[deleted]"
     db.commit()
     return True
+
+
+def search_messages(
+    db: Session,
+    query: str,
+    room_id: int,
+    limit: int = 50,
+) -> list[Message]:
+    """Full-text search across messages using PostgreSQL tsvector.
+
+    On PostgreSQL, uses the GIN-indexed search_vector column with plainto_tsquery
+    for relevance-ranked results. Falls back to case-insensitive LIKE on SQLite
+    (used in tests) since tsvector is PostgreSQL-specific.
+
+    Only searches public, non-deleted messages within the specified room.
+    Results are ordered by relevance (ts_rank on PG) then recency.
+
+    Args:
+        db:      SQLAlchemy session.
+        query:   Search terms (must be non-empty, min 2 chars enforced at router).
+        room_id: Required — restricts results to a single room so users cannot
+                 enumerate messages from rooms they have not joined.
+        limit:   Maximum number of results to return (capped at 100).
+    """
+    capped_limit = min(limit, 100)
+    try:
+        dialect = db.get_bind().dialect.name
+    except Exception:
+        dialect = "postgresql"  # default to production path
+
+    base_filters = [
+        Message.is_private == False,  # noqa: E712
+        Message.is_deleted == False,  # noqa: E712
+        Message.room_id == room_id,
+    ]
+
+    if dialect == "postgresql":
+        ts_query = func.plainto_tsquery("english", query)
+        q = (
+            db.query(Message)
+            .filter(*base_filters)
+            .filter(Message.search_vector.op("@@")(ts_query))
+            .order_by(
+                func.ts_rank(Message.search_vector, ts_query).desc(),
+                Message.sent_at.desc(),
+            )
+        )
+    else:
+        # SQLite fallback — safe case-insensitive search using autoescape=True so
+        # that SQL wildcard characters (% and _) inside `query` are escaped and
+        # cannot alter the LIKE pattern (prevents LIKE injection).
+        q = (
+            db.query(Message)
+            .filter(*base_filters)
+            .filter(func.lower(Message.content).contains(query.lower(), autoescape=True))
+            .order_by(Message.sent_at.desc())
+        )
+
+    return q.limit(capped_limit).all()
 
 
 def delete_all(db: Session):

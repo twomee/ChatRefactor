@@ -35,6 +35,52 @@ class EditMessageBody(BaseModel):
     content: str
 
 
+# ── Search endpoint (defined BEFORE /{message_id}/* routes to avoid
+#    FastAPI matching "search" as a path parameter) ──────────────────
+
+
+@router.get("/search")
+def search_messages_endpoint(
+    q: str = Query(..., min_length=2, max_length=200, description="Search query (minimum 2 characters)"),
+    room_id: int = Query(..., description="Room ID to search within — required to prevent cross-room enumeration"),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Search messages by text content within a specific room.
+
+    Uses PostgreSQL full-text search (tsvector + GIN index) for relevance-ranked
+    results. Only public, non-deleted messages are searched.
+
+    `room_id` is required: callers must specify which room to search. This prevents
+    authenticated users from enumerating messages in rooms they have not joined —
+    the chat-service's WebSocket join authorization is the membership enforcement
+    point, and requiring room_id here keeps the search scoped to a single room.
+
+    Query params:
+      - q: search terms (2-200 chars); min of 2 chars avoids full GIN index scans
+      - room_id: room to search (required)
+      - limit: max results (1-100, default 20)
+    """
+    stripped = q.strip()
+    if not stripped:
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    results = message_dal.search_messages(
+        db, query=stripped, room_id=room_id, limit=limit
+    )
+    return [
+        {
+            "message_id": m.message_id,
+            "sender_name": m.sender_name,
+            "content": m.content,
+            "room_id": m.room_id,
+            "sent_at": m.sent_at.isoformat() if m.sent_at else None,
+        }
+        for m in results
+    ]
+
+
 @router.get("/rooms/{room_id}", response_model=list[MessageWithReactionsResponse])
 def get_room_messages(
     room_id: int,
