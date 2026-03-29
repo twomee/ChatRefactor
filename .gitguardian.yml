@@ -1,14 +1,9 @@
 version: 2
 
-# Exclude test fixtures from secret scanning.
-# Mock/fake credentials used in unit tests are not real secrets.
-paths:
-  ignore:
-    - "**/__tests__/**"
-    - "**/*.test.jsx"
-    - "**/*.test.js"
-    - "**/*.test.ts"
-    - "**/*.test.tsx"
-    - "**/*.spec.js"
-    - "**/*.spec.ts"
-    - "**/*.spec.tsx"
+# Suppress false positives from test fixtures.
+# These are mock TOTP base32 strings used in unit tests — not real credentials.
+matches-ignore:
+  - name: "Mock TOTP base32 secret in 2FA test fixture"
+    match: "ABCDEF1234567890ABCDEF1234567890"
+  - name: "Mock TOTP base32 secret in 2FA test fixture (second variant)"
+    match: "TESTSECRET1234567890123456789012"

@@ -209,8 +209,8 @@ async def fetch_preview(url: str) -> dict | None:
             follow_redirects=False,
             timeout=FETCH_TIMEOUT,
         ) as client:
-            response = await client.get(
-                url,
+            response = await client.get(  # lgtm[py/full-ssrf]
+                url,  # URL validated by _is_url_safe() — scheme, DNS, private-IP checks
                 headers={
                     "User-Agent": "cHATBOX-LinkPreview/1.0",
                     "Accept": "text/html",

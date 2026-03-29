@@ -44,8 +44,8 @@ class TestExtractUrls:
         text = "Visit https://foo.com and http://bar.org/page"
         urls = extract_urls(text)
         assert len(urls) == 2
-        assert "https://foo.com" in urls
-        assert "http://bar.org/page" in urls
+        assert urls[0] == "https://foo.com"
+        assert urls[1] == "http://bar.org/page"
 
     def test_deduplicates_urls(self):
         text = "https://example.com is great https://example.com really"
