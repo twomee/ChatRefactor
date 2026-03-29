@@ -51,15 +51,14 @@ def search_messages_endpoint(
             description="Search query (minimum 2 characters)",
         ),
     ],
-    room_id: Annotated[
-        int,
-        Query(
-            ...,
-            description="Room ID to search within — required to prevent cross-room enumeration",
-        ),
-    ],
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[dict, Depends(get_current_user)],
+    room_id: Annotated[
+        int | None,
+        Query(
+            description="Room ID to search within (optional — omit to search all rooms)",
+        ),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
     """Search messages by text content within a specific room.

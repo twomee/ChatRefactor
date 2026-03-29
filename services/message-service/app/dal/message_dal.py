@@ -108,7 +108,7 @@ def soft_delete_message(db: Session, message_id: str, sender_id: int) -> bool:
 def search_messages(
     db: Session,
     query: str,
-    room_id: int,
+    room_id: int | None = None,
     limit: int = 50,
 ) -> list[Message]:
     """Full-text search across messages using PostgreSQL tsvector.
@@ -136,8 +136,9 @@ def search_messages(
     base_filters = [
         Message.is_private == False,  # noqa: E712
         Message.is_deleted == False,  # noqa: E712
-        Message.room_id == room_id,
     ]
+    if room_id is not None:
+        base_filters.append(Message.room_id == room_id)
 
     if dialect == "postgresql":
         ts_query = func.plainto_tsquery("english", query)
