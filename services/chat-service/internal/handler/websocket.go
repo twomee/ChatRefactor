@@ -219,7 +219,6 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 		h.logger.Info("room_ws_rejected_no_lobby",
 			zap.Int("room_id", roomID),
 			zap.Int("user_id", userID),
-			zap.String("username", username),
 		)
 		c.JSON(http.StatusForbidden, gin.H{"detail": "no lobby connection"})
 		return
