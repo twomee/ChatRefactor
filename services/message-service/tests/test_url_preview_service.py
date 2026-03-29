@@ -479,6 +479,52 @@ class TestFetchPreview:
         assert result is not None
         assert result["image"] is None
 
+    @pytest.mark.asyncio
+    @patch("app.services.url_preview_service._is_url_safe", new_callable=AsyncMock, return_value=True)
+    @patch("app.services.url_preview_service.httpx.AsyncClient")
+    async def test_returns_none_on_timeout(self, mock_client_cls, mock_safe):
+        """A TimeoutException from httpx must be caught and return None (lines 243-245)."""
+        import httpx
+
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = httpx.TimeoutException("timed out")
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        result = await fetch_preview("https://slow.example.com")
+        assert result is None
+
+    @pytest.mark.asyncio
+    @patch("app.services.url_preview_service._is_url_safe", new_callable=AsyncMock, return_value=True)
+    @patch("app.services.url_preview_service.httpx.AsyncClient")
+    async def test_returns_none_on_request_error(self, mock_client_cls, mock_safe):
+        """A RequestError from httpx must be caught and return None (lines 246-248)."""
+        import httpx
+
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = httpx.ConnectError("connection refused")
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        result = await fetch_preview("https://unreachable.example.com")
+        assert result is None
+
+    @pytest.mark.asyncio
+    @patch("app.services.url_preview_service._is_url_safe", new_callable=AsyncMock, return_value=True)
+    @patch("app.services.url_preview_service.httpx.AsyncClient")
+    async def test_returns_none_on_unexpected_exception(self, mock_client_cls, mock_safe):
+        """Any unexpected exception must be caught and return None (lines 249-251)."""
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = RuntimeError("unexpected failure")
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        result = await fetch_preview("https://buggy.example.com")
+        assert result is None
+
 
 # ══════════════════════════════════════════════════════════════════════
 # Redis caching

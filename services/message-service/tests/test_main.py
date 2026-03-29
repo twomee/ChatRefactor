@@ -218,6 +218,84 @@ class TestReadyEndpointFailures:
 
 
 # ══════════════════════════════════════════════════════════════════════
+# Ready endpoint — Redis connectivity (lines 170-175 of main.py)
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestReadyEndpointRedis:
+    """Tests for the /ready endpoint's Redis connectivity block."""
+
+    def test_ready_reports_redis_ok_when_ping_succeeds(self):
+        """Should report redis as 'ok' when the Redis client pings successfully."""
+        mock_redis_client = AsyncMock()
+        mock_redis_client.ping = AsyncMock(return_value=True)
+
+        with (
+            patch("app.main.init_producer", new_callable=AsyncMock),
+            patch("app.main.close_producer", new_callable=AsyncMock),
+            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.start", new_callable=AsyncMock),
+            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.stop", new_callable=AsyncMock),
+            patch("app.main.get_redis", return_value=mock_redis_client),
+        ):
+            from app.core.database import get_db
+            from app.main import app
+
+            from tests.conftest import TestSessionLocal
+
+            def _override_get_db():
+                db = TestSessionLocal()
+                try:
+                    yield db
+                finally:
+                    db.close()
+
+            app.dependency_overrides[get_db] = _override_get_db
+
+            with TestClient(app, raise_server_exceptions=False) as client:
+                response = client.get("/ready")
+
+            app.dependency_overrides.clear()
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["redis"] == "ok"
+
+    def test_ready_reports_redis_degraded_when_ping_fails(self):
+        """Should report redis as 'degraded' when the Redis ping raises an exception."""
+        mock_redis_client = AsyncMock()
+        mock_redis_client.ping = AsyncMock(side_effect=Exception("redis connection lost"))
+
+        with (
+            patch("app.main.init_producer", new_callable=AsyncMock),
+            patch("app.main.close_producer", new_callable=AsyncMock),
+            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.start", new_callable=AsyncMock),
+            patch("app.consumers.persistence_consumer.MessagePersistenceConsumer.stop", new_callable=AsyncMock),
+            patch("app.main.get_redis", return_value=mock_redis_client),
+        ):
+            from app.core.database import get_db
+            from app.main import app
+
+            from tests.conftest import TestSessionLocal
+
+            def _override_get_db():
+                db = TestSessionLocal()
+                try:
+                    yield db
+                finally:
+                    db.close()
+
+            app.dependency_overrides[get_db] = _override_get_db
+
+            with TestClient(app, raise_server_exceptions=False) as client:
+                response = client.get("/ready")
+
+            app.dependency_overrides.clear()
+
+            data = response.json()
+            assert data["redis"] == "degraded"
+
+
+# ══════════════════════════════════════════════════════════════════════
 # Health endpoints (/health and /ready)
 # ══════════════════════════════════════════════════════════════════════
 
