@@ -10,6 +10,8 @@ const initialState = {
   onlineUsers: {},
   admins: {},
   mutedUsers: {},
+  typingUsers: {},
+  readPositions: {},
   knownOfflineUsers: new Set(),
 };
 
@@ -265,6 +267,56 @@ describe('chatReducer', () => {
       });
       expect(next.admins.r1).toEqual(['alice']);
       expect(next.mutedUsers.r1).toEqual([]);
+    });
+  });
+
+  describe('SET_READ_POSITION', () => {
+    it('sets read position for a room', () => {
+      const next = chatReducer(initialState, {
+        type: 'SET_READ_POSITION',
+        roomId: 'r1',
+        messageId: 'msg-123',
+      });
+      expect(next.readPositions.r1).toBe('msg-123');
+    });
+
+    it('updates existing read position for a room', () => {
+      const state = { ...initialState, readPositions: { r1: 'msg-100' } };
+      const next = chatReducer(state, {
+        type: 'SET_READ_POSITION',
+        roomId: 'r1',
+        messageId: 'msg-200',
+      });
+      expect(next.readPositions.r1).toBe('msg-200');
+    });
+
+    it('preserves other rooms read positions', () => {
+      const state = { ...initialState, readPositions: { r1: 'msg-100', r2: 'msg-50' } };
+      const next = chatReducer(state, {
+        type: 'SET_READ_POSITION',
+        roomId: 'r1',
+        messageId: 'msg-200',
+      });
+      expect(next.readPositions.r1).toBe('msg-200');
+      expect(next.readPositions.r2).toBe('msg-50');
+    });
+  });
+
+  describe('EXIT_ROOM cleans up readPositions', () => {
+    it('removes readPositions entry when exiting a room', () => {
+      const state = {
+        ...initialState,
+        joinedRooms: new Set(['r1', 'r2']),
+        messages: { r1: [], r2: [] },
+        onlineUsers: { r1: [], r2: [] },
+        admins: { r1: [], r2: [] },
+        mutedUsers: { r1: [], r2: [] },
+        unreadCounts: { r1: 0, r2: 0 },
+        readPositions: { r1: 'msg-100', r2: 'msg-50' },
+      };
+      const next = chatReducer(state, { type: 'EXIT_ROOM', roomId: 'r1' });
+      expect(next.readPositions.r1).toBeUndefined();
+      expect(next.readPositions.r2).toBe('msg-50');
     });
   });
 

@@ -102,14 +102,15 @@ func checkOrigin(r *http.Request) bool {
 
 // WSHandler handles WebSocket upgrades for room chat.
 type WSHandler struct {
-	manager       *ws.Manager
-	store         store.RoomRepository
-	delivery      delivery.Strategy
-	authClient    *client.AuthClient
-	secretKey     string
-	logger        *zap.Logger
-	limiter       *rateLimiter
-	messageSvcURL string
+	manager           *ws.Manager
+	store             store.RoomRepository
+	readPositionStore store.ReadPositionRepository
+	delivery          delivery.Strategy
+	authClient        *client.AuthClient
+	secretKey         string
+	logger            *zap.Logger
+	limiter           *rateLimiter
+	messageSvcURL     string
 
 	// kickedUsers tracks users that were kicked (by "room:user" key).
 	// When a kicked user's readLoop exits, handleDisconnect checks this
@@ -128,6 +129,7 @@ type WSHandler struct {
 func NewWSHandler(
 	manager *ws.Manager,
 	store store.RoomRepository,
+	readPositionStore store.ReadPositionRepository,
 	delivery delivery.Strategy,
 	authClient *client.AuthClient,
 	secretKey string,
@@ -135,16 +137,17 @@ func NewWSHandler(
 	logger *zap.Logger,
 ) *WSHandler {
 	return &WSHandler{
-		manager:       manager,
-		store:         store,
-		delivery:      delivery,
-		authClient:    authClient,
-		secretKey:     secretKey,
-		logger:        logger,
-		limiter:       newRateLimiter(),
-		messageSvcURL: messageServiceURL,
-		kickedUsers:   make(map[string]bool),
-		pendingLeaves: make(map[string]context.CancelFunc),
+		manager:           manager,
+		store:             store,
+		readPositionStore: readPositionStore,
+		delivery:          delivery,
+		authClient:        authClient,
+		secretKey:         secretKey,
+		logger:            logger,
+		limiter:           newRateLimiter(),
+		messageSvcURL:     messageServiceURL,
+		kickedUsers:       make(map[string]bool),
+		pendingLeaves:     make(map[string]context.CancelFunc),
 	}
 }
 
@@ -268,6 +271,7 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 	go func() {
 		h.handleJoin(ctx, conn, roomID, userID, username, token)
 		h.sendHistory(conn, roomID, token)
+		h.sendReadPosition(ctx, conn, roomID, userID)
 	}()
 
 	// Blocking read loop -- runs until the client disconnects.

@@ -253,6 +253,14 @@ export function useMultiRoomChat() {
         }, 3000);
         break;
 
+      case 'read_position':
+        dispatch({
+          type: 'SET_READ_POSITION',
+          roomId: msg.room_id,
+          messageId: msg.last_read_message_id,
+        });
+        break;
+
       case 'reaction_added':
         dispatch({
           type: 'ADD_REACTION',
@@ -425,6 +433,17 @@ export function useMultiRoomChat() {
     }
   }, []);
 
+  // ── markAsRead — persist the user's last-read position for a room ──
+  const markAsRead = useCallback((roomId, messageId) => {
+    if (!roomId || !messageId) return;
+    const ws = socketsRef.current.get(roomId);
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'mark_read', msg_id: messageId }));
+    }
+    // Optimistically update the local read position so the divider moves immediately.
+    dispatch({ type: 'SET_READ_POSITION', roomId, messageId });
+  }, [dispatch]);
+
   // ── Initial room list fetch (once on mount) ─────────────────────────
   useEffect(() => {
     listRooms().then(res => {
@@ -497,5 +516,5 @@ export function useMultiRoomChat() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { joinRoom, exitRoom, exitAllRooms, disconnectAll, sendMessage, sendTyping, connectionStatus };
+  return { joinRoom, exitRoom, exitAllRooms, disconnectAll, sendMessage, sendTyping, markAsRead, connectionStatus };
 }

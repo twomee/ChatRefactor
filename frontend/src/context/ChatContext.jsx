@@ -13,6 +13,7 @@ const initialState = {
   admins: {},          // { roomId: [username] }
   mutedUsers: {},      // { roomId: [username] }
   typingUsers: {},     // { roomId: { username: timestamp } } — ephemeral typing indicators
+  readPositions: {},   // { roomId: messageId } — per-user last-read message ID from server
   knownOfflineUsers: new Set(), // Set<username> — users we've positively seen go offline
 };
 
@@ -123,10 +124,11 @@ export function chatReducer(state, action) {
       const { [action.roomId]: _mu, ...mutedUsers } = state.mutedUsers;
       const { [action.roomId]: _un, ...unreadCounts } = state.unreadCounts;
       const { [action.roomId]: _ty, ...typingUsers } = state.typingUsers || {};
+      const { [action.roomId]: _rp, ...readPositions } = state.readPositions;
       // If we've left all rooms we can no longer track anyone's presence — clear
       // stale offline entries so PMs don't show false-positive "Offline" banners.
       const knownOfflineUsers = next.size === 0 ? new Set() : state.knownOfflineUsers;
-      return { ...state, joinedRooms: next, messages, onlineUsers, admins, mutedUsers, unreadCounts, typingUsers, knownOfflineUsers };
+      return { ...state, joinedRooms: next, messages, onlineUsers, admins, mutedUsers, unreadCounts, typingUsers, readPositions, knownOfflineUsers };
     }
 
     case 'INCREMENT_UNREAD': {
@@ -143,6 +145,13 @@ export function chatReducer(state, action) {
         ...state,
         unreadCounts: { ...state.unreadCounts, [action.roomId]: 0 },
       };
+
+    case 'SET_READ_POSITION': {
+      return {
+        ...state,
+        readPositions: { ...state.readPositions, [action.roomId]: action.messageId },
+      };
+    }
 
     case 'SET_TYPING': {
       const { roomId, username, isTyping } = action;
