@@ -233,6 +233,9 @@ export default function ChatPage() {
   const debouncedMarkAsRead = useCallback(() => {
     if (markAsReadTimerRef.current) clearTimeout(markAsReadTimerRef.current);
     markAsReadTimerRef.current = setTimeout(() => {
+      // Don't mark as read if the tab isn't visible — prevents updating read
+      // position on a background tab the user hasn't actually looked at.
+      if (document.hidden) return;
       const roomId = state.activeRoomId;
       if (!roomId) return;
       const msgs = state.messages[roomId];

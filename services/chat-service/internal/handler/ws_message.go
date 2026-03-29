@@ -183,8 +183,14 @@ func (h *WSHandler) handleTyping(conn *websocket.Conn, roomID int, username stri
 // handleMarkRead persists the user's last-read message position in a room.
 // Read positions are per-user and are NOT broadcast to other users.
 func (h *WSHandler) handleMarkRead(ctx context.Context, conn *websocket.Conn, roomID, userID int, messageID string) {
+	messageID = strings.TrimSpace(messageID)
 	if messageID == "" {
 		h.sendError(conn, "msg_id is required for mark_read")
+		return
+	}
+
+	if _, err := uuid.Parse(messageID); err != nil {
+		h.sendError(conn, "msg_id must be a valid UUID")
 		return
 	}
 

@@ -5,12 +5,11 @@
 
 CREATE TABLE IF NOT EXISTS read_positions (
     id SERIAL PRIMARY KEY,
+    -- user_id: no FK constraint — users are owned by auth-service (cross-database boundary)
     user_id INTEGER NOT NULL,
-    room_id INTEGER NOT NULL,
+    room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
     last_read_message_id VARCHAR(36),
     last_read_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(user_id, room_id)
 );
-
-CREATE INDEX IF NOT EXISTS ix_read_positions_user_room ON read_positions(user_id, room_id);
