@@ -16,3 +16,25 @@ export function logout() {
 export function ping() {
   return http.post('/auth/ping');
 }
+
+// ── Two-Factor Authentication ───────────────────────────────────────────
+
+export function setup2FA() {
+  return http.post('/auth/2fa/setup');
+}
+
+export function verifySetup2FA(code) {
+  return http.post('/auth/2fa/verify-setup', { code });
+}
+
+export function disable2FA(code) {
+  return http.post('/auth/2fa/disable', { code });
+}
+
+export function verifyLogin2FA(tempToken, code) {
+  return http.post('/auth/2fa/verify-login', { temp_token: tempToken, code });
+}
+
+export function get2FAStatus() {
+  return http.get('/auth/2fa/status');
+}

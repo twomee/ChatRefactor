@@ -20,6 +20,7 @@ vi.mock('react-router-dom', async () => {
 vi.mock('../../services/authApi', () => ({
   register: vi.fn(),
   login: vi.fn(),
+  verifyLogin2FA: vi.fn(),
 }));
 
 vi.mock('../../components/common/Logo', () => ({
@@ -137,5 +138,72 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Something went wrong')).toBeInTheDocument();
     });
+  });
+
+  // ── 2FA tests ───────────────────────────────────────────────────────
+
+  it('shows TOTP code input when login returns requires_2fa', async () => {
+    const user = userEvent.setup();
+    authApi.login.mockResolvedValue({
+      data: { requires_2fa: true, temp_token: 'temp123', message: '2FA required' },
+    });
+    renderPage();
+
+    await user.type(screen.getByPlaceholderText('Username'), 'alice');
+    await user.type(screen.getByPlaceholderText('Password'), 'pass123');
+    const submitBtn = screen.getAllByText('Sign In').find(el => el.getAttribute('type') === 'submit');
+    await user.click(submitBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('totp-input')).toBeInTheDocument();
+      expect(screen.getByText('Two-Factor Authentication')).toBeInTheDocument();
+      expect(screen.getByText('Verify')).toBeInTheDocument();
+    });
+  });
+
+  it('completes 2FA login and navigates to /chat', async () => {
+    const user = userEvent.setup();
+    authApi.login.mockResolvedValue({
+      data: { requires_2fa: true, temp_token: 'temp123', message: '2FA required' },
+    });
+    authApi.verifyLogin2FA.mockResolvedValue({
+      data: { access_token: 'jwt2fa', username: 'alice', is_global_admin: false, token_type: 'bearer' },
+    });
+    renderPage();
+
+    await user.type(screen.getByPlaceholderText('Username'), 'alice');
+    await user.type(screen.getByPlaceholderText('Password'), 'pass123');
+    const submitBtn = screen.getAllByText('Sign In').find(el => el.getAttribute('type') === 'submit');
+    await user.click(submitBtn);
+
+    await waitFor(() => screen.getByTestId('totp-input'));
+    await user.type(screen.getByTestId('totp-input'), '123456');
+    await user.click(screen.getByText('Verify'));
+
+    await waitFor(() => {
+      expect(authApi.verifyLogin2FA).toHaveBeenCalledWith('temp123', '123456');
+      expect(mockLogin).toHaveBeenCalledWith('jwt2fa', { username: 'alice', is_global_admin: false });
+      expect(mockNavigate).toHaveBeenCalledWith('/chat');
+    });
+  });
+
+  it('shows Back to Login button on 2FA screen and returns to login', async () => {
+    const user = userEvent.setup();
+    authApi.login.mockResolvedValue({
+      data: { requires_2fa: true, temp_token: 'temp123', message: '2FA required' },
+    });
+    renderPage();
+
+    await user.type(screen.getByPlaceholderText('Username'), 'alice');
+    await user.type(screen.getByPlaceholderText('Password'), 'pass123');
+    const submitBtn = screen.getAllByText('Sign In').find(el => el.getAttribute('type') === 'submit');
+    await user.click(submitBtn);
+
+    await waitFor(() => screen.getByText('Back to Login'));
+    await user.click(screen.getByText('Back to Login'));
+
+    // Should be back to the normal login form
+    expect(screen.getByPlaceholderText('Username')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Password')).toBeInTheDocument();
   });
 });
