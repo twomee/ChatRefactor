@@ -44,7 +44,7 @@ describe('TwoFactorSetup', () => {
     const user = userEvent.setup();
     authApi.get2FAStatus.mockResolvedValue({ data: { is_2fa_enabled: false } });
     authApi.setup2FA.mockResolvedValue({
-      data: { secret: 'ABCDEF1234567890ABCDEF1234567890', otpauth_uri: 'otpauth://totp/cHATBOX:testuser?secret=ABCDEF' },
+      data: { manual_entry_key: 'TESTSECRETKEY123', qr_code: 'data:image/png;base64,TESTBASE64DATA' },
     });
 
     render(<TwoFactorSetup />);
@@ -55,7 +55,8 @@ describe('TwoFactorSetup', () => {
     await user.click(screen.getByText('Enable 2FA'));
 
     await waitFor(() => {
-      expect(screen.getByText(/ABCDEF1234567890ABCDEF1234567890/)).toBeInTheDocument();
+      // The QR code img should be rendered with the qr_code data URL
+      expect(screen.getByAltText(/scan this qr code/i)).toBeInTheDocument();
       expect(screen.getByTestId('tfa-setup-code')).toBeInTheDocument();
     });
   });
@@ -64,7 +65,7 @@ describe('TwoFactorSetup', () => {
     const user = userEvent.setup();
     authApi.get2FAStatus.mockResolvedValue({ data: { is_2fa_enabled: false } });
     authApi.setup2FA.mockResolvedValue({
-      data: { secret: 'TESTSECRET1234567890123456789012', otpauth_uri: 'otpauth://test' },
+      data: { manual_entry_key: 'TESTSECRETKEY123', qr_code: 'data:image/png;base64,TESTBASE64DATA' },
     });
     authApi.verifySetup2FA.mockResolvedValue({ data: { message: '2FA enabled' } });
 
