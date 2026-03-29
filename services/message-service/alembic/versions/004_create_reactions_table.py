@@ -44,5 +44,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Drop the reactions table."""
-    op.drop_index("ix_reactions_message_id")
+    op.drop_index("ix_reactions_message_id", table_name="reactions")
     op.drop_table("reactions")

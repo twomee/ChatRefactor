@@ -21,6 +21,7 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
   const [error, setError] = useState(null);
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   // Focus input when modal opens
   useEffect(() => {
@@ -47,7 +48,19 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Debounced search
+  // Debounced search — fires after 300 ms of inactivity.
+  //
+  // Fix (min length): queries shorter than 2 characters are rejected early to
+  // avoid triggering full GIN index scans on the backend.
+  //
+  // Fix (AbortController): each new search cancels the previous in-flight
+  // request via AbortController so stale responses from slow network round-trips
+  // never overwrite results from a more-recent query.
+  //
+  // Dependency array is intentionally empty: setResults, setError, and
+  // setLoading are stable React dispatcher references that never change between
+  // renders, so there is no stale-closure risk here.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const doSearch = useCallback(
     (q) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -60,13 +73,28 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
         return;
       }
 
+      // Guard: require at least 2 characters to prevent full GIN index scans
+      if (trimmed.length < 2) {
+        setResults([]);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       debounceRef.current = setTimeout(async () => {
+        // Cancel any previous in-flight request before issuing a new one
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
+
         try {
-          const res = await searchMessages(trimmed);
+          const res = await searchMessages(trimmed, null, 20, abortControllerRef.current.signal);
           setResults(res.data || []);
           setError(null);
-        } catch {
+        } catch (err) {
+          // AbortError means the request was cancelled by a newer search — ignore it
+          if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') return;
           setError('Search failed. Please try again.');
           setResults([]);
         } finally {
@@ -74,7 +102,7 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
         }
       }, 300);
     },
-    [],
+    [], // setResults/setError/setLoading are stable React dispatcher refs
   );
 
   function handleInputChange(e) {

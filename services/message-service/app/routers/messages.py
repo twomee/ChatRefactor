@@ -41,21 +41,26 @@ class EditMessageBody(BaseModel):
 
 @router.get("/search")
 def search_messages_endpoint(
-    q: str = Query(..., min_length=1, max_length=200),
-    room_id: int | None = Query(None),
-    limit: int = Query(50, ge=1, le=100),
+    q: str = Query(..., min_length=2, max_length=200, description="Search query (minimum 2 characters)"),
+    room_id: int = Query(..., description="Room ID to search within — required to prevent cross-room enumeration"),
+    limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Search messages by text content with optional room filter.
+    """Search messages by text content within a specific room.
 
     Uses PostgreSQL full-text search (tsvector + GIN index) for relevance-ranked
     results. Only public, non-deleted messages are searched.
 
+    `room_id` is required: callers must specify which room to search. This prevents
+    authenticated users from enumerating messages in rooms they have not joined —
+    the chat-service's WebSocket join authorization is the membership enforcement
+    point, and requiring room_id here keeps the search scoped to a single room.
+
     Query params:
-      - q: search terms (1-200 chars)
-      - room_id: optional filter to a specific room
-      - limit: max results (1-100, default 50)
+      - q: search terms (2-200 chars); min of 2 chars avoids full GIN index scans
+      - room_id: room to search (required)
+      - limit: max results (1-100, default 20)
     """
     stripped = q.strip()
     if not stripped:

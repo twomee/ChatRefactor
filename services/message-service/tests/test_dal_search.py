@@ -3,6 +3,9 @@
 # Uses SQLite in-memory (from conftest.py) so falls back to LIKE-based search.
 # The PostgreSQL tsvector path is covered by integration tests against a real PG
 # instance. These tests verify the search logic, filtering, and edge cases.
+#
+# Note: room_id is now a required argument (Fix 2 — cross-room enumeration
+# prevention). All calls below pass an explicit room_id.
 from datetime import datetime, timedelta
 
 from app.dal.message_dal import search_messages
@@ -43,7 +46,7 @@ class TestSearchMessages:
         ))
         db.commit()
 
-        results = search_messages(db, query="hello")
+        results = search_messages(db, query="hello", room_id=1)
 
         assert len(results) == 2
         contents = [r.content for r in results]
@@ -77,6 +80,35 @@ class TestSearchMessages:
         assert len(results) == 1
         assert results[0].room_id == 1
 
+    def test_does_not_return_other_rooms(self, db):
+        """Should not return messages from a room other than the specified one."""
+        db.add(Message(
+            message_id="room1-only",
+            sender_id=1,
+            sender_name="alice",
+            room_id=1,
+            content="hello from room 1",
+            is_private=False,
+            sent_at=datetime(2025, 6, 1, 12, 0, 0),
+        ))
+        db.add(Message(
+            message_id="room2-only",
+            sender_id=1,
+            sender_name="alice",
+            room_id=2,
+            content="hello from room 2",
+            is_private=False,
+            sent_at=datetime(2025, 6, 1, 12, 5, 0),
+        ))
+        db.commit()
+
+        # Search room 2 — should NOT see room 1's message
+        results = search_messages(db, query="hello", room_id=2)
+
+        assert len(results) == 1
+        assert results[0].room_id == 2
+        assert results[0].message_id == "room2-only"
+
     def test_returns_empty_for_no_match(self, db):
         """Should return empty list when no messages match the query."""
         db.add(Message(
@@ -90,7 +122,7 @@ class TestSearchMessages:
         ))
         db.commit()
 
-        results = search_messages(db, query="xyznomatch")
+        results = search_messages(db, query="xyznomatch", room_id=1)
 
         assert results == []
 
@@ -117,7 +149,7 @@ class TestSearchMessages:
         ))
         db.commit()
 
-        results = search_messages(db, query="hello")
+        results = search_messages(db, query="hello", room_id=1)
 
         assert len(results) == 1
         assert results[0].is_private is False
@@ -146,7 +178,7 @@ class TestSearchMessages:
         ))
         db.commit()
 
-        results = search_messages(db, query="hello")
+        results = search_messages(db, query="hello", room_id=1)
 
         assert len(results) == 1
         assert results[0].is_deleted is False
@@ -165,7 +197,7 @@ class TestSearchMessages:
             ))
         db.commit()
 
-        results = search_messages(db, query="hello", limit=3)
+        results = search_messages(db, query="hello", room_id=1, limit=3)
 
         assert len(results) == 3
 
@@ -173,7 +205,7 @@ class TestSearchMessages:
         """Should cap the limit at 100 even if a higher value is passed."""
         # Just verify it doesn't raise — we can't easily insert 101+ messages
         # in a unit test, but we test the logic path.
-        results = search_messages(db, query="nonexistent", limit=500)
+        results = search_messages(db, query="nonexistent", room_id=1, limit=500)
         assert results == []
 
     def test_case_insensitive_search(self, db):
@@ -189,39 +221,40 @@ class TestSearchMessages:
         ))
         db.commit()
 
-        results_lower = search_messages(db, query="hello world")
-        results_upper = search_messages(db, query="HELLO WORLD")
+        results_lower = search_messages(db, query="hello world", room_id=1)
+        results_upper = search_messages(db, query="HELLO WORLD", room_id=1)
 
         assert len(results_lower) == 1
         assert len(results_upper) == 1
 
     def test_returns_empty_for_empty_table(self, db):
         """Should return empty list when the messages table is empty."""
-        results = search_messages(db, query="anything")
+        results = search_messages(db, query="anything", room_id=1)
         assert results == []
 
-    def test_room_id_none_searches_all_rooms(self, db):
-        """When room_id is None, should search across all rooms."""
+    def test_like_injection_safety(self, db):
+        """LIKE wildcard metacharacters in the query must not cause injection.
+
+        A query of '%' or '_' should not match all rows — autoescape=True in
+        the SQLite fallback path escapes these characters so they are treated
+        as literals.
+        """
         db.add(Message(
-            message_id="allrooms-1",
+            message_id="inject-target",
             sender_id=1,
             sender_name="alice",
             room_id=1,
-            content="hello from room 1",
+            content="This is a normal message",
             is_private=False,
             sent_at=datetime(2025, 6, 1, 12, 0, 0),
         ))
-        db.add(Message(
-            message_id="allrooms-2",
-            sender_id=1,
-            sender_name="bob",
-            room_id=2,
-            content="hello from room 2",
-            is_private=False,
-            sent_at=datetime(2025, 6, 1, 12, 5, 0),
-        ))
         db.commit()
 
-        results = search_messages(db, query="hello", room_id=None)
+        # A bare '%' would match everything without autoescape — it must return
+        # nothing because no message literally contains the character '%'.
+        results_percent = search_messages(db, query="%", room_id=1)
+        assert results_percent == []
 
-        assert len(results) == 2
+        # Same for the single-char wildcard '_'.
+        results_underscore = search_messages(db, query="_", room_id=1)
+        assert results_underscore == []

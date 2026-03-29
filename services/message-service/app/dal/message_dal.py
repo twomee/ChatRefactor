@@ -102,7 +102,7 @@ def soft_delete_message(db: Session, message_id: str, sender_id: int) -> bool:
 def search_messages(
     db: Session,
     query: str,
-    room_id: int | None = None,
+    room_id: int,
     limit: int = 50,
 ) -> list[Message]:
     """Full-text search across messages using PostgreSQL tsvector.
@@ -111,18 +111,27 @@ def search_messages(
     for relevance-ranked results. Falls back to case-insensitive LIKE on SQLite
     (used in tests) since tsvector is PostgreSQL-specific.
 
-    Only searches public, non-deleted messages. Results are ordered by relevance
-    (ts_rank on PG) then recency.
+    Only searches public, non-deleted messages within the specified room.
+    Results are ordered by relevance (ts_rank on PG) then recency.
+
+    Args:
+        db:      SQLAlchemy session.
+        query:   Search terms (must be non-empty, min 2 chars enforced at router).
+        room_id: Required — restricts results to a single room so users cannot
+                 enumerate messages from rooms they have not joined.
+        limit:   Maximum number of results to return (capped at 100).
     """
     capped_limit = min(limit, 100)
-    dialect = db.bind.dialect.name if db.bind else "unknown"
+    try:
+        dialect = db.get_bind().dialect.name
+    except Exception:
+        dialect = "postgresql"  # default to production path
 
     base_filters = [
         Message.is_private == False,  # noqa: E712
         Message.is_deleted == False,  # noqa: E712
+        Message.room_id == room_id,
     ]
-    if room_id is not None:
-        base_filters.append(Message.room_id == room_id)
 
     if dialect == "postgresql":
         ts_query = func.plainto_tsquery("english", query)
@@ -136,11 +145,13 @@ def search_messages(
             )
         )
     else:
-        # SQLite fallback — simple case-insensitive LIKE search
+        # SQLite fallback — safe case-insensitive search using autoescape=True so
+        # that SQL wildcard characters (% and _) inside `query` are escaped and
+        # cannot alter the LIKE pattern (prevents LIKE injection).
         q = (
             db.query(Message)
             .filter(*base_filters)
-            .filter(Message.content.ilike(f"%{query}%"))
+            .filter(func.lower(Message.content).contains(query.lower(), autoescape=True))
             .order_by(Message.sent_at.desc())
         )
 
