@@ -38,6 +38,17 @@ Why we chose every piece of technology in cHATBOX — from infrastructure to ind
    - [Design Patterns](#design-patterns-used)
    - [Data Architecture](#data-architecture-database-per-service)
    - [Trade-offs vs Monolith](#trade-offs-vs-monolith)
+8. [Phase 1 Features — Design & Technology Choices](#8-phase-1-features--design--technology-choices)
+   - [Message Editing](#81-message-editing)
+   - [Message Deletion](#82-message-deletion)
+   - [Emoji Reactions](#83-emoji-reactions)
+   - [Typing Indicators](#84-typing-indicators)
+   - [Read Position Tracking](#85-read-position-tracking)
+   - [Full-Text Message Search](#86-full-text-message-search)
+   - [Link Previews](#87-link-previews)
+   - [Two-Factor Authentication (2FA)](#88-two-factor-authentication-2fa)
+   - [Browser Notifications](#89-browser-notifications)
+   - [Online Presence](#810-online-presence)
 
 ---
 
@@ -1030,3 +1041,168 @@ Every architectural decision is a trade-off. Here's what we gained and what we g
 **When to choose the monolith**: Small team, early product, uncertain requirements, shipping speed matters more than scaling.
 
 **When to choose microservices**: Clear bounded contexts, different scaling needs per component, multiple teams, polyglot advantages outweigh operational complexity.
+
+---
+
+## 8. Phase 1 Features — Design & Technology Choices
+
+Phase 1 adds 10 production features that transform cHATBOX from a basic chat app into a feature-rich communication platform. Each feature was designed with real-time delivery, data consistency, and security in mind.
+
+### 8.1 Message Editing
+
+**What it does:** Users can edit their own sent messages. The edited content is broadcast to all users in the room in real time, and the message displays an "(edited)" badge.
+
+**How it works:**
+1. Frontend sends `{ type: "edit_message", msg_id: "uuid", text: "new content" }` via the room WebSocket
+2. Chat service validates ownership (only the original sender can edit) by calling the message-service REST API
+3. Message-service updates the `content` column and sets `edited_at = NOW()` in PostgreSQL
+4. Chat service broadcasts `{ type: "message_edited", msg_id, text, edited_at }` to all room connections
+5. Frontend reducer (`EDIT_MESSAGE`) updates the message in-place in the room's message array
+
+**Why this approach over alternatives:**
+- **WebSocket for delivery** (not polling): Edits must appear instantly for all users. Polling would add 1-5 seconds of latency.
+- **Server-side ownership check** (not client-only): Prevents malicious clients from editing other users' messages.
+- **`edited_at` timestamp** (not a boolean): Enables future features like "show edit history" and provides audit trail.
+
+### 8.2 Message Deletion
+
+**What it does:** Users can soft-delete their own messages. The content is replaced with "[deleted]" for all users.
+
+**How it works:**
+1. Frontend sends `{ type: "delete_message", msg_id: "uuid" }` via WebSocket
+2. Chat service validates ownership via message-service API
+3. Message-service sets `is_deleted = true` in PostgreSQL (content is preserved for audit)
+4. Broadcast `{ type: "message_deleted", msg_id }` to all room connections
+5. Frontend reducer (`DELETE_MESSAGE`) replaces the message text with "[deleted]"
+
+**Why soft-delete over hard-delete:**
+- **Audit trail**: Admins or compliance can review deleted content if needed
+- **Referential integrity**: Reactions, read positions, and search indexes that reference the message_id remain valid
+- **Undo potential**: A future "undo delete" feature is trivial with soft-delete, impossible with hard-delete
+
+### 8.3 Emoji Reactions
+
+**What it does:** Users can react to messages with any emoji. Reactions are displayed as badges below the message with a count. Clicking an existing reaction toggles it.
+
+**How it works:**
+1. User clicks the (+) button on a message, selects an emoji from the picker
+2. Frontend sends `{ type: "add_reaction", msg_id, emoji }` via WebSocket
+3. Chat service calls message-service to persist the reaction in the `reactions` table
+4. Unique constraint `(message_id, user_id, emoji)` prevents duplicate reactions
+5. Broadcast `{ type: "reaction_added", msg_id, emoji, username }` to all room connections
+6. Frontend reducer (`ADD_REACTION`) adds the reaction to the message's reactions array
+
+**Technology choice — emoji-mart:**
+- **Why emoji-mart** over native emoji input or custom picker: emoji-mart provides a fully-featured, accessible picker with search, categories, skin tone support, and recent emoji tracking. It renders as a Web Component with shadow DOM, so its styles don't leak into the app. The alternative (native OS emoji keyboards) varies wildly across platforms and can't be programmatically triggered.
+- **Why a `reactions` table** over a JSON column: A separate table allows efficient queries like "find all messages I reacted to" and enforces the unique constraint at the database level. JSON columns require application-level validation and are harder to index.
+
+### 8.4 Typing Indicators
+
+**What it does:** Shows "X is typing..." below the message input when another user is composing a message.
+
+**How it works:**
+1. Frontend detects keystrokes in the message input and sends `{ type: "typing" }` via WebSocket (debounced)
+2. Chat service uses `BroadcastRoomExcept` to send the typing event to all room connections EXCEPT the sender (no echo)
+3. Frontend reducer (`SET_TYPING`) adds the username to the room's `typingUsers` set
+4. A 3-second `setTimeout` auto-clears the typing indicator if no new typing events arrive
+
+**Why 3-second auto-clear:** Users often start typing and then stop without sending. Without auto-clear, stale "is typing" indicators would linger until the user refreshes. 3 seconds is the standard in Slack, Discord, and WhatsApp.
+
+**Why `BroadcastRoomExcept`:** Echoing the typing event back to the sender would cause their own UI to show "You are typing..." which is useless and confusing.
+
+### 8.5 Read Position Tracking
+
+**What it does:** Tracks the last message each user has read in each room. On reconnect, a "New messages" divider is rendered between old and new messages.
+
+**How it works:**
+1. When the user scrolls to the bottom or clicks a message, the frontend sends `{ type: "mark_read", msg_id }` via WebSocket
+2. Chat service stores the read position in the `ReadPositionRepository` (backed by Redis or PostgreSQL)
+3. On room join, `sendReadPosition` sends the last-read message ID to the client
+4. Frontend reducer (`SET_READ_POSITION`) stores the position per room
+
+**Why server-side tracking over localStorage:**
+- **Multi-device**: Read positions sync across devices (phone, desktop, tablet)
+- **Server authority**: The server can use read positions for unread count badges and notification decisions
+
+### 8.6 Full-Text Message Search
+
+**What it does:** Users can search across all messages with keyword highlighting and room/sender attribution.
+
+**How it works:**
+1. Frontend opens the search modal (Search button or Ctrl+K), debounces input (300ms)
+2. API call to `GET /messages/search?q=term&limit=20` via Kong
+3. Message-service uses PostgreSQL full-text search: `plainto_tsquery` + `tsvector` column with GIN index
+4. Results are ranked by `ts_rank` (relevance) then `sent_at` (recency)
+5. Frontend highlights matching terms using regex-based text splitting with `<mark>` elements
+
+**Technology choice — PostgreSQL tsvector over Elasticsearch:**
+- **Why PostgreSQL FTS**: For a chat app with thousands of messages, PostgreSQL's built-in full-text search is fast enough (sub-100ms for 100K+ messages with GIN index) and requires zero additional infrastructure. Adding Elasticsearch would mean another service to deploy, monitor, and keep in sync.
+- **When to upgrade to Elasticsearch**: If the message volume exceeds millions and search latency or advanced features (fuzzy matching, faceted search, auto-complete) become requirements.
+- **SQLite fallback**: Tests use SQLite (in-memory). The DAL detects the dialect and falls back to case-insensitive LIKE search, so tests don't need a PostgreSQL instance.
+
+### 8.7 Link Previews
+
+**What it does:** When a message contains a URL, a compact preview card is rendered below the message with the page's title, description, image, and domain name.
+
+**How it works:**
+1. `LinkPreview` component extracts the first URL from message text using a regex
+2. Calls `GET /messages/link-preview?url=...` via the message-service
+3. Message-service fetches the URL, parses OpenGraph meta tags (`og:title`, `og:description`, `og:image`)
+4. Results are cached client-side in a module-level `Map` (lives for the SPA session)
+5. Preview card renders with safe image URL validation (rejects `javascript:`, `data:` schemes)
+
+**Security — SSRF protection:**
+- The message-service validates URLs before fetching: blocks private IP ranges (10.x, 172.16-31.x, 192.168.x), loopback (127.x), link-local (169.254.x), and cloud metadata endpoints (AWS `169.254.169.254`, GCP metadata)
+- DNS resolution is checked BEFORE the HTTP request to prevent DNS rebinding attacks
+- Only `http://` and `https://` schemes are allowed
+
+**Why client-side caching over server-side:**
+- Preview data rarely changes. Caching in a `Map` avoids redundant API calls when scrolling through messages.
+- Server-side caching (Redis) would add complexity without significant benefit at current scale.
+
+### 8.8 Two-Factor Authentication (2FA)
+
+**What it does:** Users can enable TOTP-based 2FA from Settings. After enabling, every login requires both password and a 6-digit code from an authenticator app.
+
+**How it works:**
+1. User clicks "Enable 2FA" in Settings
+2. Auth-service generates a TOTP secret using `pyotp`, encrypts it with AES-256-GCM, stores in PostgreSQL
+3. Frontend displays a QR code (generated by the `qrcode` Python library as a data URI) and a manual entry key
+4. User scans with Google Authenticator/Authy and enters the 6-digit code to verify
+5. Auth-service verifies the code using `pyotp.TOTP(secret).verify(code)` with a 1-window tolerance
+6. On success, `is_2fa_enabled = true` and backup codes are generated
+
+**Technology choices:**
+- **pyotp** (TOTP): RFC 6238 compliant, widely used, compatible with all major authenticator apps. The alternative (WebAuthn/FIDO2) requires browser support and hardware keys — overkill for a chat app.
+- **AES-256-GCM encryption** for secrets: TOTP secrets must be decryptable (not hashed) because the server needs the plaintext to verify codes. AES-256-GCM provides authenticated encryption with a 96-bit nonce.
+- **`TOTP_ENCRYPTION_KEY` env var**: The encryption key is never stored in code or config files. It's injected at runtime via environment variable, following 12-factor app principles.
+
+### 8.9 Browser Notifications
+
+**What it does:** Desktop push notifications when another user @mentions you in a message.
+
+**How it works:**
+1. On first message, the frontend calls `requestNotificationPermission()` to get browser permission
+2. When a `message` WebSocket event arrives with `mentions` containing the current user's username, `sendBrowserNotification` fires
+3. Uses the standard `Notification` API (no service worker required for basic notifications)
+
+**Why the Notification API over a push service (FCM/APNs):**
+- The Notification API works immediately without server infrastructure. Push services require a push server, registration tokens, and platform-specific setup.
+- For a web-only app where users are actively connected via WebSocket, browser notifications are sufficient.
+
+### 8.10 Online Presence
+
+**What it does:** Shows real-time online/offline status for all users across rooms and DMs.
+
+**How it works:**
+1. Each user maintains a **lobby WebSocket** connection independent of room connections
+2. On connect, `user_online` is broadcast to all lobby connections
+3. On last lobby disconnect (full logout), `user_offline` is broadcast
+4. Room connections can close without triggering offline (user may just be switching rooms)
+5. A 10-second grace period on room disconnect prevents false "left" events during page refreshes
+6. `flushPendingLeaves` cancels all grace timers on full logout for instant offline detection
+
+**Why lobby-based presence over heartbeat polling:**
+- **Accurate**: WebSocket close events fire immediately when the connection drops. Polling would require waiting for the next heartbeat interval.
+- **Decoupled from rooms**: A user can be online without being in any room (e.g. browsing the room list). Lobby presence captures this.
+- **Efficient**: One connection per user for presence vs. polling every N seconds from every client.
