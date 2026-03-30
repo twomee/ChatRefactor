@@ -90,6 +90,10 @@ class TestLogin:
         assert "user_id" in data
         assert isinstance(data["user_id"], int)
         assert data["user_id"] > 0
+        # Verify the returned user_id actually belongs to this user
+        user_resp = client.get("/auth/users/by-username/testuid")
+        assert user_resp.status_code == 200
+        assert user_resp.json()["id"] == data["user_id"]
 
 
 # -- Logout --------------------------------------------------------------------
