@@ -45,6 +45,16 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: services/chat-service/go.sum
+
+      - name: Generate chat-service coverage report
+        working-directory: services/chat-service
+        run: go test ./internal/... -coverprofile=coverage.out -covermode=atomic
+
       - name: Generate auth-service coverage report
         working-directory: services/auth-service
         run: pip install -r requirements.txt && python3 -m pytest --cov=app --cov-report=xml:coverage.xml -q
