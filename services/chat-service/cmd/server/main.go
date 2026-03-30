@@ -155,6 +155,7 @@ func main() {
 	wsH := handler.NewWSHandler(wsManager, roomStore, readPositionStore, deliveryStrategy, authClient, cfg.SecretKey, cfg.MessageServiceURL, logger)
 	lobbyH := handler.NewLobbyHandler(wsManager, cfg.SecretKey, logger)
 	pmH := handler.NewPMHandler(wsManager, authClient, deliveryStrategy, logger)
+	pmActionsH := handler.NewPMActionsHandler(wsManager, deliveryStrategy, logger)
 	adminH := handler.NewAdminHandler(roomStore, wsManager, authClient, logger)
 
 	// --- Gin router ---
@@ -188,6 +189,10 @@ func main() {
 		auth.POST("/rooms/:id/mutes", roomH.MuteUser)
 		auth.DELETE("/rooms/:id/mutes/:userId", roomH.UnmuteUser)
 		auth.POST("/pm/send", pmH.SendPM)
+		auth.PATCH("/pm/edit/:msg_id", pmActionsH.EditPM)
+		auth.DELETE("/pm/delete/:msg_id", pmActionsH.DeletePM)
+		auth.POST("/pm/reaction/:msg_id", pmActionsH.AddPMReaction)
+		auth.DELETE("/pm/reaction/:msg_id/:emoji", pmActionsH.RemovePMReaction)
 
 		// Admin dashboard endpoints (global admin only — verified per-handler).
 		auth.GET("/admin/users", adminH.ListOnlineUsers)

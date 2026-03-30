@@ -24,6 +24,7 @@ class TestRegisterEdgeCases:
         body = MagicMock()
         body.username = "existinguser"
         body.password = "validpassword123"
+        body.email = "existing@test.com"
 
         with patch("app.services.auth_service.user_dal") as mock_dal, \
              patch("app.services.auth_service.produce_event", new_callable=AsyncMock):
@@ -39,11 +40,13 @@ class TestRegisterEdgeCases:
         body = MagicMock()
         body.username = "newuser"
         body.password = "validpassword123"
+        body.email = "new@test.com"
 
         with patch("app.services.auth_service.user_dal") as mock_dal, \
              patch("app.services.auth_service.produce_event", new_callable=AsyncMock), \
              patch("app.services.auth_service.hash_password", return_value="hashed"):
             mock_dal.get_by_username.return_value = None  # passes check
+            mock_dal.get_by_email.return_value = None  # passes email check
             mock_dal.create.side_effect = IntegrityError(
                 "duplicate", {}, Exception("unique constraint")
             )

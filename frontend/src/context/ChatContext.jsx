@@ -32,7 +32,10 @@ export function chatReducer(state, action) {
     case 'SET_ACTIVE_ROOM':
       return { ...state, activeRoomId: action.roomId };
 
+    // SET_HISTORY and SET_MESSAGES are identical — history load on join and
+    // bulk-replace (clear / scroll-to-message) use the same reducer logic.
     case 'SET_HISTORY':
+    case 'SET_MESSAGES':
       return {
         ...state,
         messages: { ...state.messages, [action.roomId]: action.messages },

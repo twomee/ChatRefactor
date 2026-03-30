@@ -1,7 +1,7 @@
-# app/schemas/message.py — Pydantic schemas for message API responses
+# app/schemas/message.py — Pydantic schemas for message API requests and responses
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class MessageResponse(BaseModel):
@@ -54,3 +54,19 @@ class MessageHistoryResponse(BaseModel):
     is_deleted: bool = False
 
     model_config = {"from_attributes": True}
+
+
+# ── Request schemas ─────────────────────────────────────────────────
+
+
+class ClearHistoryRequest(BaseModel):
+    """Request body for clearing conversation history."""
+
+    context_type: str = Field(..., pattern="^(room|pm)$")
+    context_id: int
+
+
+class DeletePMConversationRequest(BaseModel):
+    """Request body for deleting a PM conversation."""
+
+    other_user_id: int

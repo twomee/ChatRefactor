@@ -132,7 +132,7 @@ class TestRegistrationMetrics:
         # Register a new user
         resp = client.post(
             "/auth/register",
-            json={"username": "metrics_test_user", "password": "StrongP@ss123"},
+            json={"username": "metrics_test_user", "password": "StrongP@ss123", "email": "metrics@test.com"},
         )
         assert resp.status_code == 201
 
@@ -149,7 +149,7 @@ class TestRegistrationMetrics:
         # Register first
         client.post(
             "/auth/register",
-            json={"username": "dup_metrics_user", "password": "StrongP@ss123"},
+            json={"username": "dup_metrics_user", "password": "StrongP@ss123", "email": "dup_metrics@test.com"},
         )
 
         # Capture before
@@ -161,7 +161,7 @@ class TestRegistrationMetrics:
         # Attempt duplicate registration
         resp = client.post(
             "/auth/register",
-            json={"username": "dup_metrics_user", "password": "StrongP@ss123"},
+            json={"username": "dup_metrics_user", "password": "StrongP@ss123", "email": "dup_metrics@test.com"},
         )
         assert resp.status_code == 409
 
@@ -182,7 +182,7 @@ class TestLoginMetrics:
         # Register a user first
         client.post(
             "/auth/register",
-            json={"username": "login_metrics_user", "password": "StrongP@ss123"},
+            json={"username": "login_metrics_user", "password": "StrongP@ss123", "email": "login_metrics@test.com"},
         )
 
         # Capture before
@@ -194,7 +194,7 @@ class TestLoginMetrics:
         # Login
         resp = client.post(
             "/auth/login",
-            json={"username": "login_metrics_user", "password": "StrongP@ss123"},
+            json={"username": "login_metrics_user", "password": "StrongP@ss123", "email": "login_metrics@test.com"},
         )
         assert resp.status_code == 200
 

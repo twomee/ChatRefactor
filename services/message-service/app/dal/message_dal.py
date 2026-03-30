@@ -167,6 +167,113 @@ def search_messages(
     return q.limit(capped_limit).all()
 
 
+def get_messages_around(
+    db: Session,
+    room_id: int,
+    message_id: str,
+    before: int = 25,
+    after: int = 25,
+) -> list[Message]:
+    """Get N messages before and N messages after a target message in a room.
+
+    Returns the target message plus surrounding context, sorted by sent_at ASC.
+    Used for scroll-to-message when a user clicks a search result.
+    """
+    target = (
+        db.query(Message)
+        .filter(Message.message_id == message_id, Message.room_id == room_id)
+        .first()
+    )
+    if not target:
+        return []
+
+    # Messages before the target (ordered DESC, then reversed)
+    before_msgs = (
+        db.query(Message)
+        .filter(
+            Message.room_id == room_id,
+            Message.is_private == False,  # noqa: E712
+            Message.sent_at < target.sent_at,
+        )
+        .order_by(Message.sent_at.desc())
+        .limit(before)
+        .all()
+    )
+    before_msgs.reverse()
+
+    # Messages after the target
+    after_msgs = (
+        db.query(Message)
+        .filter(
+            Message.room_id == room_id,
+            Message.is_private == False,  # noqa: E712
+            Message.sent_at > target.sent_at,
+        )
+        .order_by(Message.sent_at.asc())
+        .limit(after)
+        .all()
+    )
+
+    return before_msgs + [target] + after_msgs
+
+
+def get_pm_messages_around(
+    db: Session,
+    user_id: int,
+    message_id: str,
+    before: int = 25,
+    after: int = 25,
+) -> list[Message]:
+    """Get N messages before and N messages after a target PM message.
+
+    Finds the target message and returns surrounding PM context for the user
+    (messages where user is sender or recipient). Sorted by sent_at ASC.
+    """
+    target = (
+        db.query(Message)
+        .filter(
+            Message.message_id == message_id,
+            Message.is_private == True,  # noqa: E712
+        )
+        .first()
+    )
+    if not target:
+        return []
+
+    # Determine the other user in the PM conversation
+    other_user_id = (
+        target.recipient_id if target.sender_id == user_id else target.sender_id
+    )
+
+    # PM filter: messages between these two users
+    pm_filter = [
+        Message.is_private == True,  # noqa: E712
+        (
+            (Message.sender_id == user_id) & (Message.recipient_id == other_user_id)
+            | (Message.sender_id == other_user_id) & (Message.recipient_id == user_id)
+        ),
+    ]
+
+    before_msgs = (
+        db.query(Message)
+        .filter(*pm_filter, Message.sent_at < target.sent_at)
+        .order_by(Message.sent_at.desc())
+        .limit(before)
+        .all()
+    )
+    before_msgs.reverse()
+
+    after_msgs = (
+        db.query(Message)
+        .filter(*pm_filter, Message.sent_at > target.sent_at)
+        .order_by(Message.sent_at.asc())
+        .limit(after)
+        .all()
+    )
+
+    return before_msgs + [target] + after_msgs
+
+
 def delete_all(db: Session):
     """Delete all messages. Used in tests only."""
     db.query(Message).delete()

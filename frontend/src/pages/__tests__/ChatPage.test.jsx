@@ -82,13 +82,13 @@ vi.mock('../../components/pm/PMView', () => ({
 vi.mock('../../components/common/ConnectionStatus', () => ({
   default: ({ status }) => <div data-testid="connection-status">{status}</div>,
 }));
-vi.mock('../../components/settings/SettingsModal', () => ({
-  default: ({ open, onClose }) =>
-    open ? (
-      <div data-testid="settings-modal">
-        <button data-testid="close-settings" onClick={onClose}>Close</button>
-      </div>
-    ) : null,
+vi.mock('../../components/common/UserDropdown', () => ({
+  default: ({ user, onLogout }) => (
+    <div data-testid="user-dropdown">
+      <span>{user?.username}</span>
+      <button data-testid="dropdown-logout" onClick={onLogout}>Logout</button>
+    </div>
+  ),
 }));
 vi.mock('../../components/chat/SearchModal', () => ({
   default: ({ isOpen, onClose, onNavigate }) =>
@@ -216,7 +216,9 @@ describe('ChatPage', () => {
 
   it('renders the active room name in the header', () => {
     renderChatPage();
-    expect(screen.getByText('#general')).toBeInTheDocument();
+    const headerRoomName = document.querySelector('.header-room-name');
+    expect(headerRoomName).toBeInTheDocument();
+    expect(headerRoomName).toHaveTextContent('general');
   });
 
   it('renders MessageList when a room is active', () => {
@@ -250,34 +252,11 @@ describe('ChatPage', () => {
     expect(screen.queryByTestId('message-list')).toBeNull();
   });
 
-  it('does NOT show Admin button for non-admin users', () => {
-    renderChatPage({ user: { username: 'testuser', is_global_admin: false } });
-    expect(screen.queryByText('Admin')).toBeNull();
-  });
+  // ── UserDropdown ─────────────────────────────────────────────────────────
 
-  it('shows Admin button for global admin users', () => {
-    renderChatPage({ user: { username: 'admin', is_global_admin: true } });
-    expect(screen.getByText('Admin')).toBeInTheDocument();
-  });
-
-  // ── Settings modal ────────────────────────────────────────────────────────
-
-  it('opens Settings modal when settings button is clicked', async () => {
-    const user = userEvent.setup();
+  it('renders UserDropdown component', () => {
     renderChatPage();
-
-    expect(screen.queryByTestId('settings-modal')).toBeNull();
-    await user.click(screen.getByLabelText('Settings'));
-    expect(screen.getByTestId('settings-modal')).toBeInTheDocument();
-  });
-
-  it('closes Settings modal when its onClose fires', async () => {
-    const user = userEvent.setup();
-    renderChatPage();
-
-    await user.click(screen.getByLabelText('Settings'));
-    await user.click(screen.getByTestId('close-settings'));
-    expect(screen.queryByTestId('settings-modal')).toBeNull();
+    expect(screen.getByTestId('user-dropdown')).toBeInTheDocument();
   });
 
   // ── Search modal ──────────────────────────────────────────────────────────
@@ -446,23 +425,13 @@ describe('ChatPage', () => {
     }
   });
 
-  // ── Admin navigation ──────────────────────────────────────────────────────
-
-  it('navigates to /admin when Admin button is clicked', async () => {
-    const user = userEvent.setup();
-    renderChatPage({ user: { username: 'admin', is_global_admin: true } });
-
-    await user.click(screen.getByText('Admin'));
-    expect(mockNavigate).toHaveBeenCalledWith('/admin');
-  });
-
-  // ── Logout ────────────────────────────────────────────────────────────────
+  // ── Logout via UserDropdown ──────────────────────────────────────────────
 
   it('calls disconnectAll, authApi.logout, logout context, and navigates to /login', async () => {
     const user = userEvent.setup();
     renderChatPage();
 
-    await user.click(screen.getByText('Logout'));
+    await user.click(screen.getByTestId('dropdown-logout'));
 
     expect(mockDisconnectAll).toHaveBeenCalled();
     await act(async () => {}); // flush the async authApi.logout()

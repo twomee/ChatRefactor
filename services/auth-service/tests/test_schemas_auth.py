@@ -14,26 +14,35 @@ class TestUserRegisterValidation:
     """Tests for UserRegister schema validation."""
 
     def test_valid_registration(self):
-        user = UserRegister(username="alice", password="securepassword")
+        user = UserRegister(username="alice", password="securepassword", email="alice@test.com")
         assert user.username == "alice"
+        assert user.email == "alice@test.com"
 
     def test_username_too_long(self):
         with pytest.raises(ValidationError) as exc_info:
-            UserRegister(username="a" * 33, password="password123")
+            UserRegister(username="a" * 33, password="password123", email="long@test.com")
         assert "at most 32" in str(exc_info.value).lower()
 
     def test_password_too_long(self):
         with pytest.raises(ValidationError) as exc_info:
-            UserRegister(username="alice", password="a" * 129)
+            UserRegister(username="alice", password="a" * 129, email="alice@test.com")
         assert "at most 128" in str(exc_info.value).lower()
 
     def test_username_min_length(self):
         with pytest.raises(ValidationError):
-            UserRegister(username="ab", password="password123")
+            UserRegister(username="ab", password="password123", email="ab@test.com")
 
     def test_username_special_chars_rejected(self):
         with pytest.raises(ValidationError):
-            UserRegister(username="user@name", password="password123")
+            UserRegister(username="user@name", password="password123", email="user@test.com")
+
+    def test_missing_email_rejected(self):
+        with pytest.raises(ValidationError):
+            UserRegister(username="alice", password="password123")
+
+    def test_invalid_email_rejected(self):
+        with pytest.raises(ValidationError):
+            UserRegister(username="alice", password="password123", email="not-an-email")
 
 
 class TestUserLoginValidation:

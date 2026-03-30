@@ -27,7 +27,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.config import ALGORITHM, SECRET_KEY
 from app.core.database import Base, get_db
-from app.models import Message, Reaction
+from app.models import DeletedPMConversation, Message, Reaction, UserMessageClear
 
 # ── In-memory SQLite test database ──────────────────────────────────
 
@@ -93,6 +93,13 @@ def auth_headers() -> dict:
 
 
 @pytest.fixture()
+def auth_headers_user2() -> dict:
+    """Valid Authorization headers for a second test user (user_id=2)."""
+    token = _create_test_token(user_id=2, username="testuser2")
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
 def expired_auth_headers() -> dict:
     """Expired Authorization headers."""
     token = _create_test_token(expired=True)
@@ -114,6 +121,31 @@ def sample_messages(db) -> list[Message]:
             room_id=1,
             content=f"Test message {i}",
             is_private=False,
+            sent_at=base_time + timedelta(minutes=i),
+        )
+        db.add(msg)
+        messages.append(msg)
+    db.commit()
+    for m in messages:
+        db.refresh(m)
+    return messages
+
+
+@pytest.fixture()
+def sample_pm_messages(db) -> list[Message]:
+    """Insert a set of PM messages between user 1 and user 2."""
+    messages = []
+    base_time = datetime(2025, 1, 1, 14, 0, 0)
+    for i in range(5):
+        sender = 1 if i % 2 == 0 else 2
+        recipient = 2 if i % 2 == 0 else 1
+        msg = Message(
+            message_id=f"pm-{i:03d}",
+            sender_id=sender,
+            recipient_id=recipient,
+            room_id=None,
+            content=f"PM message {i}",
+            is_private=True,
             sent_at=base_time + timedelta(minutes=i),
         )
         db.add(msg)

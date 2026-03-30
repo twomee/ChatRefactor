@@ -222,3 +222,78 @@ class TestSearchEndpoint:
             "/messages/search?q=test&room_id=1&limit=0", headers=auth_headers
         )
         assert response.status_code == 422
+
+    def test_search_respects_clear_history(self, client, auth_headers, db):
+        """Messages sent before the user's clear timestamp must not appear in search results."""
+        from app.models import UserMessageClear
+
+        base_time = datetime(2025, 7, 1, 10, 0, 0)
+        clear_time = datetime(2025, 7, 1, 11, 0, 0)
+
+        db.add(Message(
+            message_id="clr-srch-old",
+            sender_id=1, sender_name="alice", room_id=10,
+            content="cleartest keyword old",
+            is_private=False, sent_at=base_time,
+        ))
+        db.add(Message(
+            message_id="clr-srch-new",
+            sender_id=1, sender_name="alice", room_id=10,
+            content="cleartest keyword new",
+            is_private=False, sent_at=base_time + timedelta(hours=2),
+        ))
+        # user_id=1 (matches auth_headers fixture) clears room 10 at clear_time
+        db.add(UserMessageClear(
+            user_id=1, context_type="room", context_id=10, cleared_at=clear_time,
+        ))
+        db.commit()
+
+        response = client.get(
+            "/messages/search?q=cleartest+keyword&room_id=10", headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        ids = [m["message_id"] for m in data]
+        assert "clr-srch-old" not in ids, "pre-clear message should be hidden"
+        assert "clr-srch-new" in ids, "post-clear message should be visible"
+
+    def test_search_without_room_id_respects_cross_room_clear_filter(
+        self, client, auth_headers, db
+    ):
+        """When room_id is omitted, search must still hide cleared messages from any room."""
+        from app.models import UserMessageClear
+
+        base_time = datetime(2025, 8, 1, 10, 0, 0)
+        clear_time = datetime(2025, 8, 1, 11, 0, 0)
+
+        # Two messages in room 20 — one before clear, one after
+        db.add(Message(
+            message_id="xroom-old", sender_id=1, sender_name="alice", room_id=20,
+            content="crossroom keyword old", is_private=False, sent_at=base_time,
+        ))
+        db.add(Message(
+            message_id="xroom-new", sender_id=1, sender_name="alice", room_id=20,
+            content="crossroom keyword new", is_private=False,
+            sent_at=base_time + timedelta(hours=2),
+        ))
+        # Message in room 21 (not cleared) — should always be visible
+        db.add(Message(
+            message_id="xroom-uncleared", sender_id=1, sender_name="alice", room_id=21,
+            content="crossroom keyword other", is_private=False, sent_at=base_time,
+        ))
+        db.add(UserMessageClear(
+            user_id=1, context_type="room", context_id=20, cleared_at=clear_time,
+        ))
+        db.commit()
+
+        # Search across all rooms (no room_id)
+        response = client.get(
+            "/messages/search?q=crossroom+keyword", headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        ids = [m["message_id"] for m in response.json()]
+        assert "xroom-old" not in ids, "pre-clear message in cleared room should be hidden"
+        assert "xroom-new" in ids, "post-clear message in cleared room should be visible"
+        assert "xroom-uncleared" in ids, "message in uncleared room should be visible"

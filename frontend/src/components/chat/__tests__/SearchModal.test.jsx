@@ -11,6 +11,30 @@ const rooms = [
   { id: 2, name: 'random' },
 ];
 
+const mockResults = [
+  {
+    message_id: 'msg-1',
+    sender_name: 'alice',
+    content: 'hello world',
+    room_id: 1,
+    sent_at: '2025-06-01T12:00:00',
+  },
+  {
+    message_id: 'msg-2',
+    sender_name: 'bob',
+    content: 'hello there',
+    room_id: 2,
+    sent_at: '2025-06-01T13:00:00',
+  },
+  {
+    message_id: 'msg-3',
+    sender_name: 'carol',
+    content: 'hello again',
+    room_id: 1,
+    sent_at: '2025-06-01T14:00:00',
+  },
+];
+
 describe('SearchModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -70,15 +94,7 @@ describe('SearchModal', () => {
   it('fires API call after debounce when user types', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     searchApi.searchMessages.mockResolvedValue({
-      data: [
-        {
-          message_id: 'msg-1',
-          sender_name: 'alice',
-          content: 'hello world',
-          room_id: 1,
-          sent_at: '2025-06-01T12:00:00',
-        },
-      ],
+      data: [mockResults[0]],
     });
 
     render(
@@ -96,18 +112,10 @@ describe('SearchModal', () => {
     });
   });
 
-  it('displays search results', async () => {
+  it('displays search results with avatar initials', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     searchApi.searchMessages.mockResolvedValue({
-      data: [
-        {
-          message_id: 'msg-1',
-          sender_name: 'alice',
-          content: 'hello world',
-          room_id: 1,
-          sent_at: '2025-06-01T12:00:00',
-        },
-      ],
+      data: [mockResults[0]],
     });
 
     render(
@@ -123,7 +131,10 @@ describe('SearchModal', () => {
     });
 
     // Verify room name is shown
-    expect(screen.getByText('#general')).toBeInTheDocument();
+    expect(screen.getByText('general')).toBeInTheDocument();
+
+    // Verify avatar initials are rendered
+    expect(screen.getByText('AL')).toBeInTheDocument();
   });
 
   it('shows "No messages found" when search returns empty', async () => {
@@ -143,7 +154,7 @@ describe('SearchModal', () => {
     });
   });
 
-  it('calls onNavigate and onClose when a result is clicked', async () => {
+  it('calls onNavigate with room_id AND message_id when a result is clicked', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const onNavigate = vi.fn();
     const onClose = vi.fn();
@@ -174,7 +185,7 @@ describe('SearchModal', () => {
     // Click the result item
     await user.click(screen.getByText('bob').closest('button'));
 
-    expect(onNavigate).toHaveBeenCalledWith(2);
+    expect(onNavigate).toHaveBeenCalledWith(2, 'msg-nav');
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -193,5 +204,150 @@ describe('SearchModal', () => {
     await waitFor(() => {
       expect(screen.getByText('Search failed. Please try again.')).toBeInTheDocument();
     });
+  });
+
+  // ── Keyboard navigation tests ──
+
+  it('ArrowDown increments selectedIndex (active class on result)', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    searchApi.searchMessages.mockResolvedValue({ data: mockResults });
+
+    render(
+      <SearchModal isOpen={true} onClose={vi.fn()} rooms={rooms} onNavigate={vi.fn()} />,
+    );
+
+    const input = screen.getByPlaceholderText('Search messages...');
+    await user.type(input, 'hello');
+    vi.advanceTimersByTime(350);
+
+    await waitFor(() => {
+      expect(screen.getByText('alice')).toBeInTheDocument();
+    });
+
+    // Initially no item has active class
+    const items = screen.getAllByRole('option');
+    expect(items[0].querySelector('.search-result-item.active')).toBeNull();
+
+    // Press ArrowDown — first item should be active
+    await user.keyboard('{ArrowDown}');
+    expect(items[0].querySelector('.search-result-item.active')).not.toBeNull();
+
+    // Press ArrowDown again — second item should be active
+    await user.keyboard('{ArrowDown}');
+    expect(items[0].querySelector('.search-result-item.active')).toBeNull();
+    expect(items[1].querySelector('.search-result-item.active')).not.toBeNull();
+  });
+
+  it('ArrowUp decrements selectedIndex', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    searchApi.searchMessages.mockResolvedValue({ data: mockResults });
+
+    render(
+      <SearchModal isOpen={true} onClose={vi.fn()} rooms={rooms} onNavigate={vi.fn()} />,
+    );
+
+    const input = screen.getByPlaceholderText('Search messages...');
+    await user.type(input, 'hello');
+    vi.advanceTimersByTime(350);
+
+    await waitFor(() => {
+      expect(screen.getByText('alice')).toBeInTheDocument();
+    });
+
+    // Navigate down twice to select bob (index 1)
+    await user.keyboard('{ArrowDown}');
+    await user.keyboard('{ArrowDown}');
+
+    const items = screen.getAllByRole('option');
+    expect(items[1].querySelector('.search-result-item.active')).not.toBeNull();
+
+    // Navigate back up — alice (index 0) should be active
+    await user.keyboard('{ArrowUp}');
+    expect(items[0].querySelector('.search-result-item.active')).not.toBeNull();
+    expect(items[1].querySelector('.search-result-item.active')).toBeNull();
+  });
+
+  it('Enter on selected result calls onNavigate with room_id AND message_id', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onNavigate = vi.fn();
+    const onClose = vi.fn();
+    searchApi.searchMessages.mockResolvedValue({ data: mockResults });
+
+    render(
+      <SearchModal isOpen={true} onClose={onClose} rooms={rooms} onNavigate={onNavigate} />,
+    );
+
+    const input = screen.getByPlaceholderText('Search messages...');
+    await user.type(input, 'hello');
+    vi.advanceTimersByTime(350);
+
+    await waitFor(() => {
+      expect(screen.getByText('alice')).toBeInTheDocument();
+    });
+
+    // Select first item and press Enter
+    await user.keyboard('{ArrowDown}');
+    await user.keyboard('{Enter}');
+
+    expect(onNavigate).toHaveBeenCalledWith(1, 'msg-1');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('selectedIndex resets on query change', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    searchApi.searchMessages.mockResolvedValue({ data: mockResults });
+
+    render(
+      <SearchModal isOpen={true} onClose={vi.fn()} rooms={rooms} onNavigate={vi.fn()} />,
+    );
+
+    const input = screen.getByPlaceholderText('Search messages...');
+    await user.type(input, 'hello');
+    vi.advanceTimersByTime(350);
+
+    await waitFor(() => {
+      expect(screen.getByText('alice')).toBeInTheDocument();
+    });
+
+    // Select first item
+    await user.keyboard('{ArrowDown}');
+    const items = screen.getAllByRole('option');
+    expect(items[0].querySelector('.search-result-item.active')).not.toBeNull();
+
+    // Type more text — selectedIndex should reset, so active class should disappear
+    // after the new results come in
+    searchApi.searchMessages.mockResolvedValue({ data: mockResults });
+    await user.type(input, 'x');
+    vi.advanceTimersByTime(350);
+
+    await waitFor(() => {
+      const allItems = screen.getAllByRole('option');
+      const activeItems = allItems.filter(
+        (item) => item.querySelector('.search-result-item.active') !== null,
+      );
+      expect(activeItems).toHaveLength(0);
+    });
+  });
+
+  it('renders sender avatar initials in results', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    searchApi.searchMessages.mockResolvedValue({ data: mockResults });
+
+    render(
+      <SearchModal isOpen={true} onClose={vi.fn()} rooms={rooms} onNavigate={vi.fn()} />,
+    );
+
+    const input = screen.getByPlaceholderText('Search messages...');
+    await user.type(input, 'hello');
+    vi.advanceTimersByTime(350);
+
+    await waitFor(() => {
+      expect(screen.getByText('alice')).toBeInTheDocument();
+    });
+
+    // Check all three avatar initials are rendered
+    expect(screen.getByText('AL')).toBeInTheDocument();
+    expect(screen.getByText('BO')).toBeInTheDocument();
+    expect(screen.getByText('CA')).toBeInTheDocument();
   });
 });

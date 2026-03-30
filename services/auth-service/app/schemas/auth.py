@@ -7,7 +7,7 @@ Room, File, and Message schemas belong to their respective services.
 import re
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 # ── Constants ─────────────────────────────────────────────────────────
 USERNAME_MIN_LENGTH = 3
@@ -24,6 +24,7 @@ class UserRegister(BaseModel):
 
     username: str
     password: str
+    email: EmailStr
 
     @field_validator("username")
     @classmethod
@@ -99,6 +100,7 @@ class UserResponse(BaseModel):
 
     id: int
     username: str
+    email: str | None = None
     is_global_admin: bool
     created_at: datetime
 
@@ -132,3 +134,43 @@ class VerifyLogin2FARequest(BaseModel):
 
     temp_token: str
     code: str = Field(..., min_length=6, max_length=6)
+
+
+# ── Profile / Settings Schemas ────────────────────────────────────────
+
+
+class UpdateEmailRequest(BaseModel):
+    """Request to change the user's email address. Requires current password."""
+
+    new_email: EmailStr
+    current_password: str
+
+
+class UpdatePasswordRequest(BaseModel):
+    """Request to change the user's password. Requires current password."""
+
+    current_password: str = Field(..., min_length=8, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+class ProfileResponse(BaseModel):
+    """Response for the authenticated user's profile."""
+
+    username: str
+    email: str | None = None
+
+
+# ── Forgot / Reset Password Schemas ──────────────────────────────────
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Request to initiate a password-reset flow."""
+
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Request to set a new password using a reset token."""
+
+    token: str
+    new_password: str = Field(..., min_length=8, max_length=128)

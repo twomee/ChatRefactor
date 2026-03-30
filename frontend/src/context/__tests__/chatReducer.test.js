@@ -52,6 +52,27 @@ describe('chatReducer', () => {
     });
   });
 
+  // SET_MESSAGES shares the same reducer branch as SET_HISTORY (fall-through case)
+  describe('SET_MESSAGES', () => {
+    it('bulk-replaces messages for a room (same behaviour as SET_HISTORY)', () => {
+      const messages = [{ from: 'alice', text: 'hello' }];
+      const next = chatReducer(initialState, { type: 'SET_MESSAGES', roomId: 'r1', messages });
+      expect(next.messages.r1).toEqual(messages);
+    });
+
+    it('can clear a room by setting an empty array', () => {
+      const state = { ...initialState, messages: { r1: [{ from: 'alice', text: 'hi' }] } };
+      const next = chatReducer(state, { type: 'SET_MESSAGES', roomId: 'r1', messages: [] });
+      expect(next.messages.r1).toEqual([]);
+    });
+
+    it('does not affect other rooms', () => {
+      const state = { ...initialState, messages: { r1: [{ from: 'a', text: 'a' }], r2: [{ from: 'b', text: 'b' }] } };
+      const next = chatReducer(state, { type: 'SET_MESSAGES', roomId: 'r1', messages: [] });
+      expect(next.messages.r2).toEqual(state.messages.r2);
+    });
+  });
+
   describe('ADD_MESSAGE', () => {
     it('appends a message to an existing room', () => {
       const state = { ...initialState, messages: { r1: [{ from: 'alice', text: 'first' }] } };

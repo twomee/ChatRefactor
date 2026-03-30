@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MessageList from '../MessageList';
 
@@ -146,23 +146,50 @@ describe('MessageList', () => {
 
   // ── Phase 1: Edit / Delete action buttons ──────────────────────────────
 
-  it('shows edit and delete buttons for own messages', () => {
+  it('shows copy, edit and delete buttons for own messages', () => {
     const messages = [{ from: 'testuser', text: 'my message', msg_id: 'msg1' }];
     const { container } = render(
       <MessageList messages={messages} currentUser="testuser" onEditMessage={vi.fn()} onDeleteMessage={vi.fn()} />
     );
     const actions = container.querySelector('.msg-actions');
     expect(actions).toBeInTheDocument();
+    // Copy + Edit + Delete
     const buttons = actions.querySelectorAll('.msg-action-btn');
-    expect(buttons).toHaveLength(2);
+    expect(buttons).toHaveLength(3);
   });
 
-  it('does not show edit/delete buttons for other users\' messages', () => {
+  it('shows only copy button for other users\' messages (no edit/delete)', () => {
     const messages = [{ from: 'alice', text: 'alice message', msg_id: 'msg1' }];
-    const { container } = render(
+    render(
       <MessageList messages={messages} currentUser="testuser" onEditMessage={vi.fn()} onDeleteMessage={vi.fn()} />
     );
-    expect(container.querySelector('.msg-actions')).toBeNull();
+    // Copy is always available
+    expect(screen.getByTitle('Copy')).toBeInTheDocument();
+    // Edit and Delete are only for own messages
+    expect(screen.queryByTitle('Edit')).toBeNull();
+    expect(screen.queryByTitle('Delete')).toBeNull();
+  });
+
+  it('shows copy button for all messages including other users\'', () => {
+    const messages = [{ from: 'alice', text: 'hello world', msg_id: 'msg1' }];
+    const { container } = render(
+      <MessageList messages={messages} currentUser="testuser" />
+    );
+    expect(container.querySelector('[data-testid="copy-message-btn"]')).toBeInTheDocument();
+  });
+
+  it('calls navigator.clipboard.writeText when copy button is clicked', () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    // jsdom doesn't implement navigator.clipboard; install a getter so the
+    // component can access it synchronously when the button is clicked.
+    Object.defineProperty(window.navigator, 'clipboard', {
+      get: () => ({ writeText }),
+      configurable: true,
+    });
+    const messages = [{ from: 'alice', text: 'copy me', msg_id: 'msg1' }];
+    const { container } = render(<MessageList messages={messages} currentUser="testuser" />);
+    fireEvent.click(container.querySelector('[data-testid="copy-message-btn"]'));
+    expect(writeText).toHaveBeenCalledWith('copy me');
   });
 
   it('calls onEditMessage with the message when edit button is clicked', async () => {
@@ -254,5 +281,33 @@ describe('MessageList', () => {
       <MessageList messages={messages} currentUser="testuser" onAddReaction={vi.fn()} />
     );
     expect(container.querySelector('.reaction-add-btn')).toBeInTheDocument();
+  });
+
+  // ── Phase D2: Scroll-to-message highlight ───────────────────────────────
+
+  it('adds data-msg-id attributes to message elements', () => {
+    const messages = [
+      { from: 'alice', text: 'first', msg_id: 'msg-1' },
+      { from: 'bob', text: 'second', msg_id: 'msg-2' },
+    ];
+    const { container } = render(<MessageList messages={messages} />);
+    expect(container.querySelector('[data-msg-id="msg-1"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-msg-id="msg-2"]')).toBeInTheDocument();
+  });
+
+  it('adds msg-highlight class to the targeted message when highlightMessageId is set', () => {
+    const messages = [
+      { from: 'alice', text: 'first', msg_id: 'msg-1' },
+      { from: 'bob', text: 'second', msg_id: 'msg-2' },
+    ];
+    // Mock scrollIntoView since jsdom doesn't implement it
+    Element.prototype.scrollIntoView = vi.fn();
+
+    const { container } = render(
+      <MessageList messages={messages} highlightMessageId="msg-2" />,
+    );
+    const targetEl = container.querySelector('[data-msg-id="msg-2"]');
+    expect(targetEl).toBeInTheDocument();
+    expect(targetEl.classList.contains('msg-highlight')).toBe(true);
   });
 });

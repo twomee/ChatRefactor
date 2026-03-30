@@ -23,7 +23,12 @@ from app.core.logging import get_logger
 from app.core.security import get_current_user, oauth2_scheme
 from app.dal import user_dal
 from app.schemas.auth import (
+    ForgotPasswordRequest,
+    ProfileResponse,
+    ResetPasswordRequest,
     TokenResponse,
+    UpdateEmailRequest,
+    UpdatePasswordRequest,
     UserLogin,
     UserRegister,
     UserResponse,
@@ -31,6 +36,8 @@ from app.schemas.auth import (
     VerifyLogin2FARequest,
 )
 from app.services import auth_service
+from app.services.email_service import create_email_sender
+from app.services import password_reset_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = get_logger("routers.auth")
@@ -68,6 +75,64 @@ async def logout(
 def ping(current_user: Annotated[dict, Depends(get_current_user)]):
     """Presence ping. In microservice architecture, this is a simple health signal."""
     return auth_service.ping()
+
+
+# ── Profile / Settings endpoints ──────────────────────────────────────────────
+
+
+@router.get("/profile", response_model=ProfileResponse)
+def get_profile(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user)],
+):
+    """Return the authenticated user's profile (username + email)."""
+    return auth_service.get_profile(db, current_user["user_id"])
+
+
+@router.patch("/profile/email")
+def update_email(
+    body: UpdateEmailRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user)],
+):
+    """Update the authenticated user's email address. Requires current password."""
+    return auth_service.update_email(
+        db, current_user["user_id"], body.new_email, body.current_password
+    )
+
+
+@router.patch("/profile/password")
+def update_password(
+    body: UpdatePasswordRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user)],
+):
+    """Update the authenticated user's password. Requires current password."""
+    return auth_service.update_password(
+        db, current_user["user_id"], body.current_password, body.new_password
+    )
+
+
+# ── Forgot / Reset Password endpoints ────────────────────────────────────────
+
+
+@router.post("/forgot-password")
+def forgot_password(
+    body: ForgotPasswordRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Request a password-reset email. Always returns 200 (no email enumeration)."""
+    sender = create_email_sender()
+    return password_reset_service.request_reset(db, body.email, sender)
+
+
+@router.post("/reset-password")
+def reset_password(
+    body: ResetPasswordRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Reset the user's password using a valid reset token."""
+    return password_reset_service.reset_password(db, body.token, body.new_password)
 
 
 # ── 2FA endpoints ─────────────────────────────────────────────────────────────

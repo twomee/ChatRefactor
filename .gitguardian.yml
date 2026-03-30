@@ -4,8 +4,21 @@ version: 2
 # Test directories contain intentionally fake/mock credentials used in unit
 # tests — they are never real secrets.  Using paths-ignore avoids embedding
 # the mock secret strings in this config file (which would itself be flagged).
-paths-ignore:
-  - "**/__tests__/**"
-  - "**/tests/**"
-  - "**/*.test.*"
-  - "**/*.spec.*"
+#
+# In ggshield v2 config the scan settings live under the `secret` key.
+secret:
+  paths-ignore:
+    # JavaScript / TypeScript test directories (Vitest / Jest)
+    - "**/__tests__/**"
+    - "**/*.test.js"
+    - "**/*.test.jsx"
+    - "**/*.test.ts"
+    - "**/*.test.tsx"
+    - "**/*.spec.js"
+    - "**/*.spec.jsx"
+    - "**/*.spec.ts"
+    - "**/*.spec.tsx"
+    # Python test files (pytest convention: test_*.py in tests/ dirs)
+    - "**/tests/test_*.py"
+    - "**/tests/conftest.py"
+    - "services/*/tests/**"

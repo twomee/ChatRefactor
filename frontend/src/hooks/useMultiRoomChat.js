@@ -143,11 +143,57 @@ export function useMultiRoomChat() {
         pmDispatch({
           type: 'ADD_PM_MESSAGE',
           username: otherUser,
-          message: { from: msg.from, text: msg.text, isSelf: !!msg.self, to: msg.to },
+          message: { from: msg.from, text: msg.text, isSelf: !!msg.self, to: msg.to, msg_id: msg.msg_id },
         });
         if (otherUser !== pmStateRef.current.activePM) {
           pmDispatch({ type: 'INCREMENT_PM_UNREAD', username: otherUser });
         }
+        break;
+      }
+
+      case 'pm_message_edited': {
+        const pmUser = msg.from === user?.username ? msg.to : msg.from;
+        pmDispatch({
+          type: 'EDIT_PM_MESSAGE',
+          username: pmUser,
+          msg_id: msg.msg_id,
+          text: msg.text,
+        });
+        break;
+      }
+
+      case 'pm_message_deleted': {
+        const pmUser = msg.from === user?.username ? msg.to : msg.from;
+        pmDispatch({
+          type: 'DELETE_PM_MESSAGE',
+          username: pmUser,
+          msg_id: msg.msg_id,
+        });
+        break;
+      }
+
+      case 'pm_reaction_added': {
+        const pmUser = msg.from === user?.username ? msg.to : msg.from;
+        pmDispatch({
+          type: 'ADD_PM_REACTION',
+          username: pmUser,
+          msg_id: msg.msg_id,
+          emoji: msg.emoji,
+          reactor: msg.reactor,
+          reactor_id: msg.reactor_id,
+        });
+        break;
+      }
+
+      case 'pm_reaction_removed': {
+        const pmUser = msg.from === user?.username ? msg.to : msg.from;
+        pmDispatch({
+          type: 'REMOVE_PM_REACTION',
+          username: pmUser,
+          msg_id: msg.msg_id,
+          emoji: msg.emoji,
+          reactor: msg.reactor,
+        });
         break;
       }
 
