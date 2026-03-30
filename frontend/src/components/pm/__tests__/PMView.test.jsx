@@ -1,10 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PMView from '../PMView';
-import * as fileApi from '../../../services/fileApi';
 
-// Mock fileApi used by MessageList and PMView file upload
+// Mock fileApi used by MessageList
 vi.mock('../../../services/fileApi');
 
 // Mock useAuth so MessageList (rendered by PMView) can access user context
@@ -115,46 +114,10 @@ describe('PMView', () => {
     // The message should be rendered via MessageList
     expect(container.querySelector('.message-list')).toBeInTheDocument();
   });
-});
 
-describe('file attachment', () => {
-  it('renders a file attachment button (data-testid="pm-attach-btn")', () => {
-    render(<PMView username="bob" messages={[]} currentUser="alice" onSend={vi.fn()} pmDispatch={vi.fn()} />);
-    expect(screen.getByTestId('pm-attach-btn')).toBeInTheDocument();
-  });
-
-  it('dispatches ADD_PM_MESSAGE after successful file upload', async () => {
-    vi.mocked(fileApi.uploadPMFile).mockResolvedValue({
-      data: { id: 5, originalName: 'photo.png', fileSize: 1234 }
-    });
-    const mockDispatch = vi.fn();
-
-    render(
-      <PMView username="bob" messages={[]} currentUser="alice"
-               onSend={vi.fn()} pmDispatch={mockDispatch} />
-    );
-
-    const file = new File(['content'], 'photo.png', { type: 'image/png' });
-    const input = screen.getByTestId('pm-file-input');
-    await userEvent.upload(input, file);
-
-    await waitFor(() => {
-      expect(mockDispatch).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'ADD_PM_MESSAGE', username: 'bob' })
-      );
-    });
-  });
-
-  it('shows an error message if upload fails', async () => {
-    vi.mocked(fileApi.uploadPMFile).mockRejectedValue(new Error('Network error'));
-    render(<PMView username="bob" messages={[]} currentUser="alice" onSend={vi.fn()} pmDispatch={vi.fn()} />);
-
-    const file = new File(['x'], 'bad.png', { type: 'image/png' });
-    const input = screen.getByTestId('pm-file-input');
-    await userEvent.upload(input, file);
-
-    await waitFor(() => {
-      expect(screen.getByText(/failed|error/i)).toBeInTheDocument();
-    });
+  it('does not render a file input or attach button (file upload moved to MessageInput)', () => {
+    render(<PMView username="alice" messages={[]} />);
+    expect(document.querySelector('input[type="file"]')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('pm-attach-btn')).not.toBeInTheDocument();
   });
 });

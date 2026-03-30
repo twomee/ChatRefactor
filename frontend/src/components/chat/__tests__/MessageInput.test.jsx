@@ -96,10 +96,10 @@ describe('MessageInput', () => {
   });
 
   describe('isPM mode', () => {
-    it('hides file attachment input and button when isPM is true', () => {
+    it('shows file attachment input and button when isPM is true', () => {
       render(<MessageInput onSend={vi.fn()} roomName="alice" isPM />);
-      expect(document.querySelector('input[type="file"]')).not.toBeInTheDocument();
-      expect(screen.queryByTitle('Attach file')).not.toBeInTheDocument();
+      expect(document.querySelector('input[type="file"]')).toBeInTheDocument();
+      expect(screen.getByTitle('Attach file')).toBeInTheDocument();
     });
 
     it('uses PM placeholder when isPM is true', () => {
@@ -107,10 +107,37 @@ describe('MessageInput', () => {
       expect(screen.getByPlaceholderText('Message alice…')).toBeInTheDocument();
     });
 
-    it('shows file attachment button by default (isPM=false)', () => {
+    it('shows file attachment button in room mode (isPM=false)', () => {
       render(<MessageInput onSend={vi.fn()} roomName="general" roomId="r1" />);
       expect(document.querySelector('input[type="file"]')).toBeInTheDocument();
       expect(screen.getByTitle('Attach file')).toBeInTheDocument();
+    });
+
+    it('calls uploadPMFile (not uploadFile) when isPM is true', async () => {
+      fileApi.uploadPMFile.mockResolvedValue({});
+      const user = userEvent.setup();
+      render(<MessageInput onSend={vi.fn()} roomName="alice" isPM />);
+
+      const file = new File(['hello'], 'hello.txt', { type: 'text/plain' });
+      const fileInput = document.querySelector('input[type="file"]');
+      await user.upload(fileInput, file);
+
+      await waitFor(() =>
+        expect(fileApi.uploadPMFile).toHaveBeenCalledWith('alice', file, expect.any(Function))
+      );
+      expect(fileApi.uploadFile).not.toHaveBeenCalled();
+    });
+
+    it('shows upload error when uploadPMFile rejects in PM mode', async () => {
+      fileApi.uploadPMFile.mockRejectedValue({ response: { data: { error: 'PM upload failed' } } });
+      const user = userEvent.setup();
+      render(<MessageInput onSend={vi.fn()} roomName="alice" isPM />);
+
+      const file = new File(['x'], 'bad.txt', { type: 'text/plain' });
+      const fileInput = document.querySelector('input[type="file"]');
+      await user.upload(fileInput, file);
+
+      await waitFor(() => expect(screen.getByText('PM upload failed')).toBeInTheDocument());
     });
   });
 });

@@ -7,7 +7,7 @@ import { usePM } from '../context/PMContext';
 import { useChatConnection } from '../layouts/ChatConnectionLayer';
 import * as pmApi from '../services/pmApi';
 import * as authApi from '../services/authApi';
-import { getPMThreadList } from '../utils/storage';
+import { getPMThreadList, addPMThread } from '../utils/storage';
 import * as messageApi from '../services/messageApi';
 import Logo from '../components/common/Logo';
 import RoomList from '../components/room/RoomList';
@@ -138,6 +138,9 @@ export default function ChatPage() {
     pmDispatch({ type: 'SET_ACTIVE_PM', username });
     pmDispatch({ type: 'CLEAR_PM_UNREAD', username });
     dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
+    // Persist the thread immediately so it survives a refresh, even if no
+    // message is sent this session.
+    addPMThread(user?.username, username);
 
     // Lazy-load history on first open — skip if already loaded this session
     if (!pmState.loadedThreads[username]) {
@@ -210,6 +213,8 @@ export default function ChatPage() {
         username: pmState.activePM,
         message: { from: user.username, text, isSelf: true, to: pmState.activePM, msg_id: res.data?.msg_id },
       });
+      // Ensure thread survives a refresh — don't rely solely on the WS echo
+      addPMThread(user?.username, pmState.activePM);
     } catch (e) {
       globalThis.alert(e.response?.data?.detail || 'Could not send message');
     }
@@ -549,7 +554,6 @@ export default function ChatPage() {
                   onRemoveReaction={handlePMRemoveReaction}
                   onClearHistory={handleClearPMHistory}
                   highlightMessageId={pmHighlightMessageId}
-                  pmDispatch={pmDispatch}
                 />
               )}
               {!showRoom && !showPM && (
