@@ -45,8 +45,8 @@ class TestSearchEndpoint:
         assert len(data) == 1
         assert data[0]["content"] == "Hello world from alice"
 
-    def test_search_requires_room_id(self, client, auth_headers, db):
-        """room_id is now required — omitting it must return 422."""
+    def test_search_without_room_id_searches_all_rooms(self, client, auth_headers, db):
+        """room_id is optional — omitting it searches across all rooms."""
         db.add(Message(
             message_id="no-room-id-test",
             sender_id=1,
@@ -60,7 +60,10 @@ class TestSearchEndpoint:
 
         response = client.get("/messages/search?q=hello", headers=auth_headers)
 
-        assert response.status_code == 422
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) >= 1
+        assert data[0]["content"] == "hello message"
 
     def test_search_scoped_to_room(self, client, auth_headers, db):
         """Should only return messages from the requested room, not all rooms."""
