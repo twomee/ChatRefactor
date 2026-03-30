@@ -55,6 +55,9 @@ export const config = {
     10
   ),
 
+  // Downstream service URLs
+  authServiceUrl: requireEnv("AUTH_SERVICE_URL", "http://auth-service:8001"),
+
   // Allowed file extensions for upload.
   // SECURITY: Only safe document/media/archive types — no executable or
   // scriptable extensions (.py, .js, .html, .bin, etc.) to prevent XSS
