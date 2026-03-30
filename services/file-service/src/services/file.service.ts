@@ -250,7 +250,7 @@ export async function listRoomFiles(roomId: number): Promise<FileMetadataRespons
     fileSize: f.fileSize,
     senderId: f.senderId,
     senderName: f.senderName ?? `User #${f.senderId}`,
-    roomId: f.roomId,
+    roomId: f.roomId ?? roomId, // roomId is always set here (WHERE clause), but narrowed to number for the response type
     uploadedAt: f.uploadedAt.toISOString(),
   }));
 }
