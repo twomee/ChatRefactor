@@ -117,12 +117,18 @@ CREATE TABLE IF NOT EXISTS files (
     file_size INTEGER NOT NULL,
     sender_id INTEGER NOT NULL,
     sender_name VARCHAR(64),
-    room_id INTEGER NOT NULL,
+    room_id INTEGER,
     uploaded_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
--- Idempotent column addition for existing databases.
+-- Idempotent column additions for existing databases.
 ALTER TABLE files ADD COLUMN IF NOT EXISTS sender_name VARCHAR(64);
+-- PM file support: room_id is nullable (PM uploads have no room), recipient_id
+-- identifies the target user, is_private distinguishes PM files from room files.
+ALTER TABLE files ALTER COLUMN room_id DROP NOT NULL;
+ALTER TABLE files ADD COLUMN IF NOT EXISTS recipient_id INTEGER;
+ALTER TABLE files ADD COLUMN IF NOT EXISTS is_private BOOLEAN NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS idx_files_room_id ON files(room_id);
+CREATE INDEX IF NOT EXISTS files_recipient_id_idx ON files(recipient_id);
 EOSQL
 
 echo "=== All database migrations complete ==="

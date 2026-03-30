@@ -161,7 +161,26 @@ class MessagePersistenceConsumer:
                 else:
                     self._persist_room_message(db, value)
             elif topic == TOPIC_PRIVATE:
-                await self._persist_private_message(db, value)
+                msg_type = value.get("type", "private_message")
+                if msg_type == "add_pm_reaction":
+                    # Normalize field names: PM reactions use reactor_id/reactor
+                    # instead of user_id/username used by room reactions.
+                    normalized = {
+                        "msg_id": value.get("msg_id"),
+                        "user_id": value.get("reactor_id"),
+                        "username": value.get("reactor"),
+                        "emoji": value.get("emoji"),
+                    }
+                    self._persist_add_reaction(db, normalized)
+                elif msg_type == "remove_pm_reaction":
+                    normalized = {
+                        "msg_id": value.get("msg_id"),
+                        "user_id": value.get("reactor_id"),
+                        "emoji": value.get("emoji"),
+                    }
+                    self._persist_remove_reaction(db, normalized)
+                else:
+                    await self._persist_private_message(db, value)
         finally:
             db.close()
 

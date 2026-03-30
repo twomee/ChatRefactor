@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -10,6 +11,16 @@ import (
 	"github.com/twomee/chatbox/chat-service/internal/middleware"
 	"github.com/twomee/chatbox/chat-service/internal/ws"
 )
+
+// lobbyOfflineGrace is how long to wait before broadcasting user_offline after
+// a lobby disconnect. During this window the old (dead) connection is still
+// present in the manager's lobbyConns map, so HasLobbyConnection returns true
+// and room handlers schedule their normal 10-second grace period rather than
+// broadcasting user_left immediately. If the user reconnects within this window
+// (e.g. page refresh) their new lobby connection is already registered by the
+// time DisconnectLobby fires, so no user_offline is ever broadcast and the
+// PM status indicator never flickers.
+const lobbyOfflineGrace = 5 * time.Second
 
 // LobbyHandler manages the lobby WebSocket endpoint used for PM delivery
 // and real-time room list updates.
@@ -76,6 +87,13 @@ func (h *LobbyHandler) HandleLobbyWS(c *gin.Context) {
 			break
 		}
 	}
+
+	// Grace period before broadcasting user_offline. During this window the old
+	// (now-dead) lobby connection remains in the manager so HasLobbyConnection
+	// still returns true. If the user reconnects (e.g. page refresh) their new
+	// lobby connection is registered before DisconnectLobby fires, preventing
+	// the spurious user_offline broadcast and the 1-second "Offline" flicker.
+	time.Sleep(lobbyOfflineGrace)
 
 	cleanup := h.manager.DisconnectLobby(conn)
 	_ = conn.Close()
