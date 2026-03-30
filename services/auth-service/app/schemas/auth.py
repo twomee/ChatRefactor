@@ -7,7 +7,7 @@ Room, File, and Message schemas belong to their respective services.
 import re
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ── Constants ─────────────────────────────────────────────────────────
 USERNAME_MIN_LENGTH = 3
@@ -101,3 +101,34 @@ class UserResponse(BaseModel):
     username: str
     is_global_admin: bool
     created_at: datetime
+
+
+# ── Two-Factor Authentication Schemas ────────────────────────────────────
+
+
+class Setup2FAResponse(BaseModel):
+    """Response when initiating 2FA setup — contains secret and URI for QR code."""
+
+    secret: str  # base32 secret for manual entry
+    otpauth_uri: str  # URI for QR code generation
+
+
+class Verify2FARequest(BaseModel):
+    """Request to verify a TOTP code (used for setup confirmation and disabling)."""
+
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+class Login2FARequiredResponse(BaseModel):
+    """Response when login succeeds but 2FA verification is still needed."""
+
+    requires_2fa: bool = True
+    temp_token: str  # short-lived token for the 2FA verification step
+    message: str = "2FA verification required"
+
+
+class VerifyLogin2FARequest(BaseModel):
+    """Request to complete login with a TOTP code after receiving a temp_token."""
+
+    temp_token: str
+    code: str = Field(..., min_length=6, max_length=6)

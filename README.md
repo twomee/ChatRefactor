@@ -148,13 +148,28 @@ Register additional accounts from the login page.
 
 ## Features
 
+### Core
 - **Multi-room chat** — Three default rooms (politics, sports, movies) + create custom rooms
 - **Real-time messaging** — Native WebSocket with Redis pub/sub relay for multi-worker support
-- **Private messages** — Direct messaging between users
+- **Private messages** — Direct messaging between users with online/offline presence indicators
 - **File sharing** — Upload and download files in rooms (up to 150 MB)
 - **Durable persistence** — Messages flow through Kafka for async database writes with DLQ support
 - **Room admin controls** — Kick, mute/unmute, promote users, auto admin succession
 - **Global admin panel** — Manage all rooms, users, and files from a dedicated dashboard
+
+### Phase 1 Features (v2)
+- **Message editing** — Edit your own sent messages; an "(edited)" badge is shown to all users in real time via WebSocket. Only the original sender can edit. Persisted in PostgreSQL with `edited_at` timestamp.
+- **Message deletion** — Soft-delete your own messages; the content is replaced with "[deleted]" for all users in real time. The original content is preserved in the database (`is_deleted` flag) for audit purposes.
+- **Emoji reactions** — React to any message with emojis using an integrated emoji picker (emoji-mart). Reactions are broadcast in real time and persisted in a `reactions` table with a unique constraint per user/emoji/message. Click an existing reaction to toggle it on/off.
+- **Typing indicators** — See who is currently typing in a room. Typing events are broadcast via WebSocket (excluded from the sender) and auto-clear after 3 seconds of inactivity.
+- **Read position tracking** — The server tracks each user's last-read message per room. On reconnect, the frontend receives the read position and renders a "New messages" divider. Positions are updated when the user sends a `mark_read` WebSocket command.
+- **Message search** — Full-text search across all messages using PostgreSQL `tsvector` with GIN indexing for relevance-ranked results. Accessible via the Search button (or Ctrl+K). Results show sender, room, timestamp, and highlighted matching terms. Supports optional `room_id` filtering.
+- **Link previews** — When a message contains a URL, the frontend fetches OpenGraph metadata (title, description, image) from the message-service's `/link-preview` endpoint and renders a compact preview card. Results are cached client-side for the session duration. The backend validates URLs against SSRF attacks (blocks private IPs, cloud metadata endpoints).
+- **Two-Factor Authentication (2FA)** — TOTP-based 2FA via the Settings panel. Users scan a QR code with Google Authenticator or Authy, then verify with a 6-digit code. TOTP secrets are encrypted at rest using AES-256-GCM (`TOTP_ENCRYPTION_KEY`). A manual entry key is available for apps that can't scan QR codes.
+- **Browser notifications** — Desktop notifications for @mentions. When another user mentions you with `@username`, a browser notification is sent (requires notification permission). Mention detection is case-insensitive.
+- **Online presence** — Lobby-based presence tracking. Each user maintains a lobby WebSocket connection independent of room connections. When the last lobby connection closes (full logout), `user_offline` is broadcast to all connected users. On login, `user_online` is broadcast. This decouples presence from room membership — a user can leave a room without appearing offline.
+
+### Infrastructure
 - **Graceful degradation** — Works without Kafka (sync fallback) and without Redis (local-only delivery)
 - **Health checks** — `/health` (liveness) and `/ready` (readiness) endpoints per service
 - **Rate limiting** — Per-IP rate limits with Redis-backed state in production
@@ -343,6 +358,7 @@ Copy `.env.example` to `.env` and customize. Key variables:
 | `POSTGRES_PASSWORD` | `chatbox_pass` | PostgreSQL password |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection |
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | Kafka broker address (host), `kafka:9092` (Docker) |
+| `TOTP_ENCRYPTION_KEY` | (generate) | AES-256-GCM key for encrypting 2FA TOTP secrets (`python3 -c "import secrets; print(secrets.token_hex(32))"`) |
 | `KONG_DATABASE` | `off` | Kong config mode (dbless) |
 
 Each service connects to its own database (`chatbox_auth`, `chatbox_chat`, `chatbox_messages`, `chatbox_files`) created automatically by the init script.

@@ -1,0 +1,10 @@
+title = "ChatRefactor Gitleaks Configuration"
+
+# Allowlist: commits that introduced test-only mock secrets.
+# These are not real credentials — they are mock TOTP base32 strings
+# used in unit tests for the 2FA feature.
+[allowlist]
+description = "Mock TOTP secrets in test fixtures are not real credentials"
+commits = [
+  "b611771c386f7a249bd15fb04e436bac1a91004b",
+]

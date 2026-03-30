@@ -3,13 +3,16 @@
 # Covers:
 #   - GET /messages/rooms/{id}?since=...&limit=... (replay endpoint)
 #   - GET /messages/rooms/{id}/history (history endpoint)
+#   - PATCH /messages/edit/{message_id} (edit endpoint)
+#   - DELETE /messages/delete/{message_id} (delete endpoint)
+#   - GET /messages/{message_id}/reactions (reactions endpoint)
 #   - Auth: valid token, invalid token, expired token, missing token
 #   - API input validation (negative room_id, limit exceeding max, limit zero)
 from datetime import datetime, timedelta
 
 import pytest
 
-from app.models import Message
+from app.models import Message, Reaction
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -251,3 +254,323 @@ class TestAPIInputValidation:
             headers=auth_headers,
         )
         assert response.status_code == 422
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Edit endpoint: PATCH /messages/edit/{message_id}
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestEditMessageEndpoint:
+    """Tests for PATCH /messages/edit/{message_id}."""
+
+    def test_edit_returns_200_for_own_message(self, client, auth_headers, db):
+        """Sender should be able to edit their own message."""
+        db.add(
+            Message(
+                message_id="edit-owned",
+                sender_id=1,
+                room_id=1,
+                content="Original content",
+                is_private=False,
+                sent_at=datetime(2025, 1, 1, 12, 0, 0),
+            )
+        )
+        db.commit()
+
+        response = client.patch(
+            "/messages/edit/edit-owned",
+            json={"content": "Updated content"},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"edited": True}
+
+    def test_edit_returns_404_for_nonexistent_message(self, client, auth_headers):
+        """Editing a message that does not exist should return 404."""
+        response = client.patch(
+            "/messages/edit/does-not-exist",
+            json={"content": "New content"},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
+    def test_edit_returns_404_for_message_owned_by_another_user(
+        self, client, auth_headers, db
+    ):
+        """Editing a message owned by a different user should return 404."""
+        # sender_id=99 — not the authenticated user (user_id=1)
+        db.add(
+            Message(
+                message_id="edit-other",
+                sender_id=99,
+                room_id=1,
+                content="Someone else's message",
+                is_private=False,
+                sent_at=datetime(2025, 1, 1, 12, 0, 0),
+            )
+        )
+        db.commit()
+
+        response = client.patch(
+            "/messages/edit/edit-other",
+            json={"content": "Attempted hijack"},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 404
+
+    def test_edit_returns_404_for_already_deleted_message(
+        self, client, auth_headers, db
+    ):
+        """Editing a soft-deleted message should return 404."""
+        db.add(
+            Message(
+                message_id="edit-deleted",
+                sender_id=1,
+                room_id=1,
+                content="[deleted]",
+                is_private=False,
+                is_deleted=True,
+                sent_at=datetime(2025, 1, 1, 12, 0, 0),
+            )
+        )
+        db.commit()
+
+        response = client.patch(
+            "/messages/edit/edit-deleted",
+            json={"content": "Try to restore"},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 404
+
+    def test_edit_requires_auth(self, client):
+        """Edit endpoint must require authentication."""
+        response = client.patch(
+            "/messages/edit/some-id",
+            json={"content": "content"},
+        )
+        assert response.status_code == 401
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Delete endpoint: DELETE /messages/delete/{message_id}
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestDeleteMessageEndpoint:
+    """Tests for DELETE /messages/delete/{message_id}."""
+
+    def test_delete_returns_200_for_own_message(self, client, auth_headers, db):
+        """Sender should be able to soft-delete their own message."""
+        db.add(
+            Message(
+                message_id="del-owned",
+                sender_id=1,
+                room_id=1,
+                content="Will be deleted",
+                is_private=False,
+                sent_at=datetime(2025, 1, 1, 12, 0, 0),
+            )
+        )
+        db.commit()
+
+        response = client.delete(
+            "/messages/delete/del-owned",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"deleted": True}
+
+    def test_delete_returns_404_for_nonexistent_message(self, client, auth_headers):
+        """Deleting a message that does not exist should return 404."""
+        response = client.delete(
+            "/messages/delete/no-such-message",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
+    def test_delete_returns_404_for_message_owned_by_another_user(
+        self, client, auth_headers, db
+    ):
+        """Deleting a message owned by a different user should return 404."""
+        db.add(
+            Message(
+                message_id="del-other",
+                sender_id=99,
+                room_id=1,
+                content="Someone else's message",
+                is_private=False,
+                sent_at=datetime(2025, 1, 1, 12, 0, 0),
+            )
+        )
+        db.commit()
+
+        response = client.delete(
+            "/messages/delete/del-other",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 404
+
+    def test_delete_returns_404_for_already_deleted_message(
+        self, client, auth_headers, db
+    ):
+        """Trying to delete an already-deleted message should return 404."""
+        db.add(
+            Message(
+                message_id="del-already",
+                sender_id=1,
+                room_id=1,
+                content="[deleted]",
+                is_private=False,
+                is_deleted=True,
+                sent_at=datetime(2025, 1, 1, 12, 0, 0),
+            )
+        )
+        db.commit()
+
+        response = client.delete(
+            "/messages/delete/del-already",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 404
+
+    def test_delete_requires_auth(self, client):
+        """Delete endpoint must require authentication."""
+        response = client.delete("/messages/delete/some-id")
+        assert response.status_code == 401
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Reactions endpoint: GET /messages/{message_id}/reactions
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestReactionsEndpoint:
+    """Tests for GET /messages/{message_id}/reactions."""
+
+    def test_returns_empty_list_for_message_with_no_reactions(
+        self, client, auth_headers, db
+    ):
+        """A message with no reactions should return an empty list."""
+        db.add(
+            Message(
+                message_id="react-msg-empty",
+                sender_id=1,
+                room_id=1,
+                content="No reactions here",
+                is_private=False,
+                sent_at=datetime(2025, 1, 1, 12, 0, 0),
+            )
+        )
+        db.commit()
+
+        response = client.get(
+            "/messages/react-msg-empty/reactions",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_returns_reactions_for_message(self, client, auth_headers, db):
+        """Should return all reactions attached to a message."""
+        db.add(
+            Message(
+                message_id="react-msg-1",
+                sender_id=1,
+                room_id=1,
+                content="React to this",
+                is_private=False,
+                sent_at=datetime(2025, 1, 1, 12, 0, 0),
+            )
+        )
+        db.add(
+            Reaction(
+                message_id="react-msg-1",
+                user_id=2,
+                username="bob",
+                emoji="👍",
+            )
+        )
+        db.add(
+            Reaction(
+                message_id="react-msg-1",
+                user_id=3,
+                username="carol",
+                emoji="❤️",
+            )
+        )
+        db.commit()
+
+        response = client.get(
+            "/messages/react-msg-1/reactions",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        emojis = {r["emoji"] for r in data}
+        assert "👍" in emojis
+        assert "❤️" in emojis
+
+    def test_reactions_response_shape(self, client, auth_headers, db):
+        """Each reaction in the response should have emoji, username, and user_id."""
+        db.add(
+            Message(
+                message_id="react-shape",
+                sender_id=1,
+                room_id=1,
+                content="Shape test",
+                is_private=False,
+                sent_at=datetime(2025, 1, 1, 12, 0, 0),
+            )
+        )
+        db.add(
+            Reaction(
+                message_id="react-shape",
+                user_id=5,
+                username="testuser",
+                emoji="🎉",
+            )
+        )
+        db.commit()
+
+        response = client.get(
+            "/messages/react-shape/reactions",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        reaction = data[0]
+        assert "emoji" in reaction
+        assert "username" in reaction
+        assert "user_id" in reaction
+
+    def test_reactions_requires_auth(self, client):
+        """Reactions endpoint must require authentication."""
+        response = client.get("/messages/some-message-id/reactions")
+        assert response.status_code == 401
+
+    def test_reactions_returns_empty_for_unknown_message(
+        self, client, auth_headers
+    ):
+        """Requesting reactions for a message that does not exist should return empty list."""
+        response = client.get(
+            "/messages/nonexistent-msg-id/reactions",
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert response.json() == []

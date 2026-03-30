@@ -10,6 +10,8 @@ const initialState = {
   onlineUsers: {},
   admins: {},
   mutedUsers: {},
+  typingUsers: {},
+  readPositions: {},
   knownOfflineUsers: new Set(),
 };
 
@@ -292,6 +294,230 @@ describe('chatReducer', () => {
       });
       expect(next.admins.r1).toEqual(['alice']);
       expect(next.mutedUsers.r1).toEqual([]);
+    });
+  });
+
+  describe('SET_READ_POSITION', () => {
+    it('sets read position for a room', () => {
+      const next = chatReducer(initialState, {
+        type: 'SET_READ_POSITION',
+        roomId: 'r1',
+        messageId: 'msg-123',
+      });
+      expect(next.readPositions.r1).toBe('msg-123');
+    });
+
+    it('updates existing read position for a room', () => {
+      const state = { ...initialState, readPositions: { r1: 'msg-100' } };
+      const next = chatReducer(state, {
+        type: 'SET_READ_POSITION',
+        roomId: 'r1',
+        messageId: 'msg-200',
+      });
+      expect(next.readPositions.r1).toBe('msg-200');
+    });
+
+    it('preserves other rooms read positions', () => {
+      const state = { ...initialState, readPositions: { r1: 'msg-100', r2: 'msg-50' } };
+      const next = chatReducer(state, {
+        type: 'SET_READ_POSITION',
+        roomId: 'r1',
+        messageId: 'msg-200',
+      });
+      expect(next.readPositions.r1).toBe('msg-200');
+      expect(next.readPositions.r2).toBe('msg-50');
+    });
+  });
+
+  describe('EXIT_ROOM cleans up readPositions', () => {
+    it('removes readPositions entry when exiting a room', () => {
+      const state = {
+        ...initialState,
+        joinedRooms: new Set(['r1', 'r2']),
+        messages: { r1: [], r2: [] },
+        onlineUsers: { r1: [], r2: [] },
+        admins: { r1: [], r2: [] },
+        mutedUsers: { r1: [], r2: [] },
+        unreadCounts: { r1: 0, r2: 0 },
+        readPositions: { r1: 'msg-100', r2: 'msg-50' },
+      };
+      const next = chatReducer(state, { type: 'EXIT_ROOM', roomId: 'r1' });
+      expect(next.readPositions.r1).toBeUndefined();
+      expect(next.readPositions.r2).toBe('msg-50');
+    });
+  });
+
+  // ── Phase 1: Typing indicators ────────────────────────────────────────────
+
+  describe('SET_TYPING', () => {
+    it('adds a typing user with a timestamp', () => {
+      const next = chatReducer(initialState, {
+        type: 'SET_TYPING', roomId: 'r1', username: 'alice', isTyping: true,
+      });
+      expect(next.typingUsers.r1).toHaveProperty('alice');
+    });
+
+    it('removes a typing user when isTyping is false', () => {
+      const state = {
+        ...initialState,
+        typingUsers: { r1: { alice: Date.now() } },
+      };
+      const next = chatReducer(state, {
+        type: 'SET_TYPING', roomId: 'r1', username: 'alice', isTyping: false,
+      });
+      expect(next.typingUsers.r1).not.toHaveProperty('alice');
+    });
+
+    it('preserves other typing users when removing one', () => {
+      const state = {
+        ...initialState,
+        typingUsers: { r1: { alice: Date.now(), bob: Date.now() } },
+      };
+      const next = chatReducer(state, {
+        type: 'SET_TYPING', roomId: 'r1', username: 'alice', isTyping: false,
+      });
+      expect(next.typingUsers.r1).toHaveProperty('bob');
+      expect(next.typingUsers.r1).not.toHaveProperty('alice');
+    });
+  });
+
+  // ── Phase 1: Edit / Delete messages ───────────────────────────────────────
+
+  describe('EDIT_MESSAGE', () => {
+    it('updates text and edited_at for the target message', () => {
+      const state = {
+        ...initialState,
+        messages: {
+          r1: [
+            { msg_id: 'msg1', text: 'original', from: 'alice' },
+            { msg_id: 'msg2', text: 'other', from: 'bob' },
+          ],
+        },
+      };
+      const next = chatReducer(state, {
+        type: 'EDIT_MESSAGE', roomId: 'r1', msgId: 'msg1', text: 'edited', edited_at: '2024-01-01T00:00:00Z',
+      });
+      expect(next.messages.r1[0].text).toBe('edited');
+      expect(next.messages.r1[0].edited_at).toBe('2024-01-01T00:00:00Z');
+      // Other messages unchanged
+      expect(next.messages.r1[1].text).toBe('other');
+    });
+
+    it('returns same state when room has no messages', () => {
+      const next = chatReducer(initialState, {
+        type: 'EDIT_MESSAGE', roomId: 'r1', msgId: 'msg1', text: 'edited',
+      });
+      expect(next).toBe(initialState);
+    });
+  });
+
+  describe('DELETE_MESSAGE', () => {
+    it('marks the target message as deleted and sets text to [deleted]', () => {
+      const state = {
+        ...initialState,
+        messages: {
+          r1: [{ msg_id: 'msg1', text: 'hello', from: 'alice' }],
+        },
+      };
+      const next = chatReducer(state, {
+        type: 'DELETE_MESSAGE', roomId: 'r1', msgId: 'msg1',
+      });
+      expect(next.messages.r1[0].is_deleted).toBe(true);
+      expect(next.messages.r1[0].text).toBe('[deleted]');
+    });
+
+    it('returns same state when room has no messages', () => {
+      const next = chatReducer(initialState, {
+        type: 'DELETE_MESSAGE', roomId: 'r1', msgId: 'msg1',
+      });
+      expect(next).toBe(initialState);
+    });
+  });
+
+  // ── Phase 1: Emoji Reactions ──────────────────────────────────────────────
+
+  describe('ADD_REACTION', () => {
+    it('appends a reaction to the target message', () => {
+      const state = {
+        ...initialState,
+        messages: {
+          r1: [{ msg_id: 'msg1', text: 'hi', reactions: [] }],
+        },
+      };
+      const next = chatReducer(state, {
+        type: 'ADD_REACTION', roomId: 'r1', msgId: 'msg1',
+        emoji: '👍', username: 'alice', userId: 1,
+      });
+      expect(next.messages.r1[0].reactions).toHaveLength(1);
+      expect(next.messages.r1[0].reactions[0]).toMatchObject({
+        emoji: '👍', username: 'alice', user_id: 1,
+      });
+    });
+
+    it('creates a reactions array when message has no reactions yet', () => {
+      const state = {
+        ...initialState,
+        messages: { r1: [{ msg_id: 'msg1', text: 'hi' }] },
+      };
+      const next = chatReducer(state, {
+        type: 'ADD_REACTION', roomId: 'r1', msgId: 'msg1',
+        emoji: '❤️', username: 'bob', userId: 2,
+      });
+      expect(next.messages.r1[0].reactions).toHaveLength(1);
+      expect(next.messages.r1[0].reactions[0].emoji).toBe('❤️');
+    });
+
+    it('does not modify other messages', () => {
+      const state = {
+        ...initialState,
+        messages: {
+          r1: [
+            { msg_id: 'msg1', text: 'hi', reactions: [] },
+            { msg_id: 'msg2', text: 'hey', reactions: [] },
+          ],
+        },
+      };
+      const next = chatReducer(state, {
+        type: 'ADD_REACTION', roomId: 'r1', msgId: 'msg1',
+        emoji: '👍', username: 'alice', userId: 1,
+      });
+      expect(next.messages.r1[1].reactions).toHaveLength(0);
+    });
+  });
+
+  describe('REMOVE_REACTION', () => {
+    it('removes the matching reaction from the target message', () => {
+      const state = {
+        ...initialState,
+        messages: {
+          r1: [{
+            msg_id: 'msg1',
+            text: 'hi',
+            reactions: [
+              { emoji: '👍', username: 'alice', user_id: 1 },
+              { emoji: '❤️', username: 'bob', user_id: 2 },
+            ],
+          }],
+        },
+      };
+      const next = chatReducer(state, {
+        type: 'REMOVE_REACTION', roomId: 'r1', msgId: 'msg1',
+        emoji: '👍', username: 'alice',
+      });
+      expect(next.messages.r1[0].reactions).toHaveLength(1);
+      expect(next.messages.r1[0].reactions[0].emoji).toBe('❤️');
+    });
+
+    it('handles message with no reactions gracefully', () => {
+      const state = {
+        ...initialState,
+        messages: { r1: [{ msg_id: 'msg1', text: 'hi' }] },
+      };
+      const next = chatReducer(state, {
+        type: 'REMOVE_REACTION', roomId: 'r1', msgId: 'msg1',
+        emoji: '👍', username: 'alice',
+      });
+      expect(next.messages.r1[0].reactions).toHaveLength(0);
     });
   });
 

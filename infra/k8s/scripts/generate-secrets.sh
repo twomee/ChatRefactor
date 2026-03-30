@@ -37,6 +37,7 @@ kubectl create secret generic chatbox-infra-secrets \
 kubectl create secret generic auth-service-secrets \
   --namespace chatbox \
   --from-literal=DATABASE_URL="postgresql://chatbox:${POSTGRES_PASSWORD}@${PG_HOST}:5432/chatbox_auth" \
+  --from-literal=TOTP_ENCRYPTION_KEY="${TOTP_ENCRYPTION_KEY:?TOTP_ENCRYPTION_KEY is required in secrets.env}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 kubectl create secret generic chat-service-secrets \

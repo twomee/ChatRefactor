@@ -33,6 +33,32 @@ def create(
     return user
 
 
+def update_2fa_secret(db: Session, user_id: int, totp_secret: str | None) -> None:
+    """Set or clear the TOTP secret for a user (setup phase, not yet enabled)."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        user.totp_secret = totp_secret
+        db.commit()
+
+
+def enable_2fa(db: Session, user_id: int) -> None:
+    """Mark 2FA as enabled after the user has verified their TOTP setup."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        user.is_2fa_enabled = True
+        db.commit()
+
+
+def disable_2fa(db: Session, user_id: int) -> None:
+    """Disable 2FA and clear the TOTP secret and backup codes."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        user.is_2fa_enabled = False
+        user.totp_secret = None
+        user.backup_codes = None
+        db.commit()
+
+
 def delete_all(db: Session):
     """Delete all users. Used only in tests."""
     db.query(User).delete()

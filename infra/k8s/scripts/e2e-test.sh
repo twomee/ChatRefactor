@@ -265,19 +265,22 @@ import asyncio, sys
 
 async def test_ws():
     try:
-        import websockets
-        uri = "ws://localhost:30080/ws/$ROOM_ID?token=$TOKEN1"
-        async with websockets.connect(uri, ping_interval=None, open_timeout=10) as ws:
-            # Send a chat message
-            import json, time
-            msg = json.dumps({"type": "message", "content": "hello from e2e test", "timestamp": time.time()})
-            await ws.send(msg)
-            # Wait briefly for echo/broadcast
-            try:
-                response = await asyncio.wait_for(ws.recv(), timeout=5)
-                return f"CONNECTED:RECEIVED:{response[:100]}"
-            except asyncio.TimeoutError:
-                return "CONNECTED:NO_ECHO"
+        import websockets, json, time
+        # Must connect to lobby first (PR #107: room WS rejects without lobby)
+        lobby_uri = "ws://localhost:30080/ws/lobby?token=$TOKEN1"
+        async with websockets.connect(lobby_uri, ping_interval=None, open_timeout=10) as lobby:
+            # Now connect to room
+            uri = "ws://localhost:30080/ws/$ROOM_ID?token=$TOKEN1"
+            async with websockets.connect(uri, ping_interval=None, open_timeout=10) as ws:
+                # Send a chat message
+                msg = json.dumps({"type": "message", "content": "hello from e2e test", "timestamp": time.time()})
+                await ws.send(msg)
+                # Wait briefly for echo/broadcast
+                try:
+                    response = await asyncio.wait_for(ws.recv(), timeout=5)
+                    return f"CONNECTED:RECEIVED:{response[:100]}"
+                except asyncio.TimeoutError:
+                    return "CONNECTED:NO_ECHO"
     except ImportError:
         return "SKIP:websockets not installed"
     except Exception as e:

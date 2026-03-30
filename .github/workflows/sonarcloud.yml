@@ -10,6 +10,9 @@ concurrency:
   group: sonarcloud-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   sonarcloud:
     name: SonarCloud Scan
@@ -37,8 +40,20 @@ jobs:
         working-directory: frontend
         run: npm run test -- --coverage --reporter=default
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate auth-service coverage report
+        working-directory: services/auth-service
+        run: pip install -r requirements.txt && python3 -m pytest --cov=app --cov-report=xml:coverage.xml -q
+
+      - name: Generate message-service coverage report
+        working-directory: services/message-service
+        run: pip install -r requirements.txt && python3 -m pytest --cov=app --cov-report=xml:coverage.xml -q
+
       - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-

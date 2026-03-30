@@ -16,6 +16,11 @@ auth_logouts_total = Counter(
     "Total logout operations",
     ["status"],  # success, error
 )
+auth_2fa_operations_total = Counter(
+    "auth_2fa_operations_total",
+    "Total 2FA operations",
+    ["operation", "status"],  # operation: setup, verify_setup, disable, verify_login
+)
 
 # Kafka producer metrics
 kafka_events_produced_total = Counter(

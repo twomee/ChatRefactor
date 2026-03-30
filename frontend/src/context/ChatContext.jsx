@@ -12,6 +12,8 @@ const initialState = {
   onlineUsers: {},     // { roomId: [username] }
   admins: {},          // { roomId: [username] }
   mutedUsers: {},      // { roomId: [username] }
+  typingUsers: {},     // { roomId: { username: timestamp } } — ephemeral typing indicators
+  readPositions: {},   // { roomId: messageId } — per-user last-read message ID from server
   knownOfflineUsers: new Set(), // Set<username> — users we've positively seen go offline
 };
 
@@ -135,10 +137,14 @@ export function chatReducer(state, action) {
       const { [action.roomId]: _a, ...admins } = state.admins;
       const { [action.roomId]: _mu, ...mutedUsers } = state.mutedUsers;
       const { [action.roomId]: _un, ...unreadCounts } = state.unreadCounts;
+      const typingUsers = { ...state.typingUsers };
+      delete typingUsers[action.roomId];
+      const readPositions = { ...state.readPositions };
+      delete readPositions[action.roomId];
       // If we've left all rooms we can no longer track anyone's presence — clear
       // stale offline entries so PMs don't show false-positive "Offline" banners.
       const knownOfflineUsers = next.size === 0 ? new Set() : state.knownOfflineUsers;
-      return { ...state, joinedRooms: next, messages, onlineUsers, admins, mutedUsers, unreadCounts, knownOfflineUsers };
+      return { ...state, joinedRooms: next, messages, onlineUsers, admins, mutedUsers, unreadCounts, typingUsers, readPositions, knownOfflineUsers };
     }
 
     case 'INCREMENT_UNREAD': {
@@ -155,6 +161,98 @@ export function chatReducer(state, action) {
         ...state,
         unreadCounts: { ...state.unreadCounts, [action.roomId]: 0 },
       };
+
+    case 'SET_READ_POSITION': {
+      return {
+        ...state,
+        readPositions: { ...state.readPositions, [action.roomId]: action.messageId },
+      };
+    }
+
+    case 'SET_TYPING': {
+      const { roomId, username, isTyping } = action;
+      const current = state.typingUsers?.[roomId] || {};
+      const updated = { ...current };
+      if (isTyping) {
+        updated[username] = Date.now();
+      } else {
+        delete updated[username];
+      }
+      return {
+        ...state,
+        typingUsers: { ...state.typingUsers, [roomId]: updated },
+      };
+    }
+
+    case 'EDIT_MESSAGE': {
+      const roomMsgs = state.messages[action.roomId];
+      if (!roomMsgs) return state;
+      const updated = roomMsgs.map(m =>
+        m.msg_id === action.msgId
+          ? { ...m, text: action.text, edited_at: action.edited_at }
+          : m
+      );
+      return {
+        ...state,
+        messages: { ...state.messages, [action.roomId]: updated },
+      };
+    }
+
+    case 'DELETE_MESSAGE': {
+      const roomMsgs = state.messages[action.roomId];
+      if (!roomMsgs) return state;
+      const updated = roomMsgs.map(m =>
+        m.msg_id === action.msgId
+          ? { ...m, text: '[deleted]', is_deleted: true }
+          : m
+      );
+      return {
+        ...state,
+        messages: { ...state.messages, [action.roomId]: updated },
+      };
+    }
+
+    // ── Emoji Reactions ──────────────────────────────────────────────────────
+    case 'ADD_REACTION': {
+      const roomMsgs = state.messages[action.roomId] || [];
+      return {
+        ...state,
+        messages: {
+          ...state.messages,
+          [action.roomId]: roomMsgs.map(msg =>
+            msg.msg_id === action.msgId
+              ? {
+                  ...msg,
+                  reactions: [
+                    ...(msg.reactions || []),
+                    { emoji: action.emoji, username: action.username, user_id: action.userId },
+                  ],
+                }
+              : msg
+          ),
+        },
+      };
+    }
+
+    case 'REMOVE_REACTION': {
+      const roomMsgs = state.messages[action.roomId] || [];
+      return {
+        ...state,
+        messages: {
+          ...state.messages,
+          [action.roomId]: roomMsgs.map(msg =>
+            msg.msg_id === action.msgId
+              ? {
+                  ...msg,
+                  reactions: (msg.reactions || []).filter(
+                    r => !(r.emoji === action.emoji && r.username === action.username)
+                  ),
+                }
+              : msg
+          ),
+        },
+      };
+    }
 
     // ── Lobby-level presence (independent of room membership) ──────────
     case 'USER_ONLINE': {

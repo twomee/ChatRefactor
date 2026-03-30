@@ -91,6 +91,18 @@ func (h *WSHandler) readLoop(conn *websocket.Conn, roomID, userID int, username 
 			h.handlePromote(ctx, conn, roomID, userID, username, incoming.Target)
 		case "private_message":
 			h.handlePrivateMessage(ctx, conn, roomID, userID, username, incoming.To, incoming.Text)
+		case "typing":
+			h.handleTyping(conn, roomID, username)
+		case "edit_message":
+			h.handleEditMessage(conn, roomID, userID, username, incoming)
+		case "delete_message":
+			h.handleDeleteMessage(conn, roomID, userID, username, incoming)
+		case "add_reaction":
+			h.handleAddReaction(ctx, conn, roomID, userID, username, incoming)
+		case "remove_reaction":
+			h.handleRemoveReaction(ctx, conn, roomID, userID, username, incoming)
+		case "mark_read":
+			h.handleMarkRead(ctx, conn, roomID, userID, incoming.MessageID)
 		case "leave":
 			h.handleLeave(ctx, conn, roomID, userID, username)
 			return // exit readLoop — connection is being closed
@@ -130,12 +142,14 @@ func (h *WSHandler) handleMessage(ctx context.Context, conn *websocket.Conn, roo
 	now := time.Now().UTC()
 
 	broadcast := map[string]interface{}{
-		"type":      "message",
-		"from":      username,
-		"text":      text,
-		"room_id":   roomID,
-		"msg_id":    msgID,
-		"timestamp": now.Format(time.RFC3339),
+		"type":         "message",
+		"from":         username,
+		"text":         text,
+		"room_id":      roomID,
+		"msg_id":       msgID,
+		"timestamp":    now.Format(time.RFC3339),
+		"mentions":     parseMentions(text),
+		"mention_room": isRoomMention(text),
 	}
 	h.manager.BroadcastRoom(roomID, broadcast)
 
@@ -154,5 +168,42 @@ func (h *WSHandler) handleMessage(ctx context.Context, conn *websocket.Conn, roo
 	payload, _ := json.Marshal(kafkaMsg)
 	if err := h.delivery.DeliverChat(ctx, roomID, payload); err != nil {
 		h.logger.Warn("kafka_chat_deliver_failed", zap.Error(err))
+	}
+}
+
+// handleTyping broadcasts a typing indicator to all other connections in the
+// room. Typing events are ephemeral — they are NOT persisted to Kafka or the
+// database. The frontend auto-clears stale indicators after a short timeout.
+func (h *WSHandler) handleTyping(conn *websocket.Conn, roomID int, username string) {
+	typingPayload := map[string]interface{}{
+		"type":     "typing",
+		"room_id":  roomID,
+		"username": username,
+	}
+	h.manager.BroadcastRoomExcept(roomID, conn, typingPayload)
+}
+
+// handleMarkRead persists the user's last-read message position in a room.
+// Read positions are per-user and are NOT broadcast to other users.
+func (h *WSHandler) handleMarkRead(ctx context.Context, conn *websocket.Conn, roomID, userID int, messageID string) {
+	messageID = strings.TrimSpace(messageID)
+	if messageID == "" {
+		h.sendError(conn, "msg_id is required for mark_read")
+		return
+	}
+
+	if _, err := uuid.Parse(messageID); err != nil {
+		h.sendError(conn, "msg_id must be a valid UUID")
+		return
+	}
+
+	if h.readPositionStore == nil {
+		// Gracefully degrade if read-position store is not configured (e.g. no DB).
+		return
+	}
+
+	if err := h.readPositionStore.Upsert(ctx, userID, roomID, messageID); err != nil {
+		h.logger.Warn("mark_read_failed", zap.Int("user_id", userID), zap.Int("room_id", roomID), zap.Error(err))
+		// Don't send error to client — mark_read is best-effort.
 	}
 }

@@ -3,11 +3,12 @@
 # Covers:
 #   - setup_logging configures structlog (dev vs prod renderer)
 #   - get_logger returns a bound structlog logger
+#   - _redact_sensitive_data processor: redacts sensitive keys, Bearer tokens
 from unittest.mock import patch
 
 import structlog
 
-from app.core.logging import get_logger, setup_logging
+from app.core.logging import _redact_sensitive_data, get_logger, setup_logging
 
 
 class TestSetupLogging:
@@ -36,6 +37,61 @@ class TestSetupLogging:
         for env in ("dev", "prod", "staging", "test"):
             with patch("app.core.logging.APP_ENV", env):
                 setup_logging()  # Should not raise
+
+
+class TestRedactSensitiveData:
+    """Tests for the _redact_sensitive_data structlog processor (lines 17-25)."""
+
+    def test_redacts_password_key(self):
+        """Values under 'password' key must be replaced with '[REDACTED]'."""
+        event_dict = {"event": "user_login", "password": "super-secret"}
+        result = _redact_sensitive_data(None, None, event_dict)
+        assert result["password"] == "[REDACTED]"
+
+    def test_redacts_token_key(self):
+        """Values under 'token' key must be replaced with '[REDACTED]'."""
+        event_dict = {"event": "auth", "token": "abc123"}
+        result = _redact_sensitive_data(None, None, event_dict)
+        assert result["token"] == "[REDACTED]"
+
+    def test_redacts_secret_key(self):
+        """Values under 'secret' key must be replaced with '[REDACTED]'."""
+        event_dict = {"event": "config", "secret": "my-api-key"}
+        result = _redact_sensitive_data(None, None, event_dict)
+        assert result["secret"] == "[REDACTED]"
+
+    def test_redacts_authorization_key(self):
+        """Values under 'authorization' key must be replaced with '[REDACTED]'."""
+        event_dict = {"event": "request", "authorization": "Bearer token123"}
+        result = _redact_sensitive_data(None, None, event_dict)
+        assert result["authorization"] == "[REDACTED]"
+
+    def test_redacts_bearer_token_in_string_values(self):
+        """String values containing 'Bearer <token>' must have the token replaced."""
+        event_dict = {"event": "request", "header": "Bearer my-secret-token-value"}
+        result = _redact_sensitive_data(None, None, event_dict)
+        assert "my-secret-token-value" not in result["header"]
+        assert "Bearer" in result["header"]
+        assert "[REDACTED]" in result["header"]
+
+    def test_preserves_non_sensitive_keys(self):
+        """Non-sensitive keys must pass through unchanged."""
+        event_dict = {"event": "info", "user_id": 42, "room": "general"}
+        result = _redact_sensitive_data(None, None, event_dict)
+        assert result["user_id"] == 42
+        assert result["room"] == "general"
+
+    def test_does_not_modify_non_bearer_string_values(self):
+        """String values without Bearer tokens must pass through unchanged."""
+        event_dict = {"event": "search", "query": "hello world"}
+        result = _redact_sensitive_data(None, None, event_dict)
+        assert result["query"] == "hello world"
+
+    def test_handles_empty_event_dict(self):
+        """Should not raise when event_dict has only the event key."""
+        event_dict = {"event": "noop"}
+        result = _redact_sensitive_data(None, None, event_dict)
+        assert result["event"] == "noop"
 
 
 class TestGetLogger:

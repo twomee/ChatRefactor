@@ -1,0 +1,11 @@
+version: 2
+
+# Suppress false positives from test fixtures.
+# Test directories contain intentionally fake/mock credentials used in unit
+# tests — they are never real secrets.  Using paths-ignore avoids embedding
+# the mock secret strings in this config file (which would itself be flagged).
+paths-ignore:
+  - "**/__tests__/**"
+  - "**/tests/**"
+  - "**/*.test.*"
+  - "**/*.spec.*"

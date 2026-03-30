@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { WS_BASE } from '../config/constants';
 import { listRooms, getMessagesSince } from '../services/roomApi';
 import { getJoinedRooms, addJoinedRoom, removeJoinedRoom } from '../utils/storage';
+import { requestNotificationPermission, sendBrowserNotification } from '../utils/notifications';
 
 // ── Exponential backoff helper ──────────────────────────────────────────────
 const BACKOFF_BASE_MS = 1000;
@@ -69,7 +70,7 @@ export function useMultiRoomChat() {
           dispatch({
             type: 'ADD_MESSAGE',
             roomId: m.room_id,
-            message: { from: m.sender, text: m.content },
+            message: { from: m.sender, text: m.content, msg_id: m.message_id },
           });
         }
       }
@@ -113,11 +114,20 @@ export function useMultiRoomChat() {
           }
           seenMsgIdsRef.current.add(msg.msg_id);
         }
-        dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { from: msg.from, text: msg.text } });
+        dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { from: msg.from, text: msg.text, msg_id: msg.msg_id } });
         if (msg.room_id !== activeRoomIdRef.current) {
           dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
         }
         trackTimestamp(msg.room_id);
+
+        // Send browser notification when the current user is @mentioned.
+        const currentUsername = user?.username;
+        if (currentUsername && (msg.mentions?.includes(currentUsername.toLowerCase()) || msg.mention_room)) {
+          sendBrowserNotification(
+            `@${msg.from} mentioned you`,
+            msg.text.substring(0, 100)
+          );
+        }
         break;
       }
 
@@ -151,6 +161,24 @@ export function useMultiRoomChat() {
           dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
         }
         trackTimestamp(msg.room_id);
+        break;
+
+      case 'message_edited':
+        dispatch({
+          type: 'EDIT_MESSAGE',
+          roomId: msg.room_id,
+          msgId: msg.msg_id,
+          text: msg.text,
+          edited_at: msg.edited_at,
+        });
+        break;
+
+      case 'message_deleted':
+        dispatch({
+          type: 'DELETE_MESSAGE',
+          roomId: msg.room_id,
+          msgId: msg.msg_id,
+        });
         break;
 
       case 'kicked': {
@@ -206,6 +234,54 @@ export function useMultiRoomChat() {
         break;
       }
 
+      case 'typing':
+        dispatch({
+          type: 'SET_TYPING',
+          roomId: msg.room_id,
+          username: msg.username,
+          isTyping: true,
+        });
+        // Auto-clear after 3 seconds — if the sender stops typing (or
+        // disconnects) we don't want a stale indicator lingering.
+        setTimeout(() => {
+          dispatch({
+            type: 'SET_TYPING',
+            roomId: msg.room_id,
+            username: msg.username,
+            isTyping: false,
+          });
+        }, 3000);
+        break;
+
+      case 'read_position':
+        dispatch({
+          type: 'SET_READ_POSITION',
+          roomId: msg.room_id,
+          messageId: msg.last_read_message_id,
+        });
+        break;
+
+      case 'reaction_added':
+        dispatch({
+          type: 'ADD_REACTION',
+          roomId: msg.room_id,
+          msgId: msg.msg_id,
+          emoji: msg.emoji,
+          username: msg.username,
+          userId: msg.user_id,
+        });
+        break;
+
+      case 'reaction_removed':
+        dispatch({
+          type: 'REMOVE_REACTION',
+          roomId: msg.room_id,
+          msgId: msg.msg_id,
+          emoji: msg.emoji,
+          username: msg.username,
+        });
+        break;
+
       case 'user_online':
         dispatch({ type: 'USER_ONLINE', username: msg.username });
         break;
@@ -222,7 +298,7 @@ export function useMultiRoomChat() {
         break;
     }
 
-  }, [dispatch, pmDispatch]);
+  }, [dispatch, pmDispatch, user?.username]);
 
   // ── Stable refs for functions that call each other ──────────────────
   const handleMessageRef = useRef(handleMessage);
@@ -368,6 +444,25 @@ export function useMultiRoomChat() {
     }
   }, []);
 
+  // ── sendTyping — notify the room that the current user is typing ──
+  const sendTyping = useCallback((roomId) => {
+    const ws = socketsRef.current.get(roomId);
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'typing' }));
+    }
+  }, []);
+
+  // ── markAsRead — persist the user's last-read position for a room ──
+  const markAsRead = useCallback((roomId, messageId) => {
+    if (!roomId || !messageId) return;
+    const ws = socketsRef.current.get(roomId);
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'mark_read', msg_id: messageId }));
+    }
+    // Optimistically update the local read position so the divider moves immediately.
+    dispatch({ type: 'SET_READ_POSITION', roomId, messageId });
+  }, [dispatch]);
+
   // ── Initial room list fetch (once on mount) ─────────────────────────
   useEffect(() => {
     listRooms().then(res => {
@@ -428,6 +523,7 @@ export function useMultiRoomChat() {
 
   // ── Mount: restore joined rooms from localStorage ──────────────────
   useEffect(() => {
+    requestNotificationPermission();
     const saved = getJoinedRooms(username);
     saved.forEach(roomId => joinRoom(roomId, { silent: true }));
 
@@ -449,5 +545,5 @@ export function useMultiRoomChat() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { joinRoom, exitRoom, exitAllRooms, disconnectAll, sendMessage, connectionStatus };
+  return { joinRoom, exitRoom, exitAllRooms, disconnectAll, sendMessage, sendTyping, markAsRead, connectionStatus };
 }

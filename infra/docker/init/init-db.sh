@@ -20,8 +20,15 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(64) UNIQUE NOT NULL,
     password_hash VARCHAR(256) NOT NULL,
     is_global_admin BOOLEAN DEFAULT FALSE NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW() NOT NULL
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    totp_secret VARCHAR(256),
+    is_2fa_enabled BOOLEAN DEFAULT FALSE NOT NULL,
+    backup_codes TEXT
 );
+-- Idempotent column addition for existing databases.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(256);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_2fa_enabled BOOLEAN DEFAULT FALSE NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS backup_codes TEXT;
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 EOSQL
 
@@ -63,12 +70,42 @@ CREATE TABLE IF NOT EXISTS messages (
     recipient_id INTEGER,
     content TEXT NOT NULL,
     is_private BOOLEAN DEFAULT FALSE NOT NULL,
-    sent_at TIMESTAMP DEFAULT NOW() NOT NULL
+    sent_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    edited_at TIMESTAMP,
+    is_deleted BOOLEAN DEFAULT FALSE NOT NULL,
+    search_vector tsvector
 );
 -- Idempotent column addition for existing databases.
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_name VARCHAR(64);
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE NOT NULL;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS search_vector tsvector;
 CREATE INDEX IF NOT EXISTS idx_messages_message_id ON messages(message_id);
 CREATE INDEX IF NOT EXISTS idx_messages_room_sent ON messages(room_id, sent_at);
+CREATE INDEX IF NOT EXISTS idx_messages_search ON messages USING GIN(search_vector);
+
+-- Full-text search trigger
+CREATE OR REPLACE FUNCTION messages_search_trigger() RETURNS trigger AS $$
+BEGIN
+    NEW.search_vector := to_tsvector('english', COALESCE(NEW.content, ''));
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS tsvector_update ON messages;
+CREATE TRIGGER tsvector_update BEFORE INSERT OR UPDATE ON messages
+    FOR EACH ROW EXECUTE FUNCTION messages_search_trigger();
+
+-- Reactions table
+CREATE TABLE IF NOT EXISTS reactions (
+    id SERIAL PRIMARY KEY,
+    message_id VARCHAR(36) NOT NULL,
+    user_id INTEGER NOT NULL,
+    username VARCHAR(64) NOT NULL,
+    emoji VARCHAR(32) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    UNIQUE(message_id, user_id, emoji)
+);
+CREATE INDEX IF NOT EXISTS idx_reactions_message_id ON reactions(message_id);
 EOSQL
 
 echo "  [file] chatbox_files..."

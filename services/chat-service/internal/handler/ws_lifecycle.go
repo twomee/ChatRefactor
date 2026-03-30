@@ -303,6 +303,27 @@ func (h *WSHandler) handleAdminSuccession(ctx context.Context, roomID, userID in
 	_ = h.delivery.DeliverChat(ctx, roomID, succPayload)
 }
 
+// sendReadPosition sends the user's last-read message position for the room.
+// Called after sendHistory so the frontend can render the "New messages" divider.
+func (h *WSHandler) sendReadPosition(ctx context.Context, conn *websocket.Conn, roomID, userID int) {
+	if h.readPositionStore == nil {
+		return
+	}
+
+	rp, err := h.readPositionStore.Get(ctx, userID, roomID)
+	if err != nil {
+		// No read position yet (first visit) — nothing to send.
+		return
+	}
+
+	readPosMsg := map[string]interface{}{
+		"type":                 "read_position",
+		"room_id":              roomID,
+		"last_read_message_id": rp.LastReadMessageID,
+	}
+	_ = h.manager.SendToConn(conn, readPosMsg)
+}
+
 // sendHistory fetches recent messages from the Message Service and sends them
 // to the newly connected client.
 func (h *WSHandler) sendHistory(conn *websocket.Conn, roomID int, token string) {
@@ -319,24 +340,13 @@ func (h *WSHandler) sendHistory(conn *websocket.Conn, roomID int, token string) 
 	resp, err := client.Do(req)
 	if err != nil {
 		h.logger.Warn("history_fetch_failed", zap.Error(err))
-		// Send empty history instead of failing silently.
-		historyMsg := map[string]interface{}{
-			"type":     "history",
-			"messages": []interface{}{},
-			"room_id":  roomID,
-		}
-		_ = h.manager.SendToConn(conn, historyMsg)
+		h.sendEmptyHistory(conn, roomID)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		historyMsg := map[string]interface{}{
-			"type":     "history",
-			"messages": []interface{}{},
-			"room_id":  roomID,
-		}
-		_ = h.manager.SendToConn(conn, historyMsg)
+		h.sendEmptyHistory(conn, roomID)
 		return
 	}
 
@@ -345,8 +355,28 @@ func (h *WSHandler) sendHistory(conn *websocket.Conn, roomID int, token string) 
 		rawMessages = []map[string]interface{}{}
 	}
 
-	// Transform field names from message-service format (sender_id, content)
-	// to frontend format (from, text) so MessageList can render them.
+	historyMsg := map[string]interface{}{
+		"type":     "history",
+		"messages": transformHistoryMessages(rawMessages),
+		"room_id":  roomID,
+	}
+	_ = h.manager.SendToConn(conn, historyMsg)
+}
+
+// sendEmptyHistory sends an empty history payload to the client.
+// Used when the message service is unavailable or returns a non-OK status.
+func (h *WSHandler) sendEmptyHistory(conn *websocket.Conn, roomID int) {
+	historyMsg := map[string]interface{}{
+		"type":     "history",
+		"messages": []interface{}{},
+		"room_id":  roomID,
+	}
+	_ = h.manager.SendToConn(conn, historyMsg)
+}
+
+// transformHistoryMessages converts raw message-service records (sender_id,
+// content) into the frontend wire format (from, text) expected by MessageList.
+func transformHistoryMessages(rawMessages []map[string]interface{}) []map[string]interface{} {
 	transformed := make([]map[string]interface{}, 0, len(rawMessages))
 	for _, m := range rawMessages {
 		msg := map[string]interface{}{
@@ -360,15 +390,18 @@ func (h *WSHandler) sendHistory(conn *websocket.Conn, roomID int, token string) 
 		if mid, ok := m["message_id"]; ok {
 			msg["msg_id"] = mid
 		}
+		if editedAt, ok := m["edited_at"]; ok && editedAt != nil {
+			msg["edited_at"] = editedAt
+		}
+		if isDeleted, ok := m["is_deleted"]; ok {
+			msg["is_deleted"] = isDeleted
+		}
+		if reactions, ok := m["reactions"]; ok {
+			msg["reactions"] = reactions
+		}
 		transformed = append(transformed, msg)
 	}
-
-	historyMsg := map[string]interface{}{
-		"type":     "history",
-		"messages": transformed,
-		"room_id":  roomID,
-	}
-	_ = h.manager.SendToConn(conn, historyMsg)
+	return transformed
 }
 
 // getAdminUsernames returns a list of admin usernames for a room by cross-referencing

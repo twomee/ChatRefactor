@@ -50,11 +50,16 @@ const (
 //   - "message":         uses Text
 //   - "kick","mute","unmute","promote": uses Target (username)
 //   - "private_message": uses To and Text
+//   - "edit_message":    uses MessageID and Text
+//   - "delete_message":  uses MessageID
+//   - "add_reaction","remove_reaction": uses MsgID and Emoji
 type IncomingMessage struct {
-	Type   string `json:"type"`
-	Text   string `json:"text"`
-	Target string `json:"target"`
-	To     string `json:"to"`
+	Type      string `json:"type"`
+	Text      string `json:"text"`
+	Target    string `json:"target"`
+	To        string `json:"to"`
+	MessageID string `json:"msg_id"`
+	Emoji     string `json:"emoji"`
 }
 
 // newUpgrader creates a WebSocket upgrader with origin checking.
@@ -97,14 +102,15 @@ func checkOrigin(r *http.Request) bool {
 
 // WSHandler handles WebSocket upgrades for room chat.
 type WSHandler struct {
-	manager       *ws.Manager
-	store         store.RoomRepository
-	delivery      delivery.Strategy
-	authClient    *client.AuthClient
-	secretKey     string
-	logger        *zap.Logger
-	limiter       *rateLimiter
-	messageSvcURL string
+	manager           *ws.Manager
+	store             store.RoomRepository
+	readPositionStore store.ReadPositionRepository
+	delivery          delivery.Strategy
+	authClient        *client.AuthClient
+	secretKey         string
+	logger            *zap.Logger
+	limiter           *rateLimiter
+	messageSvcURL     string
 
 	// kickedUsers tracks users that were kicked (by "room:user" key).
 	// When a kicked user's readLoop exits, handleDisconnect checks this
@@ -129,6 +135,7 @@ type WSHandler struct {
 func NewWSHandler(
 	manager *ws.Manager,
 	store store.RoomRepository,
+	readPositionStore store.ReadPositionRepository,
 	delivery delivery.Strategy,
 	authClient *client.AuthClient,
 	secretKey string,
@@ -136,17 +143,18 @@ func NewWSHandler(
 	logger *zap.Logger,
 ) *WSHandler {
 	h := &WSHandler{
-		manager:       manager,
-		store:         store,
-		delivery:      delivery,
-		authClient:    authClient,
-		secretKey:     secretKey,
-		logger:        logger,
-		limiter:       newRateLimiter(),
-		messageSvcURL: messageServiceURL,
-		kickedUsers:   make(map[string]bool),
-		leftUsers:     make(map[string]bool),
-		pendingLeaves: make(map[string]context.CancelFunc),
+		manager:           manager,
+		store:             store,
+		readPositionStore: readPositionStore,
+		delivery:          delivery,
+		authClient:        authClient,
+		secretKey:         secretKey,
+		logger:            logger,
+		limiter:           newRateLimiter(),
+		messageSvcURL:     messageServiceURL,
+		kickedUsers:       make(map[string]bool),
+		leftUsers:         make(map[string]bool),
+		pendingLeaves:     make(map[string]context.CancelFunc),
 	}
 
 	// When a user fully logs out (last lobby closes), cancel any pending
@@ -291,6 +299,7 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 	go func() {
 		h.handleJoin(ctx, conn, roomID, userID, username, token, silent)
 		h.sendHistory(conn, roomID, token)
+		h.sendReadPosition(ctx, conn, roomID, userID)
 	}()
 
 	// Blocking read loop -- runs until the client disconnects.
@@ -355,7 +364,7 @@ func configurePingPong(conn *websocket.Conn, mgr *ws.Manager) func() {
 
 // sendError sends an error message to a single connection.
 func (h *WSHandler) sendError(conn *websocket.Conn, detail string) {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"type":   "error",
 		"detail": detail,
 	}

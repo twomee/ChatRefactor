@@ -29,6 +29,7 @@ from app.infrastructure.kafka_producer import (
     init_producer,
     is_kafka_available,
 )
+from app.infrastructure.redis_client import close_redis, get_redis, init_redis
 from app.middleware.correlation import CorrelationIdMiddleware
 from app.routers import messages
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -57,6 +58,9 @@ async def lifespan(app):
                 "default_secret_key",
                 msg="Using default SECRET_KEY (acceptable for dev only)",
             )
+
+    # Start Redis (for link preview caching — optional)
+    await init_redis()
 
     # Start Kafka producer (for DLQ)
     await init_producer()
@@ -98,6 +102,7 @@ async def lifespan(app):
 
     await persistence_consumer.stop()
     await close_producer()
+    await close_redis()
 
     logger.info("message_service_shutdown_complete")
 
@@ -133,13 +138,13 @@ def health():
 
 
 @app.get("/ready", tags=["health"])
-def ready():
+async def ready():
     """
-    Readiness probe: verifies DB and Kafka connectivity.
+    Readiness probe: verifies DB, Kafka, and Redis connectivity.
 
     DB is required — if it's down, returns 503.
     Kafka is optional — reports status but doesn't gate readiness.
-    No Redis in the message service.
+    Redis is optional — used for link preview caching.
     """
     checks = {}
 
@@ -158,6 +163,18 @@ def ready():
     except Exception as e:
         logger.error("readiness_kafka_check_failed", error=str(e))
         checks["kafka"] = "degraded"
+
+    # Redis check (optional — used for link preview caching)
+    redis_client = get_redis()
+    if redis_client is not None:
+        try:
+            await redis_client.ping()
+            checks["redis"] = "ok"
+        except Exception as e:
+            logger.error("readiness_redis_check_failed", error=str(e))
+            checks["redis"] = "degraded"
+    else:
+        checks["redis"] = "disabled"
 
     # Only DB is required for readiness
     all_ok = checks.get("database") == "ok"

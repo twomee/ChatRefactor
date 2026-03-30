@@ -5,7 +5,7 @@ ARG VITE_API_BASE=http://localhost
 ARG VITE_WS_BASE=ws://localhost
 ENV VITE_API_BASE=$VITE_API_BASE
 ENV VITE_WS_BASE=$VITE_WS_BASE
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json* .npmrc* ./
 RUN npm ci
 COPY . .
 RUN npm run build

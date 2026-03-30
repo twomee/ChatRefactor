@@ -54,7 +54,7 @@ Base.metadata.create_all(bind=test_engine)
 # ── Mock Redis ───────────────────────────────────────────────────────────
 
 class MockRedis:
-    """In-memory mock for Redis. Tracks blacklisted tokens."""
+    """In-memory mock for Redis. Tracks blacklisted tokens and 2FA temp tokens."""
 
     def __init__(self):
         self._store = {}
@@ -64,6 +64,10 @@ class MockRedis:
 
     def setex(self, key, ttl, value):
         self._store[key] = value
+
+    def delete(self, key):
+        """Remove a key from the store (used by 2FA single-use temp tokens)."""
+        self._store.pop(key, None)
 
     def ping(self):
         return True
@@ -89,14 +93,22 @@ def setup_test_environment():
     - Overrides get_db to use SQLite in-memory
     - Patches Redis to use in-memory mock
     - Patches Kafka produce_event to be a no-op
+    - Sets TOTP_ENCRYPTION_KEY for encryption tests
     - Cleans up user table after each test
     """
+    # Set encryption key for tests (64 hex chars = 32 bytes for AES-256)
+    os.environ.setdefault(
+        "TOTP_ENCRYPTION_KEY",
+        "0" * 64,  # deterministic test key — never use in production
+    )
+
     # Override FastAPI dependencies
     app.dependency_overrides[get_db] = override_get_db
 
     # Patch Redis
     with patch("app.infrastructure.redis.get_redis", mock_get_redis), \
          patch("app.core.security.get_redis", mock_get_redis, create=True), \
+         patch("app.services.auth_service._get_redis", mock_get_redis), \
          patch("app.infrastructure.kafka_producer.produce_event", return_value=True) as _mock_kafka:
 
         # Also patch the import inside security.py's decode_token

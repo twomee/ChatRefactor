@@ -740,6 +740,97 @@
   overflow-wrap: break-word;
 }
 
+/* @mention highlight */
+.mention {
+  color: var(--accent);
+  font-weight: 600;
+  background: rgba(14, 165, 233, 0.1);
+  padding: 0 2px;
+  border-radius: 3px;
+  cursor: default;
+}
+
+.mention-self {
+  background: rgba(14, 165, 233, 0.25);
+}
+
+/* ── Emoji Reactions ────────────────────────────────────────────────── */
+
+.msg-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+  align-items: center;
+}
+
+.reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  transition: all var(--transition);
+  line-height: 1.4;
+}
+
+.reaction-chip:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.reaction-chip.reaction-mine {
+  border-color: var(--primary);
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--text);
+}
+
+.reaction-chip.reaction-mine:hover {
+  background: rgba(6, 182, 212, 0.2);
+}
+
+.reaction-count {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.reaction-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all var(--transition);
+  padding: 0;
+  line-height: 1;
+}
+
+.reaction-add-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: var(--text);
+}
+
+.emoji-picker-popover {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: 100;
+  margin-bottom: 4px;
+}
+
 /* System message */
 .msg-system {
   justify-content: center;
@@ -755,6 +846,25 @@
   color: var(--text-muted);
   font-style: italic;
   text-align: center;
+}
+
+/* New messages divider */
+.new-messages-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.new-messages-divider::before,
+.new-messages-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--accent);
+  opacity: 0.5;
 }
 
 /* File message */
@@ -784,6 +894,48 @@
   font-size: 0.75rem;
   color: var(--text-muted);
   margin-left: 4px;
+}
+
+/* Inline image previews */
+.msg-file-content {
+  margin: 2px 0;
+}
+
+.msg-image-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.msg-inline-image {
+  max-width: 400px;
+  max-height: 300px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+  display: block;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.msg-inline-image:hover {
+  opacity: 0.92;
+  transform: scale(1.01);
+}
+
+.msg-image-filename {
+  font-size: 0.72rem;
+  color: var(--text-muted, rgba(255, 255, 255, 0.45));
+  margin-top: 2px;
+}
+
+.msg-image-fallback {
+  display: none;
+}
+
+.msg-image-fallback.show-fallback {
+  display: block;
 }
 
 /* Private message */
@@ -1520,4 +1672,242 @@
   font-size: 0.8125rem;
   padding: 12px 0;
   font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Markdown Formatting
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.inline-code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.85em;
+  color: var(--code-color);
+}
+
+.code-block {
+  background: rgba(0, 0, 0, 0.35);
+  padding: 10px 14px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.85em;
+  margin: 6px 0;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  line-height: 1.5;
+}
+
+.code-block code {
+  background: none;
+  padding: 0;
+}
+
+.msg-text-content blockquote {
+  border-left: 3px solid var(--accent, #0ea5e9);
+  padding-left: 10px;
+  margin: 4px 0;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.msg-text-content a {
+  color: var(--accent, #0ea5e9);
+  text-decoration: underline;
+  text-decoration-color: rgba(14, 165, 233, 0.4);
+}
+
+.msg-text-content a:hover {
+  text-decoration-color: var(--accent, #0ea5e9);
+}
+
+.msg-text-content ul,
+.msg-text-content ol {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+
+.msg-text-content table {
+  border-collapse: collapse;
+  margin: 4px 0;
+}
+
+.msg-text-content th,
+.msg-text-content td {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 4px 8px;
+  font-size: 0.9em;
+}
+
+.msg-text-content th {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ── Typing Indicator ──────────────────────────────────────────────────── */
+
+.typing-indicator {
+  padding: 4px 16px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+  min-height: 22px;
+  flex-shrink: 0;
+}
+
+.typing-dots span {
+  animation: typingBlink 1.4s infinite;
+  animation-fill-mode: both;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingBlink {
+  0%, 80%, 100% { opacity: 0; }
+  40% { opacity: 1; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Message Editing & Deletion
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Edited badge — small italic "(edited)" next to author name */
+.msg-edited-badge {
+  font-size: 0.7rem;
+  font-style: italic;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+/* Deleted message text — muted italic "[deleted]" */
+.msg-deleted-text {
+  color: var(--text-muted) !important;
+  font-style: italic;
+}
+
+/* Action buttons container — hidden by default, flex on hover */
+.msg-actions {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.msg:hover .msg-actions {
+  display: flex;
+}
+
+/* Small icon buttons for edit/delete */
+.msg-action-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all var(--transition);
+}
+
+.msg-action-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+}
+
+/* Edit banner — bar above input showing "Editing message" */
+.edit-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin-bottom: 4px;
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: var(--radius);
+  color: var(--accent);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.edit-banner-cancel {
+  margin-left: auto;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  color: var(--accent);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.edit-banner-cancel:hover {
+  background: rgba(6, 182, 212, 0.15);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Settings Modal & 2FA Panel
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-panel {
+  width: 380px;
+  max-width: 90vw;
+  height: 100vh;
+  border-radius: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.settings-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.tfa-panel {
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius);
+}
+
+.tfa-msg {
+  font-size: 0.8rem;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+}
+
+.tfa-error {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.tfa-success {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success);
 }

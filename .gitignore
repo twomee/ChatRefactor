@@ -1,17 +1,40 @@
+# Claude Code (all internals — skills, hooks, worktrees, plans)
+.claude/
+
+# Git worktrees managed by this tool
 .worktrees/
+
+# Secrets & local config
 .env
 k8s/secrets.env
 k8s/secrets.env.local
+infra/k8s/secrets.env
+infra/k8s/secrets.env.local
+**/secrets.env
+**/secrets.env.local
+
+# Python
 *.db
 __pycache__/
+*.pyc
+*.pyo
 .pytest_cache/
 .coverage
 coverage/
 .venv/
-backend/uploads/
+venv/          # both naming conventions
+
+# Uploaded files (test artifacts and user content — never commit)
+**/uploads/
+
+# Node / Frontend
 node_modules/
 dist/
+.cache/
+
+# IDE
 .idea/
+.vscode/
 
 # Load test reports (generated)
 loadtests/reports/*.csv

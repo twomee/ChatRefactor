@@ -15,8 +15,24 @@ class MessageResponse(BaseModel):
     content: str
     is_private: bool
     sent_at: datetime
+    edited_at: datetime | None = None
+    is_deleted: bool = False
 
     model_config = {"from_attributes": True}
+
+
+class ReactionResponse(BaseModel):
+    """A single emoji reaction on a message."""
+
+    emoji: str
+    username: str
+    user_id: int
+
+
+class MessageWithReactionsResponse(MessageResponse):
+    """Message response enriched with emoji reactions."""
+
+    reactions: list[ReactionResponse] = []
 
 
 class MessageHistoryResponse(BaseModel):
@@ -34,5 +50,7 @@ class MessageHistoryResponse(BaseModel):
     content: str
     is_private: bool
     sent_at: datetime
+    edited_at: datetime | None = None
+    is_deleted: bool = False
 
     model_config = {"from_attributes": True}

@@ -1,19 +1,57 @@
 // src/components/MessageInput.jsx
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { uploadFile } from '../../services/fileApi';
 
-export default function MessageInput({ onSend, roomName, roomId, isPM = false }) {
+function getPlaceholder(editingMessage, isPM, roomName) {
+  if (editingMessage) return 'Edit your message...';
+  if (isPM) return `Message ${roomName}\u2026`;
+  if (roomName) return `Message #${roomName}...`;
+  return 'Type a message...';
+}
+
+export default function MessageInput({ onSend, roomName, roomId, isPM = false, onTyping, editingMessage, onCancelEdit }) {
   const [text, setText] = useState('');
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
   const fileRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // When editingMessage changes, pre-fill the input
+  useEffect(() => {
+    if (editingMessage) {
+      setText(editingMessage.text);
+      inputRef.current?.focus();
+    }
+  }, [editingMessage]);
+
+  function handleChange(e) {
+    setText(e.target.value);
+    // Debounce typing emission — send at most once every 2 seconds
+    if (onTyping && !typingTimeoutRef.current) {
+      onTyping();
+      typingTimeoutRef.current = setTimeout(() => {
+        typingTimeoutRef.current = null;
+      }, 2000);
+    }
+  }
 
   function handleSubmit(e) {
     e.preventDefault();
     if (!text.trim()) return;
-    onSend(text.trim());
+    if (editingMessage) {
+      onSend(text.trim(), editingMessage.msg_id);
+    } else {
+      onSend(text.trim());
+    }
     setText('');
+  }
+
+  function handleCancelEdit() {
+    setText('');
+    if (onCancelEdit) onCancelEdit();
   }
 
   async function handleFileChange(e) {
@@ -37,6 +75,18 @@ export default function MessageInput({ onSend, roomName, roomId, isPM = false })
 
   return (
     <div className="message-input-wrapper">
+      {/* Edit mode banner */}
+      {editingMessage && (
+        <div className="edit-banner">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+          <span>Editing message</span>
+          <button type="button" className="edit-banner-cancel" onClick={handleCancelEdit}>Cancel</button>
+        </div>
+      )}
+
       {/* Upload progress bar */}
       {uploading && (
         <div style={{ padding: '0 4px 6px', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -53,8 +103,8 @@ export default function MessageInput({ onSend, roomName, roomId, isPM = false })
       )}
 
       <form onSubmit={handleSubmit} className="message-input-form">
-        {/* File attachment — hidden in PM mode (PMs don't support file uploads) */}
-        {!isPM && (
+        {/* File attachment — hidden in PM mode and edit mode */}
+        {!isPM && !editingMessage && (
           <>
             <input
               ref={fileRef}
@@ -79,10 +129,11 @@ export default function MessageInput({ onSend, roomName, roomId, isPM = false })
 
         {/* text input */}
         <input
+          ref={inputRef}
           className="message-input"
           value={text}
-          onChange={e => setText(e.target.value)}
-          placeholder={isPM ? `Message ${roomName}…` : roomName ? `Message #${roomName}...` : 'Type a message...'}
+          onChange={handleChange}
+          placeholder={getPlaceholder(editingMessage, isPM, roomName)}
         />
 
         {/* right-side icon actions */}
@@ -109,7 +160,7 @@ export default function MessageInput({ onSend, roomName, roomId, isPM = false })
         </div>
 
         {/* send button */}
-        <button type="submit" className="message-send-btn-circle" disabled={!text.trim()} title="Send">
+        <button type="submit" className="message-send-btn-circle" disabled={!text.trim()} title={editingMessage ? 'Save' : 'Send'}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"/>
             <polygon points="22 2 15 22 11 13 2 9 22 2"/>
@@ -119,3 +170,16 @@ export default function MessageInput({ onSend, roomName, roomId, isPM = false })
     </div>
   );
 }
+
+MessageInput.propTypes = {
+  onSend: PropTypes.func.isRequired,
+  roomName: PropTypes.string,
+  roomId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  isPM: PropTypes.bool,
+  onTyping: PropTypes.func,
+  editingMessage: PropTypes.shape({
+    msg_id: PropTypes.string,
+    text: PropTypes.string,
+  }),
+  onCancelEdit: PropTypes.func,
+};
