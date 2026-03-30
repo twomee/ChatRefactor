@@ -54,6 +54,12 @@ vi.mock("kafkajs", () => {
   };
 });
 
+// ── Mock auth client ───────────────────────────────────────────────────────
+const mockGetUserByUsername = vi.hoisted(() => vi.fn());
+vi.mock("../../src/clients/auth.client.js", () => ({
+  getUserByUsername: mockGetUserByUsername,
+}));
+
 // ── Mock fs to avoid actual disk writes in tests ───────────────────────────
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
