@@ -5,7 +5,7 @@ import { usePM } from '../context/PMContext';
 import { useAuth } from '../context/AuthContext';
 import { WS_BASE } from '../config/constants';
 import { listRooms, getMessagesSince } from '../services/roomApi';
-import { getJoinedRooms, addJoinedRoom, removeJoinedRoom } from '../utils/storage';
+import { getJoinedRooms, addJoinedRoom, removeJoinedRoom, addPMThread } from '../utils/storage';
 import { requestNotificationPermission, sendBrowserNotification } from '../utils/notifications';
 
 // ── Exponential backoff helper ──────────────────────────────────────────────
@@ -19,71 +19,26 @@ function getBackoffDelay(attempt) {
   return Math.min(delay + jitter, BACKOFF_MAX_MS);
 }
 
-export function useMultiRoomChat() {
-  const { state, dispatch } = useChat();
-  const { pmState, pmDispatch } = usePM();
-  const { token, user } = useAuth();
-  const username = user?.username ?? 'anonymous';
-
-  // ── Connection status ─────────────────────────────────────────────────────
-  // 'connected' | 'reconnecting' | 'disconnected'
-  const [connectionStatus, setConnectionStatus] = useState('connected');
-  const reconnectingRoomsRef = useRef(new Set());
-
-  function updateConnectionStatus() {
-    if (reconnectingRoomsRef.current.size > 0) {
-      setConnectionStatus('reconnecting');
-    } else {
-      setConnectionStatus('connected');
-    }
-  }
-
-  // Mutable refs — changes don't need re-renders
-  const socketsRef = useRef(new Map());
-  const lobbyRef = useRef(null);
-  const seenMsgIdsRef = useRef(new Set());
-  const activeRoomIdRef = useRef(state.activeRoomId);
-  const stateRef = useRef(state);
-  const pmStateRef = useRef(pmState);
-  const retryCountsRef = useRef(new Map());     // roomId → attempt number
-  const lobbyRetryRef = useRef(0);
-  const lastMsgTimeRef = useRef(new Map());     // roomId → ISO timestamp
-  const closingAllRef = useRef(false);          // true during disconnectAll to suppress reconnects
-
-  // Keep refs in sync with latest state
-  useEffect(() => { activeRoomIdRef.current = state.activeRoomId; }, [state.activeRoomId]);
-  useEffect(() => { stateRef.current = state; }, [state]);
-  useEffect(() => { pmStateRef.current = pmState; }, [pmState]);
-
-  // ── Message replay after reconnect ────────────────────────────────────────
-  const replayMissedMessages = useCallback((roomId) => {
-    const since = lastMsgTimeRef.current.get(roomId);
-    if (!since) return;
-
-    getMessagesSince(roomId, since).then(res => {
-      if (res.status !== 200 || !Array.isArray(res.data)) return;
-      for (const m of res.data) {
-        if (m.message_id && seenMsgIdsRef.current.has(m.message_id)) continue;
-        if (m.message_id) seenMsgIdsRef.current.add(m.message_id);
-
-        if (!m.is_private) {
-          dispatch({
-            type: 'ADD_MESSAGE',
-            roomId: m.room_id,
-            message: { from: m.sender, text: m.content, msg_id: m.message_id },
-          });
-        }
-      }
-    }).catch(() => {});
-  }, [dispatch]);
-
-  // ── Track last message timestamp ──────────────────────────────────────────
+// ── Message handler factory ─────────────────────────────────────────────────
+// Exported so it can be unit-tested independently of React hooks.
+// All mutable state is passed via ref-shaped objects ({ current: value })
+// so the factory receives the same snapshot the hook would.
+export function createHandleMessage({
+  dispatch,
+  pmDispatch,
+  user,
+  activeRoomIdRef,
+  seenMsgIdsRef,
+  pmStateRef,
+  lastMsgTimeRef,
+  exitRoomRef,
+  stateRef = { current: { rooms: [], joinedRooms: new Set() } },
+}) {
   function trackTimestamp(roomId) {
-    lastMsgTimeRef.current.set(roomId, new Date().toISOString());
+    if (lastMsgTimeRef) lastMsgTimeRef.current.set(roomId, new Date().toISOString());
   }
 
-  // ── Message handler ────────────────────────────────────────────────────────
-  const handleMessage = useCallback((msg, roomId) => {
+  return function handleMessage(msg, roomId) {
     switch (msg.type) {
       case 'history':
         dispatch({ type: 'SET_HISTORY', roomId: msg.room_id, messages: msg.messages });
@@ -148,6 +103,8 @@ export function useMultiRoomChat() {
         if (otherUser !== pmStateRef.current.activePM) {
           pmDispatch({ type: 'INCREMENT_PM_UNREAD', username: otherUser });
         }
+        // Persist conversation to localStorage so sidebar survives refresh
+        addPMThread(user?.username, otherUser);
         break;
       }
 
@@ -209,17 +166,38 @@ export function useMultiRoomChat() {
         break;
       }
 
-      case 'file_shared':
-        dispatch({
-          type: 'ADD_MESSAGE',
-          roomId: msg.room_id,
-          message: { isFile: true, from: msg.from, text: msg.filename, fileId: msg.file_id, fileSize: msg.size },
-        });
-        if (msg.room_id !== activeRoomIdRef.current) {
-          dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
+      case 'file_shared': {
+        if (msg.is_private) {
+          // PM file: route to the correct PM thread
+          const otherUser = msg.from === user?.username ? msg.to : msg.from;
+          pmDispatch({
+            type: 'ADD_PM_MESSAGE',
+            username: otherUser,
+            message: {
+              isFile: true,
+              from: msg.from,
+              text: msg.filename,
+              fileId: msg.file_id,
+              fileSize: msg.size,
+              isSelf: false,
+              msg_id: `pm-file-${msg.file_id}`,
+              timestamp: msg.timestamp,
+            },
+          });
+        } else {
+          // Room file: existing behaviour
+          dispatch({
+            type: 'ADD_MESSAGE',
+            roomId: msg.room_id,
+            message: { isFile: true, from: msg.from, text: msg.filename, fileId: msg.file_id, fileSize: msg.size },
+          });
+          if (msg.room_id !== activeRoomIdRef.current) {
+            dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
+          }
+          trackTimestamp(msg.room_id);
         }
-        trackTimestamp(msg.room_id);
         break;
+      }
 
       case 'message_edited':
         dispatch({
@@ -355,15 +333,92 @@ export function useMultiRoomChat() {
       default:
         break;
     }
+  };
+}
 
-  }, [dispatch, pmDispatch, user?.username]);
+export function useMultiRoomChat() {
+  const { state, dispatch } = useChat();
+  const { pmState, pmDispatch } = usePM();
+  const { token, user } = useAuth();
+  const username = user?.username ?? 'anonymous';
+
+  // ── Connection status ─────────────────────────────────────────────────────
+  // 'connected' | 'reconnecting' | 'disconnected'
+  const [connectionStatus, setConnectionStatus] = useState('connected');
+  const reconnectingRoomsRef = useRef(new Set());
+
+  function updateConnectionStatus() {
+    if (reconnectingRoomsRef.current.size > 0) {
+      setConnectionStatus('reconnecting');
+    } else {
+      setConnectionStatus('connected');
+    }
+  }
+
+  // Mutable refs — changes don't need re-renders
+  const socketsRef = useRef(new Map());
+  const lobbyRef = useRef(null);
+  const seenMsgIdsRef = useRef(new Set());
+  const activeRoomIdRef = useRef(state.activeRoomId);
+  const stateRef = useRef(state);
+  const pmStateRef = useRef(pmState);
+  const retryCountsRef = useRef(new Map());     // roomId → attempt number
+  const lobbyRetryRef = useRef(0);
+  const lastMsgTimeRef = useRef(new Map());     // roomId → ISO timestamp
+  const closingAllRef = useRef(false);          // true during disconnectAll to suppress reconnects
+
+  // Keep refs in sync with latest state
+  useEffect(() => { activeRoomIdRef.current = state.activeRoomId; }, [state.activeRoomId]);
+  useEffect(() => { stateRef.current = state; }, [state]);
+  useEffect(() => { pmStateRef.current = pmState; }, [pmState]);
+
+  // ── Message replay after reconnect ────────────────────────────────────────
+  const replayMissedMessages = useCallback((roomId) => {
+    const since = lastMsgTimeRef.current.get(roomId);
+    if (!since) return;
+
+    getMessagesSince(roomId, since).then(res => {
+      if (res.status !== 200 || !Array.isArray(res.data)) return;
+      for (const m of res.data) {
+        if (m.message_id && seenMsgIdsRef.current.has(m.message_id)) continue;
+        if (m.message_id) seenMsgIdsRef.current.add(m.message_id);
+
+        if (!m.is_private) {
+          dispatch({
+            type: 'ADD_MESSAGE',
+            roomId: m.room_id,
+            message: { from: m.sender, text: m.content, msg_id: m.message_id },
+          });
+        }
+      }
+    }).catch(() => {});
+  }, [dispatch]);
 
   // ── Stable refs for functions that call each other ──────────────────
-  const handleMessageRef = useRef(handleMessage);
-  useEffect(() => { handleMessageRef.current = handleMessage; }, [handleMessage]);
-
+  // Declared before handleMessage so they can be passed to createHandleMessage.
   const exitRoomRef = useRef(() => {});
   const exitAllRoomsRef = useRef(() => {});
+
+  // ── Message handler ────────────────────────────────────────────────────────
+  // Delegates to the exported createHandleMessage factory so the logic can be
+  // unit-tested independently of React without mounting the full hook.
+  const handleMessage = useCallback(
+    createHandleMessage({
+      dispatch,
+      pmDispatch,
+      user,
+      activeRoomIdRef,
+      seenMsgIdsRef,
+      pmStateRef,
+      lastMsgTimeRef,
+      exitRoomRef,
+      stateRef,
+    }),
+    [dispatch, pmDispatch, user?.username] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const handleMessageRef = useRef(handleMessage);
+  useEffect(() => { handleMessageRef.current = handleMessage; }, [handleMessage]);
 
   // ── joinRoom (with exponential backoff on reconnect) ──────────────────────
   // silent: true when auto-rejoining from localStorage on login (no system messages)
