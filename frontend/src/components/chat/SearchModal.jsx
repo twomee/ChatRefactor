@@ -52,14 +52,36 @@ function getInitials(name) {
   return name.slice(0, 2).toUpperCase();
 }
 
+function searchPMThreads(query, pmThreads) {
+  if (!pmThreads) return [];
+  const q = query.toLowerCase();
+  const results = [];
+  for (const [username, messages] of Object.entries(pmThreads)) {
+    for (const msg of messages) {
+      if (!msg.is_deleted && msg.text?.toLowerCase().includes(q)) {
+        results.push({
+          message_id: msg.msg_id || `pm-local-${username}-${results.length}`,
+          sender_name: msg.from,
+          content: msg.text,
+          sent_at: msg.timestamp || null,
+          pm_username: username,
+          room_id: null,
+        });
+      }
+    }
+  }
+  return results;
+}
+
 /**
  * @param {Object}   props
  * @param {boolean}  props.isOpen      - Whether the modal is visible
  * @param {Function} props.onClose     - Called to close the modal
  * @param {Array}    props.rooms       - Room list [{ id, name }] for name lookups
- * @param {Function} props.onNavigate  - Called with (roomId, messageId) when user clicks a result
+ * @param {Object}   props.pmThreads   - PM threads for local search { username: [messages] }
+ * @param {Function} props.onNavigate  - Called with (roomId, messageId, pmUsername) when user clicks a result
  */
-export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate }) {
+export default function SearchModal({ isOpen, onClose, rooms = [], pmThreads = {}, onNavigate }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -135,21 +157,26 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
         }
         abortControllerRef.current = new AbortController();
 
+        // Search PM threads locally (instant)
+        const pmResults = searchPMThreads(trimmed, pmThreads);
+
         try {
           const res = await searchMessages(trimmed, null, 20, abortControllerRef.current.signal);
-          setResults(res.data || []);
+          // Combine room results with PM results; PM results first for immediacy
+          setResults([...pmResults, ...(res.data || [])]);
           setError(null);
         } catch (err) {
           // AbortError means the request was cancelled by a newer search — ignore it
           if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') return;
-          setError('Search failed. Please try again.');
-          setResults([]);
+          // Still show PM results even if room search failed
+          setResults(pmResults);
+          setError(pmResults.length === 0 ? 'Search failed. Please try again.' : null);
         } finally {
           setLoading(false);
         }
       }, 300);
     },
-    [], // setResults/setError/setLoading are stable React dispatcher refs
+    [pmThreads], // pmThreads changes when new PMs arrive
   );
 
   function handleInputChange(e) {
@@ -161,7 +188,7 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
 
   function handleResultClick(result) {
     if (onNavigate) {
-      onNavigate(result.room_id, result.message_id);
+      onNavigate(result.room_id, result.message_id, result.pm_username);
     }
     onClose();
   }
@@ -191,11 +218,12 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
     if (e.key === 'Escape') onClose();
   }
 
-  function getRoomName(roomId) {
-    const room = rooms.find((r) => r.id === roomId);
+  function getResultContext(result) {
+    if (result.pm_username) return `DM · ${result.pm_username}`;
+    const room = rooms.find((r) => r.id === result.room_id);
     if (room) return room.name;
-    if (roomId) return `Room ${roomId}`;
-    return 'DM';
+    if (result.room_id) return `Room ${result.room_id}`;
+    return '';
   }
 
   if (!isOpen) return null;
@@ -260,7 +288,7 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
                         {r.sender_name || 'Unknown'}
                       </span>
                       <span className="search-result-room">
-                        {getRoomName(r.room_id)}
+                        {getResultContext(r)}
                       </span>
                       <span className="search-result-time">
                         {formatTime(r.sent_at)}
@@ -293,5 +321,6 @@ SearchModal.propTypes = {
     id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
     name: PropTypes.string,
   })),
+  pmThreads: PropTypes.object,
   onNavigate: PropTypes.func,
 };

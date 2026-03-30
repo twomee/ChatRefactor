@@ -203,25 +203,26 @@ function renderReactionChips(msg, grouped, pickerMsgId, handlers) {
   );
 }
 
-function copyToClipboard(text) {
-  // Prefer the modern async Clipboard API (requires HTTPS or localhost).
-  if (navigator.clipboard?.writeText) {
-    return navigator.clipboard.writeText(text);
-  }
-  // Fallback for older browsers / HTTP contexts: create a hidden textarea,
-  // select its contents, and use execCommand.
+function execCommandCopy(text) {
   try {
     const el = document.createElement('textarea');
     el.value = text;
-    el.style.position = 'fixed';
-    el.style.opacity = '0';
+    el.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
     document.body.appendChild(el);
+    el.focus();
     el.select();
     document.execCommand('copy');
     document.body.removeChild(el);
-  } catch {
-    // If all else fails, do nothing — the button click already signals intent.
+  } catch { /* ignore */ }
+}
+
+function copyToClipboard(text) {
+  // Prefer the modern async Clipboard API (requires HTTPS or localhost).
+  if (navigator.clipboard?.writeText) {
+    // If the Clipboard API rejects (e.g. permission denied), fall back to execCommand.
+    return navigator.clipboard.writeText(text).catch(() => execCommandCopy(text));
   }
+  execCommandCopy(text);
   return Promise.resolve();
 }
 

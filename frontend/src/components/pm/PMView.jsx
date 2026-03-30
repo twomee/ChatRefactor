@@ -8,7 +8,7 @@ function getInitials(name) {
   return name.slice(0, 2).toUpperCase();
 }
 
-export default function PMView({ username, messages = [], onScrollToBottom, isOnline = true, currentUser, onEditMessage, onDeleteMessage, onAddReaction, onRemoveReaction, onClearHistory }) {
+export default function PMView({ username, messages = [], onScrollToBottom, isOnline = true, currentUser, onEditMessage, onDeleteMessage, onAddReaction, onRemoveReaction, onClearHistory, highlightMessageId }) {
   const [confirmClear, setConfirmClear] = useState(false);
 
   function handleClearClick() {
@@ -78,6 +78,7 @@ export default function PMView({ username, messages = [], onScrollToBottom, isOn
         onDeleteMessage={onDeleteMessage}
         onAddReaction={onAddReaction}
         onRemoveReaction={onRemoveReaction}
+        highlightMessageId={highlightMessageId}
       />
     </div>
   );
@@ -94,4 +95,5 @@ PMView.propTypes = {
   onAddReaction: PropTypes.func,
   onRemoveReaction: PropTypes.func,
   onClearHistory: PropTypes.func,
+  highlightMessageId: PropTypes.string,
 };

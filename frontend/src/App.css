@@ -661,6 +661,32 @@
   font-weight: 600;
 }
 
+.pm-close-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 0;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.pm-item:hover .pm-close-btn,
+.pm-item.active .pm-close-btn {
+  display: flex;
+}
+
+.pm-close-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text);
+}
+
 /* ── Center Panel ───────────────────────────────────────────────────────── */
 
 .center-panel {
@@ -732,6 +758,7 @@
   line-height: 1.6;
   word-wrap: break-word;
   overflow-wrap: break-word;
+  user-select: text;
 }
 
 /* @mention highlight */

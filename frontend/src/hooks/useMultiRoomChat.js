@@ -152,10 +152,16 @@ export function useMultiRoomChat() {
       }
 
       case 'pm_message_edited': {
-        const pmUser = msg.from === user?.username ? msg.to : msg.from;
+        // The backend sends `to: ""` on pm_message_edited, so we cannot use msg.to.
+        // Scan all threads to find which one contains this msg_id.
+        const editedThreads = pmStateRef.current.threads;
+        const editedPMUser = Object.keys(editedThreads).find(u =>
+          editedThreads[u].some(m => m.msg_id === msg.msg_id)
+        );
+        if (!editedPMUser) break;
         pmDispatch({
           type: 'EDIT_PM_MESSAGE',
-          username: pmUser,
+          username: editedPMUser,
           msg_id: msg.msg_id,
           text: msg.text,
         });
@@ -163,10 +169,16 @@ export function useMultiRoomChat() {
       }
 
       case 'pm_message_deleted': {
-        const pmUser = msg.from === user?.username ? msg.to : msg.from;
+        // The backend does NOT send `to` on pm_message_deleted.
+        // Scan all threads to find which one contains this msg_id.
+        const deletedThreads = pmStateRef.current.threads;
+        const deletedPMUser = Object.keys(deletedThreads).find(u =>
+          deletedThreads[u].some(m => m.msg_id === msg.msg_id)
+        );
+        if (!deletedPMUser) break;
         pmDispatch({
           type: 'DELETE_PM_MESSAGE',
-          username: pmUser,
+          username: deletedPMUser,
           msg_id: msg.msg_id,
         });
         break;
