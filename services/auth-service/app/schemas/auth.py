@@ -91,6 +91,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     username: str
     is_global_admin: bool
+    user_id: int
 
 
 class UserResponse(BaseModel):
