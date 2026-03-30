@@ -415,6 +415,39 @@ describe("routes/file.route", () => {
       expect(res.status).toBe(500);
       expect(res.body.error).toBe("Internal server error");
     });
+
+    it("should return 403 if requester is not sender or recipient of a private file", async () => {
+      // validToken is for userId=1; file belongs to sender=2, recipient=7; user 1 is neither
+      const privateFile = {
+        id: 99, originalName: "secret.txt", storedPath: path.join(uploadDir, "secret.txt"),
+        fileSize: 10, senderId: 2, senderName: "other", recipientId: 7, isPrivate: true,
+        roomId: null, uploadedAt: new Date(),
+      };
+      mockPrismaFile.findUnique.mockResolvedValue(privateFile);
+
+      const res = await request(app)
+        .get("/files/download/99")
+        .set("Authorization", `Bearer ${validToken}`);
+
+      expect(res.status).toBe(403);
+    });
+
+    it("should allow sender to download their own private file", async () => {
+      // validToken is for userId=1; sender=1 matches the current user
+      const privateFile = {
+        id: 100, originalName: "mine.txt", storedPath: path.join(uploadDir, "mine.txt"),
+        fileSize: 12, senderId: 1, senderName: "alice", recipientId: 7, isPrivate: true,
+        roomId: null, uploadedAt: new Date(),
+      };
+      mockPrismaFile.findUnique.mockResolvedValue(privateFile);
+
+      const res = await request(app)
+        .get("/files/download/100")
+        .set("Authorization", `Bearer ${validToken}`)
+        .buffer(true);
+
+      expect(res.status).toBe(200);
+    });
   });
 
   // ── List Room Files Endpoint ───────────────────────────────────────────

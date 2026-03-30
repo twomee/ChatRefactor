@@ -113,6 +113,15 @@ fileRouter.get(
 
       const record = await getFile(fileId);
 
+      // Authorization: private files are only accessible to sender and recipient
+      if (record.isPrivate) {
+        const currentUserId: number = authReq.user.userId;
+        if (record.senderId !== currentUserId && record.recipientId !== currentUserId) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+      }
+
       // Stream the file back to the client
       // SECURITY: Use RFC 5987 filename* for safe encoding of the original name,
       // and strip any characters that could break the header value from the ASCII fallback.

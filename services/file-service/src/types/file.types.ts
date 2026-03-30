@@ -41,7 +41,9 @@ export interface FileRecord {
   storedPath: string;
   fileSize: number;
   senderId: number;
-  roomId: number;
+  roomId: number | null;
+  recipientId: number | null;
+  isPrivate: boolean;
   uploadedAt: Date;
 }
 

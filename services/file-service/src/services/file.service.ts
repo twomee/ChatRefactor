@@ -225,6 +225,8 @@ export async function getFile(fileId: number): Promise<FileRecord> {
       fileSize: record.fileSize,
       senderId: record.senderId,
       roomId: record.roomId,
+      recipientId: record.recipientId,
+      isPrivate: record.isPrivate ?? false,
       uploadedAt: record.uploadedAt,
     };
   } catch (error) {
