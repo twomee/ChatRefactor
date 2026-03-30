@@ -73,6 +73,7 @@ vi.mock('../../components/pm/PMList', () => ({
   default: ({ onSelectPM }) => (
     <div data-testid="pm-list">
       <button data-testid="open-pm" onClick={() => onSelectPM('alice')}>PM alice</button>
+      <button data-testid="open-pm-bob" onClick={() => onSelectPM('bob')}>PM bob</button>
     </div>
   ),
 }));
@@ -103,6 +104,11 @@ vi.mock('../../components/chat/SearchModal', () => ({
 // Mock APIs
 vi.mock('../../services/pmApi', () => ({
   sendPM: vi.fn().mockResolvedValue({}),
+  getPMHistory: vi.fn().mockResolvedValue({ data: [] }),
+  editPM: vi.fn().mockResolvedValue({}),
+  deletePM: vi.fn().mockResolvedValue({}),
+  addPMReaction: vi.fn().mockResolvedValue({}),
+  removePMReaction: vi.fn().mockResolvedValue({}),
 }));
 vi.mock('../../services/authApi', () => ({
   logout: vi.fn().mockResolvedValue({}),
@@ -141,6 +147,8 @@ const defaultPmState = {
   threads: {},
   pmUnread: {},
   activePM: null,
+  loadedThreads: {},
+  deletedPMs: {},
 };
 
 vi.mock('../../context/AuthContext', () => ({
@@ -161,6 +169,8 @@ import { useChat } from '../../context/ChatContext';
 import { usePM } from '../../context/PMContext';
 import { useChatConnection } from '../../layouts/ChatConnectionLayer';
 import * as authApi from '../../services/authApi';
+import * as pmApi from '../../services/pmApi';
+import { savePMThreadList } from '../../utils/storage';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -455,5 +465,119 @@ describe('ChatPage', () => {
     renderChatPage();
     localStorage.removeItem('chatbox-chat-layouts');
     // No throw === pass
+  });
+});
+
+// ── PM persistence on mount ────────────────────────────────────────────────────
+
+describe('PM persistence on mount', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  it('dispatches INIT_PM_THREAD for each saved PM thread on mount', async () => {
+    savePMThreadList('testuser', ['bob', 'carol']);
+
+    await act(async () => {
+      renderChatPage({ user: { username: 'testuser', is_global_admin: false } });
+    });
+
+    expect(mockPmDispatch).toHaveBeenCalledWith({ type: 'INIT_PM_THREAD', username: 'bob' });
+    expect(mockPmDispatch).toHaveBeenCalledWith({ type: 'INIT_PM_THREAD', username: 'carol' });
+  });
+
+  it('does not dispatch INIT_PM_THREAD when there are no saved threads', async () => {
+    // No saved thread list — localStorage is clear
+
+    await act(async () => {
+      renderChatPage({ user: { username: 'testuser', is_global_admin: false } });
+    });
+
+    const initCalls = mockPmDispatch.mock.calls.filter(c => c[0]?.type === 'INIT_PM_THREAD');
+    expect(initCalls).toHaveLength(0);
+  });
+});
+
+// ── handleSelectPM lazy history loading ───────────────────────────────────────
+
+describe('handleSelectPM lazy history loading', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  it('calls getPMHistory on first open and dispatches SET_PM_THREAD and MARK_THREAD_LOADED', async () => {
+    const user = userEvent.setup();
+    const historyMsg = {
+      message_id: 'msg-1',
+      sender_name: 'bob',
+      content: 'hello',
+      sent_at: new Date().toISOString(),
+      is_private: true,
+      reactions: [],
+    };
+    pmApi.getPMHistory.mockResolvedValue({ data: [historyMsg] });
+
+    // loadedThreads is empty — 'bob' has not been loaded yet
+    renderChatPage({
+      pmState: { ...defaultPmState, loadedThreads: {} },
+    });
+
+    await user.click(screen.getByTestId('open-pm-bob'));
+    await act(async () => {});
+
+    expect(pmApi.getPMHistory).toHaveBeenCalledWith('bob');
+    expect(mockPmDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'SET_PM_THREAD', username: 'bob' }),
+    );
+    expect(mockPmDispatch).toHaveBeenCalledWith({ type: 'MARK_THREAD_LOADED', username: 'bob' });
+  });
+
+  it('does NOT call getPMHistory if thread is already loaded', async () => {
+    const user = userEvent.setup();
+
+    // loadedThreads marks 'bob' as already fetched
+    renderChatPage({
+      pmState: { ...defaultPmState, loadedThreads: { bob: true } },
+    });
+
+    await user.click(screen.getByTestId('open-pm-bob'));
+    await act(async () => {});
+
+    expect(pmApi.getPMHistory).not.toHaveBeenCalled();
+    expect(mockPmDispatch).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'MARK_THREAD_LOADED' }),
+    );
+  });
+
+  it('always dispatches SET_ACTIVE_PM and CLEAR_PM_UNREAD regardless of loaded state', async () => {
+    const user = userEvent.setup();
+
+    renderChatPage({
+      pmState: { ...defaultPmState, loadedThreads: { bob: true } },
+    });
+
+    await user.click(screen.getByTestId('open-pm-bob'));
+
+    expect(mockPmDispatch).toHaveBeenCalledWith({ type: 'SET_ACTIVE_PM', username: 'bob' });
+    expect(mockPmDispatch).toHaveBeenCalledWith({ type: 'CLEAR_PM_UNREAD', username: 'bob' });
+    expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_ACTIVE_ROOM', roomId: null });
+  });
+
+  it('does not throw when getPMHistory rejects — thread stays empty', async () => {
+    const user = userEvent.setup();
+    pmApi.getPMHistory.mockRejectedValue(new Error('Network error'));
+
+    renderChatPage({
+      pmState: { ...defaultPmState, loadedThreads: {} },
+    });
+
+    // Should not throw
+    await user.click(screen.getByTestId('open-pm-bob'));
+    await act(async () => {});
+
+    // MARK_THREAD_LOADED is still dispatched even on failure (so we don't retry on every click)
+    expect(mockPmDispatch).toHaveBeenCalledWith({ type: 'MARK_THREAD_LOADED', username: 'bob' });
   });
 });

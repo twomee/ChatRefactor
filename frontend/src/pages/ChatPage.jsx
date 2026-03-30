@@ -7,6 +7,7 @@ import { usePM } from '../context/PMContext';
 import { useChatConnection } from '../layouts/ChatConnectionLayer';
 import * as pmApi from '../services/pmApi';
 import * as authApi from '../services/authApi';
+import { getPMThreadList } from '../utils/storage';
 import * as messageApi from '../services/messageApi';
 import Logo from '../components/common/Logo';
 import RoomList from '../components/room/RoomList';
@@ -26,6 +27,20 @@ import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
 const Responsive = WidthProvider(ResponsiveGridLayout);
+
+function transformPMHistory(messages, currentUsername) {
+  return messages.map(m => ({
+    from: m.sender_name,
+    text: m.content,
+    msg_id: m.message_id,
+    isSelf: m.sender_name === currentUsername,
+    timestamp: m.sent_at,
+    edited_at: m.edited_at ?? null,
+    is_deleted: m.is_deleted ?? false,
+    reactions: m.reactions || [],
+    to: m.sender_name === currentUsername ? undefined : currentUsername,
+  }));
+}
 
 const defaultLayouts = {
   lg: [
@@ -81,6 +96,15 @@ export default function ChatPage() {
     return () => globalThis.removeEventListener('keydown', handleSearchShortcut);
   }, []);
 
+  // Restore PM thread list from localStorage on login
+  useEffect(() => {
+    if (!user?.username) return;
+    const saved = getPMThreadList(user.username);
+    saved.forEach(username => {
+      pmDispatch({ type: 'INIT_PM_THREAD', username });
+    });
+  }, [user?.username]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function handleLayoutChange(_current, allLayouts) {
     setLayouts(allLayouts);
     try { localStorage.setItem(CHAT_LAYOUT_KEY, JSON.stringify(allLayouts)); } catch { /* storage full */ }
@@ -110,10 +134,22 @@ export default function ChatPage() {
     setClearRoomConfirm(false);
   }
 
-  function handleSelectPM(username) {
+  async function handleSelectPM(username) {
     pmDispatch({ type: 'SET_ACTIVE_PM', username });
     pmDispatch({ type: 'CLEAR_PM_UNREAD', username });
     dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
+
+    // Lazy-load history on first open — skip if already loaded this session
+    if (!pmState.loadedThreads[username]) {
+      try {
+        const res = await pmApi.getPMHistory(username);
+        const transformed = transformPMHistory(res.data || [], user?.username);
+        pmDispatch({ type: 'SET_PM_THREAD', username, messages: transformed });
+      } catch {
+        // Non-fatal: thread stays empty; user can still send new messages
+      }
+      pmDispatch({ type: 'MARK_THREAD_LOADED', username });
+    }
   }
 
   function handleDeletePMConversation(username) {
