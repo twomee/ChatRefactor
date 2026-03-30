@@ -4,10 +4,11 @@ import { createContext, useContext, useReducer } from 'react';
 const PMContext = createContext(null);
 
 const initialPMState = {
-  threads: {},     // { username: [{ from, text, isSelf, to, timestamp, msg_id }] }
-  pmUnread: {},    // { username: number }
-  activePM: null,  // username of currently open PM conversation (or null)
-  deletedPMs: {},  // { username: deleted_at } — for deleted conversations
+  threads: {},       // { username: [{ from, text, isSelf, to, timestamp, msg_id }] }
+  pmUnread: {},      // { username: number }
+  activePM: null,    // username of currently open PM conversation (or null)
+  deletedPMs: {},    // { username: deleted_at } — for deleted conversations
+  loadedThreads: {}, // { username: true } — tracks which threads have been fetched from server
 };
 
 export function pmReducer(state, action) {
@@ -122,6 +123,26 @@ export function pmReducer(state, action) {
       const { [action.username]: _removed, ...rest } = state.deletedPMs; // eslint-disable-line no-unused-vars
       return { ...state, deletedPMs: rest };
     }
+
+    case 'SET_PM_THREAD':
+      return {
+        ...state,
+        threads: { ...state.threads, [action.username]: action.messages },
+      };
+
+    case 'MARK_THREAD_LOADED':
+      return {
+        ...state,
+        loadedThreads: { ...state.loadedThreads, [action.username]: true },
+      };
+
+    case 'INIT_PM_THREAD':
+      // Don't overwrite a thread that already has live messages
+      if (state.threads[action.username]) return state;
+      return {
+        ...state,
+        threads: { ...state.threads, [action.username]: [] },
+      };
 
     default:
       return state;

@@ -241,3 +241,45 @@ describe('pmReducer', () => {
     });
   });
 });
+
+describe('pmReducer new actions', () => {
+  const baseState = {
+    threads: {}, pmUnread: {}, activePM: null, deletedPMs: {}, loadedThreads: {},
+  };
+
+  describe('SET_PM_THREAD', () => {
+    it('replaces the thread for the given username', () => {
+      const messages = [{ from: 'alice', text: 'hi', msg_id: '1' }];
+      const state = pmReducer(baseState, { type: 'SET_PM_THREAD', username: 'alice', messages });
+      expect(state.threads.alice).toEqual(messages);
+    });
+
+    it('overwrites existing thread', () => {
+      const existing = { ...baseState, threads: { alice: [{ text: 'old' }] } };
+      const state = pmReducer(existing, {
+        type: 'SET_PM_THREAD', username: 'alice', messages: [{ text: 'new' }],
+      });
+      expect(state.threads.alice).toEqual([{ text: 'new' }]);
+    });
+  });
+
+  describe('MARK_THREAD_LOADED', () => {
+    it('sets loadedThreads[username] to true', () => {
+      const state = pmReducer(baseState, { type: 'MARK_THREAD_LOADED', username: 'alice' });
+      expect(state.loadedThreads.alice).toBe(true);
+    });
+  });
+
+  describe('INIT_PM_THREAD', () => {
+    it('creates an empty thread if none exists', () => {
+      const state = pmReducer(baseState, { type: 'INIT_PM_THREAD', username: 'alice' });
+      expect(state.threads.alice).toEqual([]);
+    });
+
+    it('does not overwrite an existing live thread', () => {
+      const existing = { ...baseState, threads: { alice: [{ text: 'live msg' }] } };
+      const state = pmReducer(existing, { type: 'INIT_PM_THREAD', username: 'alice' });
+      expect(state.threads.alice).toEqual([{ text: 'live msg' }]);
+    });
+  });
+});
