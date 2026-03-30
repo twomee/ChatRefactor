@@ -226,6 +226,65 @@ describe("routes/file.route", () => {
       expect(res.status).toBe(500);
       expect(res.body.error).toBe("Internal server error");
     });
+
+    it("should upload a PM file with ?recipient=bob", async () => {
+      mockGetUserByUsername.mockResolvedValue({ id: 7, username: "bob" });
+      const mockRecord = {
+        id: 2, originalName: "doc.txt", storedPath: "/app/uploads/abc_doc.txt",
+        fileSize: 11, senderId: 1, senderName: "alice", roomId: null, recipientId: 7, isPrivate: true,
+        uploadedAt: new Date(),
+      };
+      mockPrismaFile.create.mockResolvedValue(mockRecord);
+
+      const res = await request(app)
+        .post("/files/upload?recipient=bob")
+        .set("Authorization", `Bearer ${validToken}`)
+        .attach("file", Buffer.from("hello world"), "doc.txt");
+
+      expect(res.status).toBe(201);
+      expect(res.body.recipientId).toBe(7);
+      expect(res.body.isPrivate).toBe(true);
+      // Verify the DB record was created with PM-specific fields
+      expect(mockPrismaFile.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            recipientId: 7,
+            isPrivate: true,
+            roomId: null,
+          }),
+        })
+      );
+    });
+
+    it("should return 400 if both room_id and recipient are provided", async () => {
+      const res = await request(app)
+        .post("/files/upload?room_id=1&recipient=bob")
+        .set("Authorization", `Bearer ${validToken}`)
+        .attach("file", Buffer.from("content"), "test.txt");
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/room_id.*recipient|mutually exclusive/i);
+    });
+
+    it("should return 400 if neither room_id nor recipient is provided", async () => {
+      const res = await request(app)
+        .post("/files/upload")
+        .set("Authorization", `Bearer ${validToken}`)
+        .attach("file", Buffer.from("content"), "test.txt");
+
+      expect(res.status).toBe(400);
+    });
+
+    it("should return 404 if recipient username does not exist", async () => {
+      mockGetUserByUsername.mockResolvedValue(null);
+      const res = await request(app)
+        .post("/files/upload?recipient=ghost")
+        .set("Authorization", `Bearer ${validToken}`)
+        .attach("file", Buffer.from("content"), "test.txt");
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toMatch(/recipient|not found/i);
+    });
   });
 
   // ── Download Endpoint ──────────────────────────────────────────────────

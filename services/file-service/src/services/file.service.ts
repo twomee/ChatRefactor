@@ -33,19 +33,40 @@ import type { FileUploadResult, FileRecord, FileMetadataResponse } from "../type
 
 const prisma = new PrismaClient();
 
+/** Parameters for uploadFile — exactly one of roomId or recipientId must be set. */
+export interface UploadFileParams {
+  file: Express.Multer.File;
+  senderId: number;
+  senderName: string;
+  roomId?: number;
+  recipientId?: number;
+  recipientName?: string;
+  isPrivate?: boolean;
+}
+
 /**
  * Upload a file: sanitize, validate, store to disk, save metadata, produce Kafka event.
  *
+ * Accepts either a roomId (room upload) or recipientId + recipientName (PM upload).
  * Throws FileValidationError for invalid extension or oversized files.
  * The caller (route handler) catches these and maps to HTTP status codes.
+ *
+ * @deprecated positional overload — use params object instead
  */
-export async function uploadFile(
-  fileBuffer: Buffer,
-  originalFilename: string,
-  senderId: number,
-  senderUsername: string,
-  roomId: number
-): Promise<FileUploadResult> {
+export async function uploadFile(params: UploadFileParams): Promise<FileUploadResult> {
+  const {
+    file,
+    senderId,
+    senderName,
+    roomId,
+    recipientId,
+    recipientName,
+    isPrivate = false,
+  } = params;
+
+  const fileBuffer = file.buffer;
+  const originalFilename = file.originalname;
+
   try {
     // 1. Sanitize filename (strip path components, null bytes, leading dots)
     const { cleanName, extension } = sanitizeFilename(originalFilename);
@@ -90,8 +111,10 @@ export async function uploadFile(
           storedPath: destPath,
           fileSize: fileBuffer.length,
           senderId,
-          senderName: senderUsername,
-          roomId,
+          senderName,
+          roomId: roomId ?? null,
+          recipientId: recipientId ?? null,
+          isPrivate,
         },
       });
     } catch (dbError) {
@@ -108,7 +131,9 @@ export async function uploadFile(
       fileId: record.id,
       filename: cleanName,
       size: fileBuffer.length,
-      roomId,
+      roomId: roomId ?? null,
+      recipientId: recipientId ?? null,
+      isPrivate,
       senderId,
     });
 
@@ -117,8 +142,11 @@ export async function uploadFile(
       file_id: record.id,
       filename: cleanName,
       size: fileBuffer.length,
-      from: senderUsername,
-      room_id: roomId,
+      from: senderName,
+      room_id: roomId ?? null,
+      ...(recipientName !== undefined && { to: recipientName }),
+      recipient_id: recipientId ?? null,
+      is_private: isPrivate,
       timestamp: new Date().toISOString(),
     }).catch((err) => {
       logger.warn("Failed to produce file.uploaded event", {
@@ -137,6 +165,8 @@ export async function uploadFile(
       fileSize: record.fileSize,
       senderId: record.senderId,
       roomId: record.roomId,
+      recipientId: record.recipientId,
+      isPrivate: record.isPrivate,
       uploadedAt: record.uploadedAt,
     };
   } catch (error) {

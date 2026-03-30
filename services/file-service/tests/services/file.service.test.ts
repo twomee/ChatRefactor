@@ -97,13 +97,12 @@ describe("services/file.service", () => {
         uploadedAt: new Date("2026-01-01"),
       });
 
-      const result = await uploadFile(
-        Buffer.from("hello world"),
-        "test.txt",
-        1,
-        "alice",
-        5
-      );
+      const result = await uploadFile({
+        file: { buffer: Buffer.from("hello world"), originalname: "test.txt" } as Express.Multer.File,
+        senderId: 1,
+        senderName: "alice",
+        roomId: 5,
+      });
 
       expect(result.id).toBe(1);
       expect(result.originalName).toBe("test.txt");
@@ -128,13 +127,12 @@ describe("services/file.service", () => {
       // Kafka fails — should NOT throw
       mockProduceEvent.mockRejectedValueOnce(new Error("Kafka down"));
 
-      const result = await uploadFile(
-        Buffer.from("hello"),
-        "test.txt",
-        1,
-        "alice",
-        3
-      );
+      const result = await uploadFile({
+        file: { buffer: Buffer.from("hello"), originalname: "test.txt" } as Express.Multer.File,
+        senderId: 1,
+        senderName: "alice",
+        roomId: 3,
+      });
 
       // Upload still succeeds even though Kafka failed
       expect(result.id).toBe(2);
@@ -144,7 +142,12 @@ describe("services/file.service", () => {
       const { uploadFile } = await import("../../src/services/file.service.js");
 
       await expect(
-        uploadFile(Buffer.from("data"), "script.sh", 1, "alice", 1)
+        uploadFile({
+          file: { buffer: Buffer.from("data"), originalname: "script.sh" } as Express.Multer.File,
+          senderId: 1,
+          senderName: "alice",
+          roomId: 1,
+        })
       ).rejects.toThrow();
     });
   });
