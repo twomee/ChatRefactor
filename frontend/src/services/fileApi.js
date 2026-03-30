@@ -15,6 +15,21 @@ export function listRoomFiles(roomId) {
 }
 
 /**
+ * Upload a file into a PM conversation.
+ * @param {string} recipientUsername - The recipient's username
+ * @param {File} file - The file to upload
+ * @param {function} onProgress - Progress callback (optional)
+ */
+export function uploadPMFile(recipientUsername, file, onProgress) {
+  const form = new FormData();
+  form.append('file', file);
+  return http.post(`/files/upload?recipient=${encodeURIComponent(recipientUsername)}`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: onProgress,
+  });
+}
+
+/**
  * Download a file via Authorization header (not URL query param).
  * Creates a temporary blob URL and triggers the browser save dialog.
  * This avoids leaking the JWT in browser history and server logs.
