@@ -18,7 +18,7 @@ import ResetPasswordPage from '../ResetPasswordPage';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function renderWithToken(token = 'valid-token-123') {
+function renderWithToken(token = 'x-tok') {
   const url = token ? `/reset-password?token=${token}` : '/reset-password';
   return render(
     <MemoryRouter initialEntries={[url]}>
@@ -82,14 +82,14 @@ describe('ResetPasswordPage', () => {
   it('calls resetPassword API and shows success message on valid submit', async () => {
     authApi.resetPassword.mockResolvedValue({ message: 'ok' });
     const user = userEvent.setup();
-    renderWithToken('valid-token-abc');
+    renderWithToken('x-tok-a');
 
     await user.type(screen.getByTestId('reset-new-password'), 'x-new-val');
     await user.type(screen.getByTestId('reset-confirm-password'), 'x-new-val');
     await user.click(screen.getByRole('button', { name: /reset password/i }));
 
     await waitFor(() => {
-      expect(authApi.resetPassword).toHaveBeenCalledWith('valid-token-abc', 'x-new-val');
+      expect(authApi.resetPassword).toHaveBeenCalledWith('x-tok-a', 'x-new-val');
       expect(screen.getByText(/password has been reset successfully/i)).toBeInTheDocument();
     });
   });
@@ -97,7 +97,7 @@ describe('ResetPasswordPage', () => {
   it('shows Back to Login link after success', async () => {
     authApi.resetPassword.mockResolvedValue({ message: 'ok' });
     const user = userEvent.setup();
-    renderWithToken('valid-token-abc');
+    renderWithToken('x-tok-a');
 
     await user.type(screen.getByTestId('reset-new-password'), 'x-new-val');
     await user.type(screen.getByTestId('reset-confirm-password'), 'x-new-val');
@@ -113,7 +113,7 @@ describe('ResetPasswordPage', () => {
       response: { data: { detail: 'Token has expired' } },
     });
     const user = userEvent.setup();
-    renderWithToken('expired-token');
+    renderWithToken('x-tok-e');
 
     await user.type(screen.getByTestId('reset-new-password'), 'x-new-val');
     await user.type(screen.getByTestId('reset-confirm-password'), 'x-new-val');
@@ -127,7 +127,7 @@ describe('ResetPasswordPage', () => {
   it('shows fallback error when API response has no detail', async () => {
     authApi.resetPassword.mockRejectedValue(new Error('Network error'));
     const user = userEvent.setup();
-    renderWithToken('some-token');
+    renderWithToken('x-tok-s');
 
     await user.type(screen.getByTestId('reset-new-password'), 'x-new-val');
     await user.type(screen.getByTestId('reset-confirm-password'), 'x-new-val');

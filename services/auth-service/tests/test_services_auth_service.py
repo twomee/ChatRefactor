@@ -23,7 +23,7 @@ class TestRegisterEdgeCases:
         mock_db = MagicMock()
         body = MagicMock()
         body.username = "existinguser"
-        body.password = "validpassword123"
+        body.password = "x-pw-val"
         body.email = "existing@test.com"
 
         with patch("app.services.auth_service.user_dal") as mock_dal, \
@@ -39,7 +39,7 @@ class TestRegisterEdgeCases:
         mock_db = MagicMock()
         body = MagicMock()
         body.username = "newuser"
-        body.password = "validpassword123"
+        body.password = "x-pw-val"
         body.email = "new@test.com"
 
         with patch("app.services.auth_service.user_dal") as mock_dal, \
