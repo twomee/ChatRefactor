@@ -1,15 +1,24 @@
 // src/components/PMView.jsx
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import MessageList from '../chat/MessageList';
+import * as fileApi from '../../services/fileApi';
 
 function getInitials(name) {
   if (!name) return '?';
   return name.slice(0, 2).toUpperCase();
 }
 
-export default function PMView({ username, messages = [], onScrollToBottom, isOnline = true, currentUser, onEditMessage, onDeleteMessage, onAddReaction, onRemoveReaction, onClearHistory, highlightMessageId }) {
+export default function PMView({
+  username, messages = [], onScrollToBottom, isOnline = true, currentUser,
+  onEditMessage, onDeleteMessage, onAddReaction, onRemoveReaction,
+  onClearHistory, highlightMessageId,
+  pmDispatch,
+}) {
   const [confirmClear, setConfirmClear] = useState(false);
+  const fileInputRef = useRef(null);
+  const [uploadError, setUploadError] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   function handleClearClick() {
     setConfirmClear(true);
@@ -22,6 +31,35 @@ export default function PMView({ username, messages = [], onScrollToBottom, isOn
 
   function handleCancelClear() {
     setConfirmClear(false);
+  }
+
+  async function handleFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';  // reset so same file can be re-selected
+    setUploadError(null);
+    setUploading(true);
+    try {
+      const res = await fileApi.uploadPMFile(username, file);
+      pmDispatch?.({
+        type: 'ADD_PM_MESSAGE',
+        username: username,
+        message: {
+          isFile: true,
+          from: currentUser,
+          text: res.data.originalName,
+          fileId: res.data.id,
+          fileSize: res.data.fileSize,
+          isSelf: true,
+          msg_id: `pm-file-${res.data.id}`,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch {
+      setUploadError('File upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+    }
   }
 
   return (
@@ -57,6 +95,29 @@ export default function PMView({ username, messages = [], onScrollToBottom, isOn
             </svg>
           </button>
         )}
+
+        {/* File attachment */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          data-testid="pm-file-input"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+        <button
+          className="btn-icon-sm"
+          data-testid="pm-attach-btn"
+          title="Attach file"
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {/* Paperclip SVG */}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+          </svg>
+        </button>
+        {uploadError && <span className="upload-error">{uploadError}</span>}
       </div>
 
       {/* Offline banner */}
@@ -96,4 +157,5 @@ PMView.propTypes = {
   onRemoveReaction: PropTypes.func,
   onClearHistory: PropTypes.func,
   highlightMessageId: PropTypes.string,
+  pmDispatch: PropTypes.func,
 };

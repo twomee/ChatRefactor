@@ -549,6 +549,7 @@ export default function ChatPage() {
                   onRemoveReaction={handlePMRemoveReaction}
                   onClearHistory={handleClearPMHistory}
                   highlightMessageId={pmHighlightMessageId}
+                  pmDispatch={pmDispatch}
                 />
               )}
               {!showRoom && !showPM && (
