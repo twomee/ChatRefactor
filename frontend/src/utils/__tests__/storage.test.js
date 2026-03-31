@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { getJoinedRooms, addJoinedRoom, removeJoinedRoom, getPMThreadList, savePMThreadList, addPMThread } from '../storage';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { getJoinedRooms, addJoinedRoom, removeJoinedRoom, getPMThreadList, savePMThreadList, addPMThread, removePMThread } from '../storage';
 
 describe('storage helpers', () => {
   beforeEach(() => {
@@ -27,6 +27,13 @@ describe('storage helpers', () => {
       localStorage.setItem('chatbox_joined_rooms_bob', JSON.stringify(['room2']));
       expect(getJoinedRooms('alice')).toEqual(['room1']);
       expect(getJoinedRooms('bob')).toEqual(['room2']);
+    });
+
+    it('returns empty array and removes key when stored value is corrupted JSON', () => {
+      localStorage.setItem('chatbox_joined_rooms_alice', 'not-valid-json{{{');
+      const result = getJoinedRooms('alice');
+      expect(result).toEqual([]);
+      expect(localStorage.getItem('chatbox_joined_rooms_alice')).toBeNull();
     });
   });
 
@@ -103,5 +110,22 @@ describe('PM thread list helpers', () => {
     addPMThread('alice', 'bob');
     addPMThread('alice', 'charlie');
     expect(getPMThreadList('alice')).toEqual(['bob', 'charlie']);
+  });
+
+  it('getPMThreadList returns empty array when stored value is corrupted JSON', () => {
+    localStorage.setItem('chatbox_pm_threads_alice', 'BAD_JSON{{');
+    expect(getPMThreadList('alice')).toEqual([]);
+  });
+
+  it('removePMThread removes the given username from the list', () => {
+    savePMThreadList('alice', ['bob', 'charlie', 'dave']);
+    removePMThread('alice', 'charlie');
+    expect(getPMThreadList('alice')).toEqual(['bob', 'dave']);
+  });
+
+  it('removePMThread is a no-op when username is not in the list', () => {
+    savePMThreadList('alice', ['bob']);
+    removePMThread('alice', 'nonexistent');
+    expect(getPMThreadList('alice')).toEqual(['bob']);
   });
 });

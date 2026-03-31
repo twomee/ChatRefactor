@@ -40,6 +40,14 @@ jobs:
         working-directory: frontend
         run: npm run test -- --coverage --reporter=default
 
+      - name: Install file-service dependencies
+        working-directory: services/file-service
+        run: npm ci
+
+      - name: Generate file-service coverage report
+        working-directory: services/file-service
+        run: npm run test:coverage
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:

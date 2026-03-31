@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { uploadFile, listRoomFiles, downloadFile } from '../fileApi';
+import { uploadFile, listRoomFiles, downloadFile, uploadPMFile } from '../fileApi';
 import http from '../http';
 
 vi.mock('../http', () => ({
@@ -42,6 +42,36 @@ describe('fileApi', () => {
     });
   });
 
+  describe('uploadPMFile', () => {
+    it('posts FormData to /files/upload with recipient and progress callback', async () => {
+      http.post.mockResolvedValue({ data: { file_id: 'f2' } });
+      const onProgress = vi.fn();
+      const file = new File(['data'], 'photo.jpg', { type: 'image/jpeg' });
+
+      await uploadPMFile('bob', file, onProgress);
+
+      expect(http.post).toHaveBeenCalledWith(
+        '/files/upload?recipient=bob',
+        expect.any(FormData),
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: onProgress,
+        },
+      );
+    });
+
+    it('URL-encodes the recipient username', async () => {
+      http.post.mockResolvedValue({ data: {} });
+      const file = new File(['x'], 'a.txt');
+      await uploadPMFile('alice bob', file);
+      expect(http.post).toHaveBeenCalledWith(
+        expect.stringContaining('alice%20bob'),
+        expect.any(FormData),
+        expect.any(Object),
+      );
+    });
+  });
+
   describe('downloadFile', () => {
     beforeEach(() => { vi.useFakeTimers(); });
     afterEach(() => { vi.useRealTimers(); });
@@ -78,6 +108,27 @@ describe('fileApi', () => {
       // revokeObjectURL is called after a 100ms delay — advance timers to trigger it
       vi.advanceTimersByTime(100);
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:http://localhost/fake');
+    });
+
+    it('alerts with permission message on 403 error', async () => {
+      vi.spyOn(window, 'alert').mockImplementation(() => {});
+      http.get.mockRejectedValue({ response: { status: 403 } });
+      await downloadFile(1, 'secret.pdf');
+      expect(window.alert).toHaveBeenCalledWith('You do not have permission to download this file.');
+    });
+
+    it('alerts with not-found message on 404 error', async () => {
+      vi.spyOn(window, 'alert').mockImplementation(() => {});
+      http.get.mockRejectedValue({ response: { status: 404 } });
+      await downloadFile(2, 'missing.pdf');
+      expect(window.alert).toHaveBeenCalledWith('File not found.');
+    });
+
+    it('alerts with generic message on other errors', async () => {
+      vi.spyOn(window, 'alert').mockImplementation(() => {});
+      http.get.mockRejectedValue({ response: { status: 500 } });
+      await downloadFile(3, 'error.pdf');
+      expect(window.alert).toHaveBeenCalledWith('Download failed. Please try again.');
     });
   });
 });
