@@ -272,7 +272,7 @@ export default function SearchModal({ isOpen, onClose, rooms = [], pmThreads = {
           )}
 
           {!loading && results.length > 0 && (
-            <div className="search-result-list" id="search-results-list" ref={resultsListRef} role="listbox">
+            <div className="search-result-list" id="search-results-list" ref={resultsListRef} role="listbox"> {/* NOSONAR — ARIA combobox pattern; native select cannot render rich content */}
               {results.map((r, idx) => (
                 <div key={r.message_id} role="option" aria-selected={idx === selectedIndex} id={`search-result-${idx}`}>
                   <button

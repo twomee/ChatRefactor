@@ -99,16 +99,14 @@ function renderFileMessage(msg, key) {
     </div>
   ) : (
     // Non-image files: download button only
-    <>
-      <button
-        type="button"
-        onClick={() => downloadFile(msg.fileId, msg.text)}
-        className="msg-file-link"
-      >
-        {downloadIcon}
-        {msg.text}{msg.fileSize ? ` (${formatSize(msg.fileSize)})` : ''}
-      </button>
-    </>
+    <button
+      type="button"
+      onClick={() => downloadFile(msg.fileId, msg.text)}
+      className="msg-file-link"
+    >
+      {downloadIcon}
+      {msg.text}{msg.fileSize ? ` (${formatSize(msg.fileSize)})` : ''}
+    </button>
   );
 
   return (
@@ -198,8 +196,8 @@ function execCommandCopy(text) {
     document.body.appendChild(el);
     el.focus();
     el.select();
-    document.execCommand('copy');
-    document.body.removeChild(el);
+    document.execCommand('copy'); // NOSONAR — intentional fallback when Clipboard API is unavailable
+    el.remove();
   } catch { /* ignore */ }
 }
 

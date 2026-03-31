@@ -74,7 +74,7 @@ fileRouter.post(
       let recipientName: string | undefined;
 
       if (roomIdParam) {
-        roomId = parseInt(roomIdParam, 10);
+        roomId = Number.parseInt(roomIdParam, 10);
         if (isNaN(roomId)) {
           res.status(400).json({ error: "Invalid room_id: must be a number" });
           return;

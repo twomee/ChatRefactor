@@ -23,6 +23,28 @@ function getBackoffDelay(attempt) {
 // Exported so it can be unit-tested independently of React hooks.
 // All mutable state is passed via ref-shaped objects ({ current: value })
 // so the factory receives the same snapshot the hook would.
+// ── Shared helpers used by the message handler sub-functions ───────────────
+
+/** Deduplicate by msg_id. Returns true if the message was already seen. */
+function trackSeenId(seenMsgIdsRef, msgId) {
+  if (!msgId) return false;
+  if (seenMsgIdsRef.current.has(msgId)) return true;
+  if (seenMsgIdsRef.current.size >= 500) {
+    seenMsgIdsRef.current.delete(seenMsgIdsRef.current.values().next().value);
+  }
+  seenMsgIdsRef.current.add(msgId);
+  return false;
+}
+
+/**
+ * Scan all PM threads to find which thread owns a given msg_id.
+ * Used for pm_message_edited / deleted / reaction events where `to` is unreliable.
+ */
+function findPMThreadOwner(pmStateRef, msgId) {
+  const threads = pmStateRef.current.threads;
+  return Object.keys(threads).find(u => threads[u].some(m => m.msg_id === msgId));
+}
+
 export function createHandleMessage({
   dispatch,
   pmDispatch,
@@ -38,313 +60,139 @@ export function createHandleMessage({
     if (lastMsgTimeRef) lastMsgTimeRef.current.set(roomId, new Date().toISOString());
   }
 
-  return function handleMessage(msg, roomId) {
-    switch (msg.type) {
-      case 'history':
-        dispatch({ type: 'SET_HISTORY', roomId: msg.room_id, messages: msg.messages });
-        trackTimestamp(msg.room_id);
-        break;
+  // ── Per-type sub-handlers ─────────────────────────────────────────────────
+  // Each handler receives the raw message and (for chat_closed) the roomId
+  // fallback. Keeping them small keeps cognitive complexity low.
 
-      case 'user_join':
-        dispatch({ type: 'USER_JOINED_ROOM', roomId: msg.room_id, users: msg.users, admins: msg.admins, muted: msg.muted, username: msg.username });
-        if (msg.username && !msg.silent) dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { isSystem: true, text: `${msg.username} joined the room` } });
-        break;
-      case 'user_left':
-        dispatch({ type: 'USER_LEFT_ROOM', roomId: msg.room_id, users: msg.users, admins: msg.admins, muted: msg.muted, username: msg.username });
-        if (msg.username && !msg.silent) dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { isSystem: true, text: `${msg.username} left the room` } });
-        break;
+  function onHistory(msg) {
+    dispatch({ type: 'SET_HISTORY', roomId: msg.room_id, messages: msg.messages });
+    trackTimestamp(msg.room_id);
+  }
 
-      case 'system':
-        dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { isSystem: true, text: msg.text } });
-        trackTimestamp(msg.room_id);
-        break;
-
-      case 'message': {
-        // Deduplicate by msg_id to prevent duplicates from overlapping
-        // connections (e.g. stale JWT sessions with different user IDs).
-        if (msg.msg_id) {
-          if (seenMsgIdsRef.current.has(msg.msg_id)) break;
-          if (seenMsgIdsRef.current.size >= 500) {
-            seenMsgIdsRef.current.delete(seenMsgIdsRef.current.values().next().value);
-          }
-          seenMsgIdsRef.current.add(msg.msg_id);
-        }
-        dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { from: msg.from, text: msg.text, msg_id: msg.msg_id } });
-        if (msg.room_id !== activeRoomIdRef.current) {
-          dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
-        }
-        trackTimestamp(msg.room_id);
-
-        // Send browser notification when the current user is @mentioned.
-        const currentUsername = user?.username;
-        if (currentUsername && (msg.mentions?.includes(currentUsername.toLowerCase()) || msg.mention_room)) {
-          sendBrowserNotification(
-            `@${msg.from} mentioned you`,
-            msg.text.substring(0, 100)
-          );
-        }
-        break;
-      }
-
-      case 'private_message': {
-        if (msg.msg_id) {
-          if (seenMsgIdsRef.current.has(msg.msg_id)) break;
-          if (seenMsgIdsRef.current.size >= 500) {
-            seenMsgIdsRef.current.delete(seenMsgIdsRef.current.values().next().value);
-          }
-          seenMsgIdsRef.current.add(msg.msg_id);
-        }
-        const otherUser = msg.self ? msg.to : msg.from;
-        pmDispatch({
-          type: 'ADD_PM_MESSAGE',
-          username: otherUser,
-          message: { from: msg.from, text: msg.text, isSelf: !!msg.self, to: msg.to, msg_id: msg.msg_id },
-        });
-        if (otherUser !== pmStateRef.current.activePM) {
-          pmDispatch({ type: 'INCREMENT_PM_UNREAD', username: otherUser });
-        }
-        // Persist conversation to localStorage so sidebar survives refresh
-        addPMThread(user?.username, otherUser);
-        break;
-      }
-
-      case 'pm_message_edited': {
-        // The backend sends `to: ""` on pm_message_edited, so we cannot use msg.to.
-        // Scan all threads to find which one contains this msg_id.
-        const editedThreads = pmStateRef.current.threads;
-        const editedPMUser = Object.keys(editedThreads).find(u =>
-          editedThreads[u].some(m => m.msg_id === msg.msg_id)
-        );
-        if (!editedPMUser) break;
-        pmDispatch({
-          type: 'EDIT_PM_MESSAGE',
-          username: editedPMUser,
-          msg_id: msg.msg_id,
-          text: msg.text,
-        });
-        break;
-      }
-
-      case 'pm_message_deleted': {
-        // The backend does NOT send `to` on pm_message_deleted.
-        // Scan all threads to find which one contains this msg_id.
-        const deletedThreads = pmStateRef.current.threads;
-        const deletedPMUser = Object.keys(deletedThreads).find(u =>
-          deletedThreads[u].some(m => m.msg_id === msg.msg_id)
-        );
-        if (!deletedPMUser) break;
-        pmDispatch({
-          type: 'DELETE_PM_MESSAGE',
-          username: deletedPMUser,
-          msg_id: msg.msg_id,
-        });
-        break;
-      }
-
-      case 'pm_reaction_added': {
-        // The backend sends `from: ""` on pm_reaction_added (the field is
-        // determined by msg_id participants but was never implemented).
-        // Use the same scan-by-msg_id strategy as pm_message_edited / deleted.
-        const reactionAddedThreads = pmStateRef.current.threads;
-        const reactionAddedPMUser = Object.keys(reactionAddedThreads).find(u =>
-          reactionAddedThreads[u].some(m => m.msg_id === msg.msg_id)
-        );
-        if (!reactionAddedPMUser) break;
-        pmDispatch({
-          type: 'ADD_PM_REACTION',
-          username: reactionAddedPMUser,
-          msg_id: msg.msg_id,
-          emoji: msg.emoji,
-          reactor: msg.reactor,
-          reactor_id: msg.reactor_id,
-        });
-        break;
-      }
-
-      case 'pm_reaction_removed': {
-        // Same scan-by-msg_id strategy — `from` is unreliable on this event.
-        const reactionRemovedThreads = pmStateRef.current.threads;
-        const reactionRemovedPMUser = Object.keys(reactionRemovedThreads).find(u =>
-          reactionRemovedThreads[u].some(m => m.msg_id === msg.msg_id)
-        );
-        if (!reactionRemovedPMUser) break;
-        pmDispatch({
-          type: 'REMOVE_PM_REACTION',
-          username: reactionRemovedPMUser,
-          msg_id: msg.msg_id,
-          emoji: msg.emoji,
-          reactor: msg.reactor,
-        });
-        break;
-      }
-
-      case 'file_shared': {
-        if (msg.is_private) {
-          // PM file: route to the correct PM thread
-          const otherUser = msg.from === user?.username ? msg.to : msg.from;
-          pmDispatch({
-            type: 'ADD_PM_MESSAGE',
-            username: otherUser,
-            message: {
-              isFile: true,
-              from: msg.from,
-              text: msg.filename,
-              fileId: msg.file_id,
-              fileSize: msg.size,
-              isSelf: msg.from === user?.username,
-              msg_id: `pm-file-${msg.file_id}`,
-              timestamp: msg.timestamp,
-            },
-          });
-        } else {
-          // Room file: existing behaviour
-          dispatch({
-            type: 'ADD_MESSAGE',
-            roomId: msg.room_id,
-            message: { isFile: true, from: msg.from, text: msg.filename, fileId: msg.file_id, fileSize: msg.size },
-          });
-          if (msg.room_id !== activeRoomIdRef.current) {
-            dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
-          }
-          trackTimestamp(msg.room_id);
-        }
-        break;
-      }
-
-      case 'message_edited':
-        dispatch({
-          type: 'EDIT_MESSAGE',
-          roomId: msg.room_id,
-          msgId: msg.msg_id,
-          text: msg.text,
-          edited_at: msg.edited_at,
-        });
-        break;
-
-      case 'message_deleted':
-        dispatch({
-          type: 'DELETE_MESSAGE',
-          roomId: msg.room_id,
-          msgId: msg.msg_id,
-        });
-        break;
-
-      case 'kicked': {
-        const kickedRoomId = msg.room_id;
-        const roomName = stateRef.current.rooms.find(r => r.id === kickedRoomId)?.name || 'a room';
-        exitRoomRef.current(kickedRoomId);
-        if (activeRoomIdRef.current === kickedRoomId) {
-          const next = [...stateRef.current.joinedRooms].find(id => id !== kickedRoomId);
-          dispatch({ type: 'SET_ACTIVE_ROOM', roomId: next ?? null });
-        }
-        window.alert(`You were kicked from ${roomName}`);
-        break;
-      }
-
-      case 'muted':
-        dispatch({ type: 'ADD_MUTED', roomId: msg.room_id, username: msg.username });
-        break;
-
-      case 'unmuted':
-        dispatch({ type: 'REMOVE_MUTED', roomId: msg.room_id, username: msg.username });
-        break;
-
-      case 'new_admin':
-        dispatch({ type: 'SET_ADMIN', roomId: msg.room_id, username: msg.username });
-        break;
-
-      case 'room_list_updated':
-        startTransition(() => {
-          dispatch({ type: 'SET_ROOMS', rooms: msg.rooms });
-        });
-        {
-          const serverIds = new Set(msg.rooms.map(r => r.id));
-          const joined = stateRef.current.joinedRooms;
-          joined.forEach(id => {
-            if (!serverIds.has(id)) {
-              exitRoomRef.current(id);
-              if (activeRoomIdRef.current === id) {
-                const next = [...joined].find(jid => jid !== id && serverIds.has(jid));
-                dispatch({ type: 'SET_ACTIVE_ROOM', roomId: next ?? null });
-              }
-            }
-          });
-        }
-        break;
-
-      case 'chat_closed': {
-        const closedId = msg.room_id ?? roomId;
-        exitRoomRef.current(closedId);
-        if (activeRoomIdRef.current === closedId) {
-          dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
-        }
-        window.alert(msg.detail || 'Room was closed');
-        break;
-      }
-
-      case 'typing':
-        dispatch({
-          type: 'SET_TYPING',
-          roomId: msg.room_id,
-          username: msg.username,
-          isTyping: true,
-        });
-        // Auto-clear after 3 seconds — if the sender stops typing (or
-        // disconnects) we don't want a stale indicator lingering.
-        setTimeout(() => {
-          dispatch({
-            type: 'SET_TYPING',
-            roomId: msg.room_id,
-            username: msg.username,
-            isTyping: false,
-          });
-        }, 3000);
-        break;
-
-      case 'read_position':
-        dispatch({
-          type: 'SET_READ_POSITION',
-          roomId: msg.room_id,
-          messageId: msg.last_read_message_id,
-        });
-        break;
-
-      case 'reaction_added':
-        dispatch({
-          type: 'ADD_REACTION',
-          roomId: msg.room_id,
-          msgId: msg.msg_id,
-          emoji: msg.emoji,
-          username: msg.username,
-          userId: msg.user_id,
-        });
-        break;
-
-      case 'reaction_removed':
-        dispatch({
-          type: 'REMOVE_REACTION',
-          roomId: msg.room_id,
-          msgId: msg.msg_id,
-          emoji: msg.emoji,
-          username: msg.username,
-        });
-        break;
-
-      case 'user_online':
-        dispatch({ type: 'USER_ONLINE', username: msg.username });
-        break;
-
-      case 'user_offline':
-        dispatch({ type: 'USER_OFFLINE', username: msg.username });
-        break;
-
-      case 'error':
-        window.alert(msg.detail);
-        break;
-
-      default:
-        break;
+  function onUserPresence(msg, action) {
+    dispatch({ type: action, roomId: msg.room_id, users: msg.users, admins: msg.admins, muted: msg.muted, username: msg.username });
+    if (msg.username && !msg.silent) {
+      const verb = action === 'USER_JOINED_ROOM' ? 'joined' : 'left';
+      dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { isSystem: true, text: `${msg.username} ${verb} the room` } });
     }
+  }
+
+  function onRoomMessage(msg) {
+    if (trackSeenId(seenMsgIdsRef, msg.msg_id)) return;
+    dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { from: msg.from, text: msg.text, msg_id: msg.msg_id } });
+    if (msg.room_id !== activeRoomIdRef.current) dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
+    trackTimestamp(msg.room_id);
+    const username = user?.username;
+    if (username && (msg.mentions?.includes(username.toLowerCase()) || msg.mention_room)) {
+      sendBrowserNotification(`@${msg.from} mentioned you`, msg.text.substring(0, 100));
+    }
+  }
+
+  function onPrivateMessage(msg) {
+    if (trackSeenId(seenMsgIdsRef, msg.msg_id)) return;
+    const otherUser = msg.self ? msg.to : msg.from;
+    pmDispatch({ type: 'ADD_PM_MESSAGE', username: otherUser, message: { from: msg.from, text: msg.text, isSelf: !!msg.self, to: msg.to, msg_id: msg.msg_id } });
+    if (otherUser !== pmStateRef.current.activePM) pmDispatch({ type: 'INCREMENT_PM_UNREAD', username: otherUser });
+    addPMThread(user?.username, otherUser);
+  }
+
+  function onPMEdit(msg) {
+    const pmUser = findPMThreadOwner(pmStateRef, msg.msg_id);
+    if (pmUser) pmDispatch({ type: 'EDIT_PM_MESSAGE', username: pmUser, msg_id: msg.msg_id, text: msg.text });
+  }
+
+  function onPMDelete(msg) {
+    const pmUser = findPMThreadOwner(pmStateRef, msg.msg_id);
+    if (pmUser) pmDispatch({ type: 'DELETE_PM_MESSAGE', username: pmUser, msg_id: msg.msg_id });
+  }
+
+  function onPMReactionAdded(msg) {
+    const pmUser = findPMThreadOwner(pmStateRef, msg.msg_id);
+    if (pmUser) pmDispatch({ type: 'ADD_PM_REACTION', username: pmUser, msg_id: msg.msg_id, emoji: msg.emoji, reactor: msg.reactor, reactor_id: msg.reactor_id });
+  }
+
+  function onPMReactionRemoved(msg) {
+    const pmUser = findPMThreadOwner(pmStateRef, msg.msg_id);
+    if (pmUser) pmDispatch({ type: 'REMOVE_PM_REACTION', username: pmUser, msg_id: msg.msg_id, emoji: msg.emoji, reactor: msg.reactor });
+  }
+
+  function onFileShared(msg) {
+    if (msg.is_private) {
+      const otherUser = msg.from === user?.username ? msg.to : msg.from;
+      pmDispatch({ type: 'ADD_PM_MESSAGE', username: otherUser, message: { isFile: true, from: msg.from, text: msg.filename, fileId: msg.file_id, fileSize: msg.size, isSelf: msg.from === user?.username, msg_id: `pm-file-${msg.file_id}`, timestamp: msg.timestamp } });
+    } else {
+      dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { isFile: true, from: msg.from, text: msg.filename, fileId: msg.file_id, fileSize: msg.size } });
+      if (msg.room_id !== activeRoomIdRef.current) dispatch({ type: 'INCREMENT_UNREAD', roomId: msg.room_id });
+      trackTimestamp(msg.room_id);
+    }
+  }
+
+  function onKicked(msg) {
+    const roomName = stateRef.current.rooms.find(r => r.id === msg.room_id)?.name || 'a room';
+    exitRoomRef.current(msg.room_id);
+    if (activeRoomIdRef.current === msg.room_id) {
+      dispatch({ type: 'SET_ACTIVE_ROOM', roomId: [...stateRef.current.joinedRooms].find(id => id !== msg.room_id) ?? null });
+    }
+    window.alert(`You were kicked from ${roomName}`);
+  }
+
+  function onRoomListUpdated(msg) {
+    startTransition(() => dispatch({ type: 'SET_ROOMS', rooms: msg.rooms }));
+    const serverIds = new Set(msg.rooms.map(r => r.id));
+    stateRef.current.joinedRooms.forEach(id => {
+      if (serverIds.has(id)) return;
+      exitRoomRef.current(id);
+      if (activeRoomIdRef.current === id) {
+        dispatch({ type: 'SET_ACTIVE_ROOM', roomId: [...stateRef.current.joinedRooms].find(jid => jid !== id && serverIds.has(jid)) ?? null });
+      }
+    });
+  }
+
+  function onChatClosed(msg, roomId) {
+    const closedId = msg.room_id ?? roomId;
+    exitRoomRef.current(closedId);
+    if (activeRoomIdRef.current === closedId) dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
+    window.alert(msg.detail || 'Room was closed');
+  }
+
+  function onTyping(msg) {
+    dispatch({ type: 'SET_TYPING', roomId: msg.room_id, username: msg.username, isTyping: true });
+    // Auto-clear after 3 s so stale indicators don't linger when a user disconnects.
+    setTimeout(() => dispatch({ type: 'SET_TYPING', roomId: msg.room_id, username: msg.username, isTyping: false }), 3000);
+  }
+
+  // ── Dispatch table — O(1) lookup, no switch complexity ───────────────────
+  const msgHandlers = {
+    history:              (msg)         => onHistory(msg),
+    user_join:            (msg)         => onUserPresence(msg, 'USER_JOINED_ROOM'),
+    user_left:            (msg)         => onUserPresence(msg, 'USER_LEFT_ROOM'),
+    system:               (msg)         => { dispatch({ type: 'ADD_MESSAGE', roomId: msg.room_id, message: { isSystem: true, text: msg.text } }); trackTimestamp(msg.room_id); },
+    message:              (msg)         => onRoomMessage(msg),
+    private_message:      (msg)         => onPrivateMessage(msg),
+    pm_message_edited:    (msg)         => onPMEdit(msg),
+    pm_message_deleted:   (msg)         => onPMDelete(msg),
+    pm_reaction_added:    (msg)         => onPMReactionAdded(msg),
+    pm_reaction_removed:  (msg)         => onPMReactionRemoved(msg),
+    file_shared:          (msg)         => onFileShared(msg),
+    message_edited:       (msg)         => dispatch({ type: 'EDIT_MESSAGE', roomId: msg.room_id, msgId: msg.msg_id, text: msg.text, edited_at: msg.edited_at }),
+    message_deleted:      (msg)         => dispatch({ type: 'DELETE_MESSAGE', roomId: msg.room_id, msgId: msg.msg_id }),
+    kicked:               (msg)         => onKicked(msg),
+    muted:                (msg)         => dispatch({ type: 'ADD_MUTED', roomId: msg.room_id, username: msg.username }),
+    unmuted:              (msg)         => dispatch({ type: 'REMOVE_MUTED', roomId: msg.room_id, username: msg.username }),
+    new_admin:            (msg)         => dispatch({ type: 'SET_ADMIN', roomId: msg.room_id, username: msg.username }),
+    room_list_updated:    (msg)         => onRoomListUpdated(msg),
+    chat_closed:          (msg, roomId) => onChatClosed(msg, roomId),
+    typing:               (msg)         => onTyping(msg),
+    read_position:        (msg)         => dispatch({ type: 'SET_READ_POSITION', roomId: msg.room_id, messageId: msg.last_read_message_id }),
+    reaction_added:       (msg)         => dispatch({ type: 'ADD_REACTION', roomId: msg.room_id, msgId: msg.msg_id, emoji: msg.emoji, username: msg.username, userId: msg.user_id }),
+    reaction_removed:     (msg)         => dispatch({ type: 'REMOVE_REACTION', roomId: msg.room_id, msgId: msg.msg_id, emoji: msg.emoji, username: msg.username }),
+    user_online:          (msg)         => dispatch({ type: 'USER_ONLINE', username: msg.username }),
+    user_offline:         (msg)         => dispatch({ type: 'USER_OFFLINE', username: msg.username }),
+    error:                (msg)         => window.alert(msg.detail),
+  };
+
+  return function handleMessage(msg, roomId) {
+    msgHandlers[msg.type]?.(msg, roomId);
   };
 }
 

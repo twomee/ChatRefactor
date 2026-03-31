@@ -50,8 +50,6 @@ export interface UploadFileParams {
  * Accepts either a roomId (room upload) or recipientId + recipientName (PM upload).
  * Throws FileValidationError for invalid extension or oversized files.
  * The caller (route handler) catches these and maps to HTTP status codes.
- *
- * @deprecated positional overload — use params object instead
  */
 export async function uploadFile(params: UploadFileParams): Promise<FileUploadResult> {
   const {

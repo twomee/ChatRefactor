@@ -170,7 +170,14 @@ def get_deleted_pm_conversations(
     return pm_deletion_dal.get_deleted_conversations(db, current_user["user_id"])
 
 
-@router.get("/pm/history/{username}", response_model=list[MessageWithReactionsResponse])
+@router.get(
+    "/pm/history/{username}",
+    response_model=list[MessageWithReactionsResponse],
+    responses={
+        404: {"description": "User not found"},
+        422: {"description": "Invalid 'before' timestamp format"},
+    },
+)
 async def get_pm_history_endpoint(
     username: str,
     db: Annotated[Session, Depends(get_db)],
