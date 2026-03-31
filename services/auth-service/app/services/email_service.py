@@ -9,13 +9,14 @@ environment variables. If SMTP_HOST is set, it uses SMTP; otherwise it falls
 back to console mode so that development and tests work without an SMTP server.
 """
 
-import logging
 import os
 import smtplib
 from abc import ABC, abstractmethod
 from email.mime.text import MIMEText
 
-logger = logging.getLogger(__name__)
+from app.core.logging import get_logger
+
+logger = get_logger("services.email")
 
 
 class EmailSender(ABC):
@@ -31,18 +32,7 @@ class ConsoleEmailSender(EmailSender):
     """Logs emails to console — used when SMTP is not configured."""
 
     def send(self, to: str, subject: str, body: str) -> None:
-        # Sanitize user-provided values to prevent log injection
-        safe_to = to.replace("\n", "\\n").replace("\r", "\\r")
-        safe_subject = subject.replace("\n", "\\n").replace("\r", "\\r")
-        safe_body = body.replace("\n", "\\n").replace("\r", "\\r")
-        logger.info(
-            "=== EMAIL (console mode) ===\n"
-            "To: %s\nSubject: %s\n%s\n"
-            "===========================",
-            safe_to,
-            safe_subject,
-            safe_body,
-        )
+        logger.info("email_console", to=to, subject=subject, body=body)
 
 
 class SMTPEmailSender(EmailSender):
