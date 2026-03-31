@@ -35,14 +35,15 @@ import (
 
 // routeFileEvent dispatches a file.events Kafka message to either personal
 // delivery (PM file) or room broadcast (room file).
-// sendPersonal, broadcastRoom, and deliverPM are injected so this function is testable.
-// deliverPM may be nil (e.g. in tests that don't need persistence).
+// sendPersonal, broadcastRoom, deliverPM, and deliverChat are injected so this function is testable.
+// deliverPM and deliverChat may be nil (e.g. in tests that don't need persistence).
 func routeFileEvent(
 	ctx context.Context,
 	value map[string]interface{},
 	sendPersonal func(userID int, msg map[string]interface{}),
 	broadcastRoom func(roomID int, msg map[string]interface{}),
 	deliverPM func(ctx context.Context, fromUserID int, payload []byte) error,
+	deliverChat func(ctx context.Context, roomID int, payload []byte) error,
 ) {
 	msg := map[string]interface{}{
 		"type":      "file_shared",
@@ -90,6 +91,30 @@ func routeFileEvent(
 
 	if roomID, ok := value["room_id"].(float64); ok {
 		broadcastRoom(int(roomID), msg)
+
+		// Persist the room file message via chat.messages so it survives page
+		// refreshes. The message-service persistence consumer will pick it up.
+		if deliverChat != nil {
+			senderID := 0
+			if sid, ok := value["sender_id"].(float64); ok {
+				senderID = int(sid)
+			}
+			kafkaMsg := map[string]interface{}{
+				"type":      "message",
+				"room_id":   int(roomID),
+				"sender_id": senderID,
+				"username":  value["from"],
+				"text":      value["filename"],
+				"msg_id":    fmt.Sprintf("room-file-%v", value["file_id"]),
+				"is_file":   true,
+				"file_id":   value["file_id"],
+				"timestamp": value["timestamp"],
+			}
+			payload, err := json.Marshal(kafkaMsg)
+			if err == nil {
+				go func() { _ = deliverChat(ctx, int(roomID), payload) }()
+			}
+		}
 	}
 }
 
@@ -195,6 +220,7 @@ func main() {
 					func(userID int, msg map[string]interface{}) { wsManager.SendPersonal(userID, msg) },
 					func(roomID int, msg map[string]interface{}) { wsManager.BroadcastRoom(roomID, msg) },
 					deliveryStrategy.DeliverPM,
+					deliveryStrategy.DeliverChat,
 				)
 				return nil
 			}, logger)

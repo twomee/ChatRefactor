@@ -379,8 +379,13 @@ func (h *WSHandler) sendEmptyHistory(conn *websocket.Conn, roomID int) {
 func transformHistoryMessages(rawMessages []map[string]interface{}) []map[string]interface{} {
 	transformed := make([]map[string]interface{}, 0, len(rawMessages))
 	for _, m := range rawMessages {
+		isFile, _ := m["is_file"].(bool)
+		msgType := "message"
+		if isFile {
+			msgType = "file_shared"
+		}
 		msg := map[string]interface{}{
-			"type": "message",
+			"type": msgType,
 			"from": m["sender_name"],
 			"text": m["content"],
 		}
@@ -398,6 +403,12 @@ func transformHistoryMessages(rawMessages []map[string]interface{}) []map[string
 		}
 		if reactions, ok := m["reactions"]; ok {
 			msg["reactions"] = reactions
+		}
+		if isFile {
+			msg["isFile"] = true
+			if fileID, ok := m["file_id"]; ok && fileID != nil {
+				msg["fileId"] = fileID
+			}
 		}
 		transformed = append(transformed, msg)
 	}

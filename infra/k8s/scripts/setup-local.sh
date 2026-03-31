@@ -105,9 +105,6 @@ bash "$K8S_DIR/scripts/build-images.sh"
 echo ""
 echo "[7/7] Deploying application..."
 kubectl apply -k "$K8S_DIR/overlays/dev"
-# Re-apply secrets after kustomize — base secrets.yaml files contain CHANGE_ME
-# placeholders and kustomize apply will overwrite the real secrets generated above
-bash "$K8S_DIR/scripts/generate-secrets.sh"
 
 echo ""
 echo "========================================="
