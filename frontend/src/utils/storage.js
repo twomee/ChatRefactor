@@ -51,3 +51,8 @@ export function addPMThread(currentUsername, partnerUsername) {
     savePMThreadList(currentUsername, [...existing, partnerUsername]);
   }
 }
+
+export function removePMThread(currentUsername, partnerUsername) {
+  const existing = getPMThreadList(currentUsername);
+  savePMThreadList(currentUsername, existing.filter(u => u !== partnerUsername));
+}

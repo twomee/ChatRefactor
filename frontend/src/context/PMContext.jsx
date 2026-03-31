@@ -114,6 +114,18 @@ export function pmReducer(state, action) {
       return { ...state, threads: { ...state.threads, [action.username]: [] } };
     }
 
+    case 'REMOVE_PM_THREAD': {
+      // Remove the conversation entirely from state — used when the user clicks X.
+      const { [action.username]: _removed, ...remainingThreads } = state.threads; // eslint-disable-line no-unused-vars
+      const { [action.username]: _removedLoaded, ...remainingLoaded } = state.loadedThreads; // eslint-disable-line no-unused-vars
+      return {
+        ...state,
+        threads: remainingThreads,
+        loadedThreads: remainingLoaded,
+        activePM: state.activePM === action.username ? null : state.activePM,
+      };
+    }
+
     case 'DELETE_PM_CONVERSATION': {
       return {
         ...state,

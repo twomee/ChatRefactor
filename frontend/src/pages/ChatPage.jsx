@@ -7,7 +7,7 @@ import { usePM } from '../context/PMContext';
 import { useChatConnection } from '../layouts/ChatConnectionLayer';
 import * as pmApi from '../services/pmApi';
 import * as authApi from '../services/authApi';
-import { getPMThreadList, addPMThread } from '../utils/storage';
+import { getPMThreadList, addPMThread, removePMThread } from '../utils/storage';
 import * as messageApi from '../services/messageApi';
 import Logo from '../components/common/Logo';
 import RoomList from '../components/room/RoomList';
@@ -161,11 +161,9 @@ export default function ChatPage() {
   }
 
   function handleDeletePMConversation(username) {
-    pmDispatch({ type: 'CLEAR_PM_THREAD', username });
+    pmDispatch({ type: 'REMOVE_PM_THREAD', username });
     pmDispatch({ type: 'CLEAR_PM_UNREAD', username });
-    if (pmState.activePM === username) {
-      pmDispatch({ type: 'SET_ACTIVE_PM', username: null });
-    }
+    removePMThread(user?.username, username);
   }
 
   function handleStartPM(username) {
