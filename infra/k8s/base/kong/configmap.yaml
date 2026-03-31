@@ -17,7 +17,7 @@ data:
           origins:
             - "http://localhost:3000"
             - "http://localhost:5173"
-            - "http://localhost:30080"
+            - "http://localhost:30000"
           methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
           headers: [Authorization, Content-Type, X-Request-ID]
           credentials: true
