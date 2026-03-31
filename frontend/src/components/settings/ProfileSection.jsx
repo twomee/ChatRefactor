@@ -55,7 +55,8 @@ export default function ProfileSection() {
       setNewEmail('');
       setEmailPassword('');
     } catch (err) {
-      setEmailError(err.response?.data?.detail || 'Failed to update email.');
+      const detail = err.response?.data?.detail;
+      setEmailError(Array.isArray(detail) ? detail[0]?.msg || 'Validation error.' : detail || 'Failed to update email.');
     } finally {
       setEmailLoading(false);
     }
@@ -71,8 +72,8 @@ export default function ProfileSection() {
       setPasswordError('Passwords do not match.');
       return;
     }
-    if (newPassword.length < 6) {
-      setPasswordError('New password must be at least 6 characters.');
+    if (newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters.');
       return;
     }
 
@@ -84,7 +85,8 @@ export default function ProfileSection() {
       setNewPassword('');
       setConfirmPassword('');
     } catch (err) {
-      setPasswordError(err.response?.data?.detail || 'Failed to update password.');
+      const detail = err.response?.data?.detail;
+      setPasswordError(Array.isArray(detail) ? detail[0]?.msg || 'Validation error.' : detail || 'Failed to update password.');
     } finally {
       setPasswordLoading(false);
     }
