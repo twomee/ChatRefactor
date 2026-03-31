@@ -257,3 +257,12 @@ services:
           policy: local
           fault_tolerant: true
           hide_client_headers: false
+
+  # -- Frontend (catch-all: all paths not matched above go to the React SPA) --
+  - name: frontend
+    url: http://frontend:80
+    routes:
+      - name: frontend-route
+        paths:
+          - /
+        strip_path: false
