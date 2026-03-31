@@ -55,6 +55,17 @@ Why we chose every piece of technology in cHATBOX — from infrastructure to ind
    - [PM History Persistence](#92-pm-history-persistence)
    - [PM Sidebar Persistence](#93-pm-sidebar-persistence)
    - [Instant Logout Presence](#94-instant-logout-presence)
+10. [Phase 3 Features — UI/UX Improvements Sprint](#10-phase-3-features--uiux-improvements-sprint)
+    - [Room Name Display (No # Prefix)](#101-room-name-display-no--prefix)
+    - [Email Registration](#102-email-registration)
+    - [Edit Email and Password in Settings](#103-edit-email-and-password-in-settings)
+    - [Forgot / Reset Password](#104-forgot--reset-password)
+    - [Clear Conversation History](#105-clear-conversation-history)
+    - [Delete PM Conversation](#106-delete-pm-conversation)
+    - [Command Palette Search](#107-command-palette-search)
+    - [Settings Page](#108-settings-page)
+    - [User Avatar Dropdown](#109-user-avatar-dropdown)
+    - [PM Feature Parity](#1010-pm-feature-parity)
 
 ---
 
@@ -1318,3 +1329,159 @@ Phase 1 introduced new libraries and modules across all four services. Here's wh
 **Grace period preserved for page refreshes.** The 5-second grace period still applies for unexpected disconnects. This is important — without it, every page refresh would briefly show all room members as "offline" and trigger spurious `user_left` system messages.
 
 **`flushPendingLeaves` fires immediately on intentional logout.** When `DisconnectLobby` is called without the grace period, it triggers the `onFullLogout` callbacks, which calls `flushPendingLeaves`. This cancels any pending room grace-period timers and immediately broadcasts `user_left` to all rooms the user was in, in one pass.
+
+---
+
+## 10. Phase 3 Features — UI/UX Improvements Sprint
+
+This sprint addressed eleven UX gaps identified after Phase 2 shipped. The changes touch every layer — new database columns and tables, new REST endpoints, new frontend pages, and reshaped component architecture. The unifying theme is: promote the app from a working prototype to a polished product where every surface feels intentional.
+
+---
+
+### 10.1 Room Name Display (No # Prefix)
+
+**What it does:** Room names are displayed without a `#` prefix everywhere in the UI — the sidebar list, the chat header, and search results.
+
+**Key design decisions:**
+
+**Remove at source, not at display.** `#` was a static string prepended in three JSX locations (`RoomList.jsx`, `ChatPage.jsx` header, `SearchModal.jsx` query formatter). The fix was surgical: delete those three string concatenations. Alternative: strip at a single display utility function — overkill for a cosmetic change that lives in three well-defined spots. The `#` was cosmetic chrome, not part of the stored room name, so no database or API changes were needed.
+
+---
+
+### 10.2 Email Registration
+
+**What it does:** Email is now a required field on registration. The auth-service stores it, validates uniqueness, and returns it in the user profile.
+
+**Key design decisions:**
+
+**Nullable at DB level, required at application level.** The migration adds `email VARCHAR(255) UNIQUE` as a nullable column. Nullable allows existing users (created before this migration) to continue working — their rows keep `email = NULL`. New registrations enforce `email: EmailStr` (non-nullable) in the Pydantic `UserRegister` schema. This is the standard "nullable migration, required application logic" pattern for adding columns to a live table without a big-bang data backfill.
+
+**`EmailStr` from Pydantic v2.** Pydantic's `EmailStr` type validates RFC 5322 email format at parse time — no regex needed. It also normalises the local part to lowercase, preventing `User@Example.com` and `user@example.com` from being stored as two different emails. The uniqueness constraint on the DB column is a second line of defence.
+
+**Duplicate email check in the service layer, not the DAL.** `auth_service.register()` calls `user_dal.get_by_email()` before `user_dal.create()`. If the email already exists, it raises `HTTPException(409)` before the INSERT. Alternative: rely on the DB's `UNIQUE` constraint and catch `IntegrityError` — works, but forces you to parse DB error messages to produce a user-friendly response. Explicit pre-check is cleaner and more portable.
+
+---
+
+### 10.3 Edit Email and Password in Settings
+
+**What it does:** Logged-in users can change their email address and password from the settings page. Both operations require the current password as confirmation.
+
+**Key design decisions:**
+
+**Three new auth-service endpoints: `GET /auth/profile`, `PATCH /auth/profile/email`, `PATCH /auth/profile/password`.** Separate endpoints for separate concerns — profile read, email update, password update. This follows the REST principle of resource-oriented design. A single `PATCH /auth/profile` accepting any field would work technically but conflates two security-sensitive operations that have different risk profiles and different validation rules.
+
+**Current password required for both updates.** Changing email or password is a privileged action. Requiring `current_password` in the request body means a session hijack (e.g., someone who grabbed the JWT) cannot silently update credentials — they still need the original password. This is standard for credential-change flows.
+
+**Password hashed with bcrypt in the service layer.** `update_password()` calls `bcrypt.hashpw(new_password.encode(), bcrypt.gensalt())` before `user_dal.update_password()`. The DAL only ever stores hashes — plaintext never reaches the database layer. This is the same pattern used in registration.
+
+**New Pydantic schemas: `UpdateEmailRequest`, `UpdatePasswordRequest`, `ProfileResponse`.** `UpdatePasswordRequest` enforces `min_length=8, max_length=128` on `new_password`. This prevents trivially weak passwords at the validation layer before any business logic runs.
+
+---
+
+### 10.4 Forgot / Reset Password
+
+**What it does:** Users who forget their password enter their email on the login page. They receive a reset link (via email or console in dev). Clicking the link opens a page where they set a new password.
+
+**Key design decisions:**
+
+**Always return 200 on `POST /auth/forgot-password`.** The endpoint looks up the user by email. If found, it generates a token and sends the email. If not found, it does nothing. Either way it returns `{"message": "If that email is registered, you will receive a reset link."}`. This is standard email enumeration prevention — an attacker who submits email addresses to discover which are registered gets no useful signal.
+
+**Token stored in a `password_reset_tokens` table, not in the users row.** The token has `user_id`, `token` (32-byte hex, URL-safe), `expires_at` (1 hour), and `used` flag. This design allows multiple outstanding tokens (e.g., user requests twice) and makes invalidation explicit: mark `used = True` rather than clearing a nullable column on the users table. Tokens are one-time-use: `reset_password()` marks the token used immediately after the password update, inside the same DB transaction.
+
+**SMTP with console fallback (adapter pattern).** `email_service.py` defines an `EmailSender` base class with a `send(to, subject, body)` method. `SMTPEmailSender` uses Python's `smtplib` for production; `ConsoleEmailSender` logs the reset link to stdout for local development. A factory function reads the `SMTP_HOST` environment variable and returns the appropriate sender. This is the **dependency inversion principle** applied to I/O: business logic (generate token, send email) depends on the abstraction (`EmailSender`), not on the transport implementation. Swapping SMTP for SendGrid requires only a new class, not changes to any service logic.
+
+**`ResetPasswordPage` is a public route (no auth required).** Added to `App.jsx` outside the `AuthenticatedShell` wrapper. The token in `?token=xxx` is the credential — no JWT is needed or appropriate on this page.
+
+**Minimum password length 6 characters on reset, 8 in profile settings.** The reset page enforces 6 characters (a common convention for password resets); the profile change page enforces 8. Both are validated frontend + backend (Pydantic on the reset endpoint, Pydantic on the profile endpoint).
+
+---
+
+### 10.5 Clear Conversation History
+
+**What it does:** Users can clear the visible message history for any room or PM conversation. Only their own view is cleared — other participants still see the full history.
+
+**Key design decisions:**
+
+**Per-user watermark table instead of hard deletes.** A new `user_message_clears` table stores `(user_id, context_type, context_id, cleared_at)`. When the user fetches history, the query filters `WHERE sent_at > cleared_at`. This gives each user an independent view of the history — a "clear" is a personal bookmark, not a destructive operation. Hard-deleting messages for one user's clear would destroy history for everyone else.
+
+**Upsert semantics for repeated clears.** `clear_dal.upsert_clear()` uses `ON CONFLICT (user_id, context_type, context_id) DO UPDATE SET cleared_at = NOW()`. If a user clears the same conversation twice, the second clear simply advances the watermark. There is at most one row per `(user, conversation)` pair — no unbounded accumulation.
+
+**`context_type IN ('room', 'pm')` check constraint.** The DB enforces that only valid context types can be stored, preventing application bugs from silently inserting invalid rows.
+
+---
+
+### 10.6 Delete PM Conversation
+
+**What it does:** Users can delete a DM conversation from their sidebar. The conversation disappears for them only — the other participant's view is unaffected. If the deleted partner sends a new message, the conversation is automatically restored.
+
+**Key design decisions:**
+
+**Soft-delete in a separate `deleted_pm_conversations` table.** Storing the deletion as `(user_id, other_user_id, deleted_at)` rather than a flag on the PM thread means the schema stays clean — there is no nullable `deleted_by_user_a` / `deleted_by_user_b` column pair on the conversations table. The separate table also makes "restore on new message" trivial: delete the row from `deleted_pm_conversations` when a new PM arrives from that partner.
+
+**Restore on inbound message.** When the WebSocket delivers a PM from a previously-deleted conversation, the frontend dispatches `RESTORE_PM_CONVERSATION` which removes the entry from `deletedPMs` state and re-adds the thread to the sidebar. This matches user expectation: "I deleted the conversation, but they messaged me again."
+
+---
+
+### 10.7 Command Palette Search
+
+**What it does:** The existing search modal was redesigned as a command palette (triggered by Ctrl+K). Results support full keyboard navigation (↑↓ to move, Enter to select). Clicking or selecting a result navigates to the room and scrolls to the specific message with a temporary highlight animation.
+
+**Key design decisions:**
+
+**Evolve the existing `SearchModal`, not replace it.** The existing component already had debounce, abort controller cancellation, and highlight logic for query matches. Adding keyboard navigation (`selectedIndex` state, `onKeyDown` handler, `aria-activedescendant`) and scroll-to-message was additive. Alternative: rewrite from scratch — risks losing the abort controller pattern and reintroducing race conditions.
+
+**Context window endpoint for scroll-to-message.** `GET /messages/rooms/{room_id}/context?message_id=xxx&before=25&after=25` returns the 25 messages before and after the target. When navigating to a search result, the frontend replaces the room's message list with this context window and sets `highlightMessageId`. `MessageList` scrolls to the highlighted message and applies a CSS animation (`.msg-highlight`: gold background pulse, fades after 2 seconds). Loading only the context window (50 messages) instead of the full history (potentially thousands) is a performance trade-off — the user sees the relevant message immediately, and the full history is available by scrolling up.
+
+**`message_id` propagated through the navigation chain.** `SearchModal` calls `onNavigate(roomId, messageId)`. `ChatPage.handleSearchNavigate` receives both, joins the room, then calls the context endpoint. The message_id flows end-to-end without being lost at any intermediate step — each layer passes it through explicitly.
+
+---
+
+### 10.8 Settings Page
+
+**What it does:** Settings moved from a slide-over modal to a full page at `/settings`. The page is divided into three sections: Profile (email + password change), Security (2FA setup), and Account (clear history, delete PM conversations).
+
+**Key design decisions:**
+
+**Full page route instead of a modal.** The modal approach (`SettingsModal`) used `position: fixed` overlay and was limited in screen real estate. A full page at `/settings` (added to `App.jsx` inside `AuthenticatedShell`) gives settings a proper URL, supports deep-linking, allows more space for complex forms, and follows the same pattern as `AdminPage`. The old `SettingsModal` component was deleted.
+
+**Reuse of existing `TwoFactorSetup` component.** The Security section drops `<TwoFactorSetup />` directly into the settings page layout. No duplication — the component handles QR code display, TOTP verification, and enable/disable state as a self-contained unit.
+
+**`ProfileSection` as a dedicated component.** The email and password change forms are extracted into `frontend/src/components/settings/ProfileSection.jsx` rather than inlined in `SettingsPage`. This keeps `SettingsPage` as a layout-only component and `ProfileSection` as a form-logic component — single responsibility. `ProfileSection` calls `authApi.getProfile()` on mount to display the current email, then uses `authApi.updateEmail()` / `authApi.updatePassword()` on submit.
+
+---
+
+### 10.9 User Avatar Dropdown
+
+**What it does:** The user avatar in the chat header opens a dropdown menu with three actions: Settings (navigates to `/settings`), Admin Panel (shown only for global admins), and Logout. The dropdown closes on outside click or Escape key.
+
+**Key design decisions:**
+
+**`UserDropdown` as a self-contained component.** The dropdown logic (open state, click-outside detection via `useEffect` + `document.addEventListener`, Escape key handler) lives entirely in `frontend/src/components/common/UserDropdown.jsx`. `ChatPage` no longer manages `settingsOpen` state or separate Settings/Admin/Logout buttons — it just renders `<UserDropdown>`. This moves interaction complexity to the component that owns it.
+
+**Conditional Admin Panel item.** The component receives an `isAdmin` prop. When false, the Admin Panel option is not rendered. This avoids exposing admin navigation to non-admin users and keeps the permission check co-located with the UI element it controls.
+
+**Click-outside via `useRef` + `document` listener.** On mount, a `mousedown` listener is attached to `document`. If the event target is outside the dropdown ref, the menu closes. This is the standard React pattern for click-outside detection — it works regardless of whether the click target has its own event handler.
+
+---
+
+### 10.10 PM Feature Parity
+
+**What it does:** Private messages now support the same edit, delete, and emoji reaction actions as room messages. The PM message styling is unified with the room message renderer — directional labels ("You → alice") were removed in favour of the standard bubble layout. Both changes apply in real time via WebSocket push to both conversation participants.
+
+**Key design decisions:**
+
+**Unified rendering: remove `isPrivate` flag from PM message mapping.** Previously, `ChatPage` mapped PM messages with `isPrivate: true`, which caused `MessageList` to route them through `renderPrivateMessage()` — a separate renderer that lacked action buttons and used a different visual layout. Removing `isPrivate: true` means both room and PM messages flow through `renderRegularMessage()`. The bubble layout, hover actions (edit/delete/react), and timestamp display are identical. This follows the DRY principle and eliminates a two-codepath maintenance burden.
+
+**`msg_id` returned by `POST /pm/send` and included in WebSocket delivery.** Previously, the PM REST response did not include `msg_id`, so the frontend had no stable identifier for PM messages. The chat-service `pm.go` handler was updated to return `msg_id` in the response body and include it in the WebSocket push to the recipient. `PMContext` was updated to store `msg_id` in each message object so that edit/delete/reaction actions have a stable target.
+
+**New REST endpoints for PM actions in the chat-service.** Four endpoints in `pm_actions.go`:
+- `PATCH /pm/edit/:msg_id` — verifies the requester is the original sender, calls the message-service to update the text, then pushes a `pm_message_edited` WebSocket event to both participants via the lobby personal channel.
+- `DELETE /pm/delete/:msg_id` — same verification pattern, pushes `pm_message_deleted`.
+- `POST /pm/reaction/:msg_id` — adds a reaction, pushes `pm_reaction_added`.
+- `DELETE /pm/reaction/:msg_id/:emoji` — removes a reaction, pushes `pm_reaction_removed`.
+
+Putting these in the chat-service (not the message-service) keeps WebSocket broadcast logic in one place. The message-service owns persistence; the chat-service owns real-time delivery. This is the same split used for room message actions.
+
+**WebSocket push via lobby personal channel.** PM action events are routed through `user:<sender_id>` and `user:<recipient_id>` lobby channels rather than a room broadcast. This ensures only the two participants receive the update — no room membership check is needed, and the event cannot leak to uninvolved users.
+
+**`PMContext` reducer handles all new action types.** `EDIT_PM_MESSAGE`, `DELETE_PM_MESSAGE`, `ADD_PM_REACTION`, `REMOVE_PM_REACTION` update the in-memory thread state immutably. The lobby WebSocket handler in `ChatConnectionLayer` dispatches these actions when the corresponding event types arrive. No polling is needed — updates are push-driven.
