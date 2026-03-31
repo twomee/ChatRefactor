@@ -133,7 +133,7 @@ export function createHandleMessage({
     if (activeRoomIdRef.current === msg.room_id) {
       dispatch({ type: 'SET_ACTIVE_ROOM', roomId: [...stateRef.current.joinedRooms].find(id => id !== msg.room_id) ?? null });
     }
-    window.alert(`You were kicked from ${roomName}`);
+    globalThis.alert(`You were kicked from ${roomName}`);
   }
 
   function onRoomListUpdated(msg) {
@@ -152,7 +152,7 @@ export function createHandleMessage({
     const closedId = msg.room_id ?? roomId;
     exitRoomRef.current(closedId);
     if (activeRoomIdRef.current === closedId) dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
-    window.alert(msg.detail || 'Room was closed');
+    globalThis.alert(msg.detail || 'Room was closed');
   }
 
   function onTyping(msg) {
@@ -188,7 +188,7 @@ export function createHandleMessage({
     reaction_removed:     (msg)         => dispatch({ type: 'REMOVE_REACTION', roomId: msg.room_id, msgId: msg.msg_id, emoji: msg.emoji, username: msg.username }),
     user_online:          (msg)         => dispatch({ type: 'USER_ONLINE', username: msg.username }),
     user_offline:         (msg)         => dispatch({ type: 'USER_OFFLINE', username: msg.username }),
-    error:                (msg)         => window.alert(msg.detail),
+    error:                (msg)         => globalThis.alert(msg.detail),
   };
 
   return function handleMessage(msg, roomId) {

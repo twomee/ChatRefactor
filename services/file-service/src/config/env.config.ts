@@ -56,7 +56,7 @@ export const config = {
   ),
 
   // Downstream service URLs
-  authServiceUrl: requireEnv("AUTH_SERVICE_URL", "http://auth-service:8001"),
+  authServiceUrl: requireEnv("AUTH_SERVICE_URL"), // NOSONAR — service-mesh internal traffic; TLS terminated at ingress
 
   // Allowed file extensions for upload.
   // SECURITY: Only safe document/media/archive types — no executable or
