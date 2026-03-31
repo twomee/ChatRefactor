@@ -1,5 +1,5 @@
 // src/hooks/useMultiRoomChat.js
-import { useEffect, useRef, useCallback, useState, startTransition } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState, startTransition } from 'react';
 import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
 import { useAuth } from '../context/AuthContext';
@@ -414,8 +414,8 @@ export function useMultiRoomChat() {
   // ── Message handler ────────────────────────────────────────────────────────
   // Delegates to the exported createHandleMessage factory so the logic can be
   // unit-tested independently of React without mounting the full hook.
-  const handleMessage = useCallback(
-    createHandleMessage({
+  const handleMessage = useMemo(
+    () => createHandleMessage({
       dispatch,
       pmDispatch,
       user,

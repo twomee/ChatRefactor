@@ -20,12 +20,12 @@ describe('ChatConnectionLayer', () => {
   });
 
   it('useChatConnection returns the outlet context', () => {
-    let result;
+    const results = [];
     function Consumer() {
-      result = useChatConnection();
+      results.push(useChatConnection());
       return null;
     }
     render(<Consumer />);
-    expect(result).toBe(mockChatConn);
+    expect(results[0]).toBe(mockChatConn);
   });
 });

@@ -72,8 +72,8 @@ describe('AdminPage', () => {
     roomApi.createRoom.mockResolvedValue({ id: 3, name: 'new-room' });
     fileApi.listRoomFiles.mockResolvedValue({ data: [] });
     // Prevent the 3-second polling interval from running indefinitely in tests
-    vi.spyOn(global, 'setInterval').mockImplementation(() => 1);
-    vi.spyOn(global, 'clearInterval').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'setInterval').mockImplementation(() => 1);
+    vi.spyOn(globalThis, 'clearInterval').mockImplementation(() => {});
   });
 
   it('renders the admin dashboard grid', () => {

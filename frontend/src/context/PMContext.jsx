@@ -116,8 +116,8 @@ export function pmReducer(state, action) {
 
     case 'REMOVE_PM_THREAD': {
       // Remove the conversation entirely from state — used when the user clicks X.
-      const { [action.username]: _removed, ...remainingThreads } = state.threads; // eslint-disable-line no-unused-vars
-      const { [action.username]: _removedLoaded, ...remainingLoaded } = state.loadedThreads; // eslint-disable-line no-unused-vars
+      const { [action.username]: _removed, ...remainingThreads } = state.threads;
+      const { [action.username]: _removedLoaded, ...remainingLoaded } = state.loadedThreads;
       return {
         ...state,
         threads: remainingThreads,
@@ -135,7 +135,7 @@ export function pmReducer(state, action) {
 
     case 'RESTORE_PM_CONVERSATION': {
       // Destructure to remove the key; _removed is intentionally unused.
-      const { [action.username]: _removed, ...rest } = state.deletedPMs; // eslint-disable-line no-unused-vars
+      const { [action.username]: _removed, ...rest } = state.deletedPMs;
       return { ...state, deletedPMs: rest };
     }
 

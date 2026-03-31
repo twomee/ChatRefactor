@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { getJoinedRooms, addJoinedRoom, removeJoinedRoom, getPMThreadList, savePMThreadList, addPMThread, removePMThread } from '../storage';
 
 describe('storage helpers', () => {
