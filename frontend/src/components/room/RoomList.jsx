@@ -28,7 +28,6 @@ export default function RoomList({
               className={`room-item ${isActive ? 'active' : ''}`}
               onClick={() => onSelect(room.id)}
             >
-              <span className="room-hash">#</span>
               <span className="room-name">{room.name}</span>
               {unread > 0 && (
                 <span className="unread-badge">
@@ -55,7 +54,6 @@ export default function RoomList({
         )}
         {available.map(room => (
           <div key={room.id} className="room-item room-item-available">
-            <span className="room-hash">#</span>
             <span className="room-name">{room.name}</span>
             <button
               className="room-join-btn"

@@ -9,6 +9,7 @@ describe("format.util", () => {
   let sanitizeFilename: typeof import("../../src/utils/format.util.js").sanitizeFilename;
   let validateExtension: typeof import("../../src/utils/format.util.js").validateExtension;
   let validateFileSize: typeof import("../../src/utils/format.util.js").validateFileSize;
+  let validateSvgContent: typeof import("../../src/utils/format.util.js").validateSvgContent;
   let FileValidationError: typeof import("../../src/utils/format.util.js").FileValidationError;
 
   beforeAll(async () => {
@@ -16,6 +17,7 @@ describe("format.util", () => {
     sanitizeFilename = mod.sanitizeFilename;
     validateExtension = mod.validateExtension;
     validateFileSize = mod.validateFileSize;
+    validateSvgContent = mod.validateSvgContent;
     FileValidationError = mod.FileValidationError;
   });
 
@@ -138,6 +140,61 @@ describe("format.util", () => {
       const oversized = 200 * 1024 * 1024;
       expect(() => validateFileSize(oversized)).toThrow(FileValidationError);
       expect(() => validateFileSize(oversized)).toThrow("exceeds maximum size");
+    });
+  });
+
+  // ── validateSvgContent ──────────────────────────────────────────────
+
+  describe("validateSvgContent", () => {
+    it("should accept a safe SVG without scripting", () => {
+      const buf = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>');
+      expect(() => validateSvgContent(buf)).not.toThrow();
+    });
+
+    it("should reject SVG with <script> tag", () => {
+      const buf = Buffer.from('<svg><script>alert(1)</script></svg>');
+      expect(() => validateSvgContent(buf)).toThrow(FileValidationError);
+      expect(() => validateSvgContent(buf)).toThrow("dangerous content");
+    });
+
+    it("should reject SVG with event handler attribute", () => {
+      const buf = Buffer.from('<svg><rect onload="alert(1)"/></svg>');
+      expect(() => validateSvgContent(buf)).toThrow(FileValidationError);
+    });
+
+    it("should reject SVG with javascript: protocol", () => {
+      const buf = Buffer.from('<svg><a href="javascript:alert(1)"><text>click</text></a></svg>');
+      expect(() => validateSvgContent(buf)).toThrow(FileValidationError);
+    });
+
+    it("should reject SVG with data:text/html URI", () => {
+      const buf = Buffer.from('<svg><a href="data:text/html,<script>alert(1)</script>"><text>x</text></a></svg>');
+      expect(() => validateSvgContent(buf)).toThrow(FileValidationError);
+    });
+
+    it("should reject SVG with <iframe>", () => {
+      const buf = Buffer.from('<svg><foreignObject><iframe src="evil.com"/></foreignObject></svg>');
+      expect(() => validateSvgContent(buf)).toThrow(FileValidationError);
+    });
+
+    it("should reject SVG with <object>", () => {
+      const buf = Buffer.from('<svg><object data="evil.swf"/></svg>');
+      expect(() => validateSvgContent(buf)).toThrow(FileValidationError);
+    });
+
+    it("should reject SVG with <embed>", () => {
+      const buf = Buffer.from('<svg><embed src="evil.swf"/></svg>');
+      expect(() => validateSvgContent(buf)).toThrow(FileValidationError);
+    });
+
+    it("should reject SVG with <foreignObject>", () => {
+      const buf = Buffer.from('<svg><foreignObject width="100" height="100"><div>x</div></foreignObject></svg>');
+      expect(() => validateSvgContent(buf)).toThrow(FileValidationError);
+    });
+
+    it("should be case-insensitive (uppercase SCRIPT tag)", () => {
+      const buf = Buffer.from('<SVG><SCRIPT>alert(1)</SCRIPT></SVG>');
+      expect(() => validateSvgContent(buf)).toThrow(FileValidationError);
     });
   });
 

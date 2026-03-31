@@ -9,6 +9,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -18,12 +19,18 @@ export default function LoginPage() {
   const [tempToken, setTempToken] = useState('');
   const [totpCode, setTotpCode] = useState('');
 
+  // ── Forgot password state ──────────────────────────────────────────
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotMessage, setForgotMessage] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     try {
       if (mode === 'register') {
-        await authApi.register(username, password);
+        await authApi.register(username, password, email);
         setMode('login');
         setError('Registered! Now log in.');
       } else {
@@ -38,6 +45,7 @@ export default function LoginPage() {
         login(res.data.access_token, {
           username: res.data.username,
           is_global_admin: res.data.is_global_admin,
+          user_id: res.data.user_id,
         });
         navigate('/chat');
       }
@@ -80,6 +88,76 @@ export default function LoginPage() {
     setTempToken('');
     setTotpCode('');
     setError('');
+  }
+
+  async function handleForgotPassword(e) {
+    e.preventDefault();
+    setForgotMessage('');
+    setForgotLoading(true);
+    try {
+      await authApi.forgotPassword(forgotEmail);
+      setForgotMessage('If an account exists with that email, a reset link has been sent.');
+      setForgotEmail('');
+    } catch {
+      // Always show the same message to prevent email enumeration
+      setForgotMessage('If an account exists with that email, a reset link has been sent.');
+    } finally {
+      setForgotLoading(false);
+    }
+  }
+
+  function handleBackFromForgot() {
+    setShowForgotPassword(false);
+    setForgotEmail('');
+    setForgotMessage('');
+    setError('');
+  }
+
+  // ── Forgot password view ───────────────────────────────────────────
+  if (showForgotPassword) {
+    return (
+      <div className="login-wrapper">
+        <div className="login-card">
+          <div className="login-header">
+            <Logo />
+            <p className="login-subtitle">Reset Your Password</p>
+          </div>
+
+          <form onSubmit={handleForgotPassword} className="login-form">
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
+              Enter your email address and we will send you a link to reset your password.
+            </p>
+            <input
+              type="email"
+              placeholder="Email address"
+              value={forgotEmail}
+              onChange={e => setForgotEmail(e.target.value)}
+              required
+              autoFocus
+              data-testid="forgot-email-input"
+            />
+            {forgotMessage && (
+              <p className="login-error success">{forgotMessage}</p>
+            )}
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={forgotLoading || !forgotEmail.trim()}
+            >
+              {forgotLoading ? 'Sending...' : 'Send Reset Link'}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={handleBackFromForgot}
+              style={{ textAlign: 'center' }}
+            >
+              Back to Login
+            </button>
+          </form>
+        </div>
+      </div>
+    );
   }
 
   // ── 2FA code input view ──────────────────────────────────────────────
@@ -163,6 +241,15 @@ export default function LoginPage() {
             required
             autoFocus
           />
+          {mode === 'register' && (
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required
+            />
+          )}
           <input
             type="password"
             placeholder="Password"
@@ -178,6 +265,16 @@ export default function LoginPage() {
           <button type="submit" className="btn-primary">
             {mode === 'login' ? 'Sign In' : 'Create Account'}
           </button>
+          {mode === 'login' && (
+            <button
+              type="button"
+              className="btn-ghost forgot-password-link"
+              onClick={() => setShowForgotPassword(true)}
+              style={{ textAlign: 'center', fontSize: '0.8125rem' }}
+            >
+              Forgot password?
+            </button>
+          )}
         </form>
       </div>
     </div>

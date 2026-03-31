@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   register, login, logout, ping,
   setup2FA, verifySetup2FA, disable2FA, verifyLogin2FA, get2FAStatus,
+  getProfile, updateEmail, updatePassword, forgotPassword, resetPassword,
 } from '../authApi';
 import http from '../http';
 
@@ -9,6 +10,7 @@ vi.mock('../http', () => ({
   default: {
     post: vi.fn(),
     get: vi.fn(),
+    patch: vi.fn(),
   },
 }));
 
@@ -18,18 +20,24 @@ describe('authApi', () => {
   });
 
   describe('register', () => {
-    it('posts to /auth/register with username and password', async () => {
+    it('posts to /auth/register with username, password, and email', async () => {
       http.post.mockResolvedValue({ data: { message: 'ok' } });
-      await register('alice', 'pass123');
-      expect(http.post).toHaveBeenCalledWith('/auth/register', { username: 'alice', password: 'pass123' });
+      await register('alice', '', 'alice@example.com');
+      expect(http.post).toHaveBeenCalledWith('/auth/register', { username: 'alice', password: '', email: 'alice@example.com' });
+    });
+
+    it('posts to /auth/register with undefined email when omitted', async () => {
+      http.post.mockResolvedValue({ data: { message: 'ok' } });
+      await register('alice', '');
+      expect(http.post).toHaveBeenCalledWith('/auth/register', { username: 'alice', password: '', email: undefined });
     });
   });
 
   describe('login', () => {
     it('posts to /auth/login with credentials', async () => {
       http.post.mockResolvedValue({ data: { access_token: 'jwt' } });
-      const res = await login('alice', 'pass123');
-      expect(http.post).toHaveBeenCalledWith('/auth/login', { username: 'alice', password: 'pass123' });
+      const res = await login('alice', '');
+      expect(http.post).toHaveBeenCalledWith('/auth/login', { username: 'alice', password: '' });
       expect(res.data.access_token).toBe('jwt');
     });
   });
@@ -92,6 +100,65 @@ describe('authApi', () => {
       const res = await get2FAStatus();
       expect(http.get).toHaveBeenCalledWith('/auth/2fa/status');
       expect(res.data.is_2fa_enabled).toBe(false);
+    });
+  });
+
+  // ── Profile Management ────────────────────────────────────────────────
+
+  describe('getProfile', () => {
+    it('gets /auth/profile and returns data', async () => {
+      http.get.mockResolvedValue({ data: { username: 'alice', email: 'alice@example.com' } });
+      const profile = await getProfile();
+      expect(http.get).toHaveBeenCalledWith('/auth/profile');
+      expect(profile.username).toBe('alice');
+      expect(profile.email).toBe('alice@example.com');
+    });
+  });
+
+  describe('updateEmail', () => {
+    it('patches /auth/profile/email with new_email and current_password', async () => {
+      http.patch.mockResolvedValue({ data: { message: 'email updated' } });
+      const res = await updateEmail('new@example.com', '');
+      expect(http.patch).toHaveBeenCalledWith('/auth/profile/email', {
+        new_email: 'new@example.com',
+        current_password: '',
+      });
+      expect(res.message).toBe('email updated');
+    });
+  });
+
+  describe('updatePassword', () => {
+    it('patches /auth/profile/password with current and new password', async () => {
+      http.patch.mockResolvedValue({ data: { message: 'password updated' } });
+      const res = await updatePassword('', '');
+      expect(http.patch).toHaveBeenCalledWith('/auth/profile/password', {
+        current_password: '',
+        new_password: '',
+      });
+      expect(res.message).toBe('password updated');
+    });
+  });
+
+  // ── Password Reset ────────────────────────────────────────────────────
+
+  describe('forgotPassword', () => {
+    it('posts to /auth/forgot-password with email', async () => {
+      http.post.mockResolvedValue({ data: { message: 'email sent' } });
+      const res = await forgotPassword('alice@example.com');
+      expect(http.post).toHaveBeenCalledWith('/auth/forgot-password', { email: 'alice@example.com' });
+      expect(res.message).toBe('email sent');
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('posts to /auth/reset-password with token and new_password', async () => {
+      http.post.mockResolvedValue({ data: { message: 'password reset' } });
+      const res = await resetPassword('test-reset-token', '');
+      expect(http.post).toHaveBeenCalledWith('/auth/reset-password', {
+        token: 'test-reset-token',
+        new_password: '',
+      });
+      expect(res.message).toBe('password reset');
     });
   });
 });

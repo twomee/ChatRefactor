@@ -1,11 +1,11 @@
-# app/models/__init__.py — Message & Reaction models
+# app/models/__init__.py — Message, Reaction, UserMessageClear & DeletedPMConversation models
 #
 # Key difference from monolith: NO ForeignKey constraints.
 # In the microservice architecture, users and rooms live in separate databases
 # (auth-service and chat-service respectively). sender_id, recipient_id, and
 # room_id are plain integers — referential integrity is enforced at the
 # application level, not the database level.
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean,
@@ -53,6 +53,8 @@ class Message(Base):
     sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     edited_at = Column(DateTime, nullable=True)
     is_deleted = Column(Boolean, default=False, nullable=False)
+    is_file = Column(Boolean, default=False, nullable=False, server_default="false")
+    file_id = Column(Integer, nullable=True)
     search_vector = Column(TSVector, nullable=True)  # populated by PG trigger
 
 
@@ -77,4 +79,50 @@ class Reaction(Base):
         UniqueConstraint(
             "message_id", "user_id", "emoji", name="uq_reaction_per_user_per_emoji"
         ),
+    )
+
+
+class UserMessageClear(Base):
+    """Per-user clear marker for a conversation context (room or PM).
+
+    When a user clears their view of a conversation, we record the timestamp.
+    Messages with sent_at <= cleared_at are hidden from this user only —
+    other participants still see them. Re-clearing updates cleared_at.
+    """
+
+    __tablename__ = "user_message_clears"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False)
+    context_type = Column(String(10), nullable=False)  # 'room' or 'pm'
+    context_id = Column(Integer, nullable=False)
+    cleared_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "context_type", "context_id", name="uq_user_clear"),
+    )
+
+
+class DeletedPMConversation(Base):
+    """Soft-delete marker for a PM conversation from one user's perspective.
+
+    When a user deletes a PM conversation, we record the deletion timestamp.
+    Messages sent before deleted_at are hidden from this user; the other
+    participant's view is unaffected. If the other user sends a new message,
+    the conversation reappears (the deletion record can be removed).
+    """
+
+    __tablename__ = "deleted_pm_conversations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False)
+    other_user_id = Column(Integer, nullable=False)
+    deleted_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "other_user_id", name="uq_deleted_pm"),
     )

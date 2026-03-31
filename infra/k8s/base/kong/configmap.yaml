@@ -18,11 +18,10 @@ data:
             - "http://localhost:3000"
             - "http://localhost:5173"
             - "http://localhost:30000"
-          methods: [GET, POST, PUT, DELETE, OPTIONS]
+          methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
           headers: [Authorization, Content-Type, X-Request-ID]
           credentials: true
           preflight_continue: false
-          private_network: true
       - name: request-transformer
         config:
           add:
@@ -79,6 +78,50 @@ data:
             paths: [/auth/ping]
             strip_path: false
             methods: [POST, OPTIONS]
+      - name: auth-users
+        url: http://auth-service:8001
+        routes:
+          - name: auth-users-route
+            paths: [/auth/users]
+            strip_path: false
+            methods: [GET, OPTIONS]
+      - name: auth-forgot-password
+        url: http://auth-service:8001
+        routes:
+          - name: auth-forgot-password-route
+            paths: [/auth/forgot-password]
+            strip_path: false
+            methods: [POST, OPTIONS]
+        plugins:
+          - name: rate-limiting
+            config: { minute: 5, policy: local, fault_tolerant: true, hide_client_headers: false }
+      - name: auth-reset-password
+        url: http://auth-service:8001
+        routes:
+          - name: auth-reset-password-route
+            paths: [/auth/reset-password]
+            strip_path: false
+            methods: [POST, OPTIONS]
+        plugins:
+          - name: rate-limiting
+            config: { minute: 5, policy: local, fault_tolerant: true, hide_client_headers: false }
+      - name: auth-profile
+        url: http://auth-service:8001
+        routes:
+          - name: auth-profile-route
+            paths: [/auth/profile]
+            strip_path: false
+            methods: [GET, PATCH, OPTIONS]
+      - name: auth-2fa
+        url: http://auth-service:8001
+        routes:
+          - name: auth-2fa-route
+            paths: [/auth/2fa]
+            strip_path: false
+            methods: [GET, POST, OPTIONS]
+        plugins:
+          - name: rate-limiting
+            config: { minute: 10, policy: local, fault_tolerant: true, hide_client_headers: false }
       - name: chat-service-rooms
         url: http://chat-service:8003
         routes:
@@ -132,3 +175,12 @@ data:
         plugins:
           - name: rate-limiting
             config: { minute: 20, policy: local, fault_tolerant: true, hide_client_headers: false }
+      # Catch-all route: serves the React SPA for all paths not matched by the
+      # API routes above. Kong matches by longest-prefix first, so /auth, /rooms
+      # etc. are handled before this falls through to the frontend.
+      - name: frontend
+        url: http://frontend:80
+        routes:
+          - name: frontend-route
+            paths: [/]
+            strip_path: false

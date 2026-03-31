@@ -115,11 +115,13 @@ def setup_test_environment():
         with patch("app.infrastructure.redis.redis_pool", MagicMock()):
             yield
 
-    # Clean up: clear Redis mock and delete all users
+    # Clean up: clear Redis mock and delete all users + reset tokens
     _mock_redis.clear()
     db = TestSessionLocal()
     try:
-        from app.models import User
+        from app.models import PasswordResetToken, User
+
+        db.query(PasswordResetToken).delete()
         db.query(User).delete()
         db.commit()
     finally:
@@ -153,7 +155,9 @@ def db_session():
         yield db
     finally:
         db.rollback()
-        from app.models import User
+        from app.models import PasswordResetToken, User
+
+        db.query(PasswordResetToken).delete()
         db.query(User).delete()
         db.commit()
         db.close()

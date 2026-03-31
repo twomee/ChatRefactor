@@ -17,7 +17,9 @@ model File {
   fileSize     Int      @map("file_size")
   senderId     Int      @map("sender_id")
   senderName   String?  @map("sender_name") @db.VarChar(64)
-  roomId       Int      @map("room_id")
+  roomId       Int?     @map("room_id")
+  recipientId  Int?     @map("recipient_id")
+  isPrivate    Boolean  @default(false) @map("is_private")
   uploadedAt   DateTime @default(now()) @map("uploaded_at")
 
   @@map("files")

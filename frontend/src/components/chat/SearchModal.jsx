@@ -1,20 +1,13 @@
-// src/components/chat/SearchModal.jsx — Global message search modal
+// src/components/chat/SearchModal.jsx — Global message search (command palette)
 //
 // Opened via Ctrl+K / Cmd+K or the search button in the header.
 // Debounces input by 300ms before firing the API call.
-// Displays results with sender, content snippet, room name, and timestamp.
-// Clicking a result navigates the user to that room.
+// Displays results with sender avatar, content snippet, room name, and timestamp.
+// Supports full keyboard navigation (ArrowUp/Down + Enter).
+// Clicking or pressing Enter on a result navigates to that room AND message.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { searchMessages } from '../../services/searchApi';
-
-/**
- * @param {Object}   props
- * @param {boolean}  props.isOpen      - Whether the modal is visible
- * @param {Function} props.onClose     - Called to close the modal
- * @param {Array}    props.rooms       - Room list [{ id, name }] for name lookups
- * @param {Function} props.onNavigate  - Called with roomId when user clicks a result
- */
 
 // ── Module-scope helpers ──
 
@@ -54,14 +47,50 @@ function formatTime(isoString) {
   }
 }
 
-export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate }) {
+function getInitials(name) {
+  if (!name) return '?';
+  return name.slice(0, 2).toUpperCase();
+}
+
+function searchPMThreads(query, pmThreads) {
+  if (!pmThreads) return [];
+  const q = query.toLowerCase();
+  const results = [];
+  for (const [username, messages] of Object.entries(pmThreads)) {
+    for (const msg of messages) {
+      if (!msg.is_deleted && msg.text?.toLowerCase().includes(q)) {
+        results.push({
+          message_id: msg.msg_id || `pm-local-${username}-${results.length}`,
+          sender_name: msg.from,
+          content: msg.text,
+          sent_at: msg.timestamp || null,
+          pm_username: username,
+          room_id: null,
+        });
+      }
+    }
+  }
+  return results;
+}
+
+/**
+ * @param {Object}   props
+ * @param {boolean}  props.isOpen      - Whether the modal is visible
+ * @param {Function} props.onClose     - Called to close the modal
+ * @param {Array}    props.rooms       - Room list [{ id, name }] for name lookups
+ * @param {Object}   props.pmThreads   - PM threads for local search { username: [messages] }
+ * @param {Function} props.onNavigate  - Called with (roomId, messageId, pmUsername) when user clicks a result
+ */
+export default function SearchModal({ isOpen, onClose, rooms = [], pmThreads = {}, onNavigate }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const resultsListRef = useRef(null);
 
   // Focus input when modal opens
   useEffect(() => {
@@ -69,6 +98,7 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
       setQuery('');
       setResults([]);
       setError(null);
+      setSelectedIndex(-1);
       // Small delay to let the modal render before focusing
       const t = setTimeout(() => inputRef.current?.focus(), 50);
       return () => clearTimeout(t);
@@ -88,18 +118,18 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
     return () => globalThis.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  // Scroll active item into view when selectedIndex changes
+  useEffect(() => {
+    if (selectedIndex < 0) return;
+    const listEl = resultsListRef.current;
+    if (!listEl) return;
+    const activeItem = listEl.querySelector('.search-result-item.active');
+    if (activeItem) {
+      activeItem.scrollIntoView({ block: 'nearest' });
+    }
+  }, [selectedIndex]);
+
   // Debounced search — fires after 300 ms of inactivity.
-  //
-  // Fix (min length): queries shorter than 2 characters are rejected early to
-  // avoid triggering full GIN index scans on the backend.
-  //
-  // Fix (AbortController): each new search cancels the previous in-flight
-  // request via AbortController so stale responses from slow network round-trips
-  // never overwrite results from a more-recent query.
-  //
-  // Dependency array is intentionally empty: setResults, setError, and
-  // setLoading are stable React dispatcher references that never change between
-  // renders, so there is no stale-closure risk here.
   const doSearch = useCallback(
     (q) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -127,34 +157,55 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
         }
         abortControllerRef.current = new AbortController();
 
+        // Search PM threads locally (instant)
+        const pmResults = searchPMThreads(trimmed, pmThreads);
+
         try {
           const res = await searchMessages(trimmed, null, 20, abortControllerRef.current.signal);
-          setResults(res.data || []);
+          // Combine room results with PM results; PM results first for immediacy
+          setResults([...pmResults, ...(res.data || [])]);
           setError(null);
         } catch (err) {
           // AbortError means the request was cancelled by a newer search — ignore it
           if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') return;
-          setError('Search failed. Please try again.');
-          setResults([]);
+          // Still show PM results even if room search failed
+          setResults(pmResults);
+          setError(pmResults.length === 0 ? 'Search failed. Please try again.' : null);
         } finally {
           setLoading(false);
         }
       }, 300);
     },
-    [], // setResults/setError/setLoading are stable React dispatcher refs
+    [pmThreads], // pmThreads changes when new PMs arrive
   );
 
   function handleInputChange(e) {
     const val = e.target.value;
     setQuery(val);
+    setSelectedIndex(-1);
     doSearch(val);
   }
 
   function handleResultClick(result) {
-    if (result.room_id && onNavigate) {
-      onNavigate(result.room_id);
+    if (onNavigate) {
+      onNavigate(result.room_id, result.message_id, result.pm_username);
     }
     onClose();
+  }
+
+  function handleInputKeyDown(e) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((prev) => Math.min(prev + 1, results.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((prev) => Math.max(prev - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedIndex >= 0 && selectedIndex < results.length) {
+        handleResultClick(results[selectedIndex]);
+      }
+    }
   }
 
   function handleOverlayClick(e) {
@@ -167,18 +218,17 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
     if (e.key === 'Escape') onClose();
   }
 
-  function handleResultKeyDown(e, result) {
-    if (e.key === 'Enter') handleResultClick(result);
-  }
-
-  function getRoomName(roomId) {
-    const room = rooms.find((r) => r.id === roomId);
-    if (room) return `#${room.name}`;
-    if (roomId) return `Room ${roomId}`;
-    return 'DM';
+  function getResultContext(result) {
+    if (result.pm_username) return `DM · ${result.pm_username}`;
+    const room = rooms.find((r) => r.id === result.room_id);
+    if (room) return room.name;
+    if (result.room_id) return `Room ${result.room_id}`;
+    return '';
   }
 
   if (!isOpen) return null;
+
+  const activeDescendant = selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined;
 
   return (
     <div className="search-modal-overlay" onClick={handleOverlayClick} onKeyDown={handleOverlayKeyDown}>
@@ -196,7 +246,13 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
             placeholder="Search messages..."
             value={query}
             onChange={handleInputChange}
+            onKeyDown={handleInputKeyDown}
             aria-label="Search messages"
+            aria-activedescendant={activeDescendant}
+            role="combobox"
+            aria-expanded={results.length > 0}
+            aria-controls="search-results-list"
+            aria-autocomplete="list"
           />
           <kbd className="search-modal-kbd">ESC</kbd>
         </div>
@@ -216,21 +272,23 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
           )}
 
           {!loading && results.length > 0 && (
-            <ul className="search-result-list">
-              {results.map((r) => (
-                <li key={r.message_id}>
+            <div className="search-result-list" id="search-results-list" ref={resultsListRef} role="listbox"> {/* NOSONAR — ARIA combobox pattern; native select cannot render rich content */}
+              {results.map((r, idx) => (
+                <div key={r.message_id} role="option" aria-selected={idx === selectedIndex} id={`search-result-${idx}`}>
                   <button
                     type="button"
-                    className="search-result-item"
+                    className={`search-result-item${idx === selectedIndex ? ' active' : ''}`}
                     onClick={() => handleResultClick(r)}
-                    onKeyDown={(e) => handleResultKeyDown(e, r)}
                   >
                     <div className="search-result-header">
+                      <span className="search-result-avatar">
+                        {getInitials(r.sender_name)}
+                      </span>
                       <span className="search-result-sender">
                         {r.sender_name || 'Unknown'}
                       </span>
                       <span className="search-result-room">
-                        {getRoomName(r.room_id)}
+                        {getResultContext(r)}
                       </span>
                       <span className="search-result-time">
                         {formatTime(r.sent_at)}
@@ -240,9 +298,9 @@ export default function SearchModal({ isOpen, onClose, rooms = [], onNavigate })
                       {highlightMatch(r.content, query.trim())}
                     </div>
                   </button>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
 
           {!query.trim() && !loading && (
@@ -263,5 +321,6 @@ SearchModal.propTypes = {
     id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
     name: PropTypes.string,
   })),
+  pmThreads: PropTypes.object,
   onNavigate: PropTypes.func,
 };

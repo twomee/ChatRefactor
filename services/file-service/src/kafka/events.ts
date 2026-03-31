@@ -16,7 +16,11 @@ const FILE_EVENTS_TOPIC = "file.events";
 export async function produceFileUploadedEvent(
   event: FileUploadedEvent
 ): Promise<boolean> {
-  const key = String(event.room_id);
+  // For PM uploads room_id is null; key on recipient_id instead so events are
+  // ordered per-conversation rather than producing a constant "null" key.
+  const key = event.room_id == null
+    ? `pm_${event.recipient_id ?? "unknown"}`
+    : String(event.room_id);
 
   const sent = await produce(FILE_EVENTS_TOPIC, key, event as unknown as Record<string, unknown>);
 

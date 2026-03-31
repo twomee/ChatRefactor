@@ -7,6 +7,8 @@ import { usePM } from '../context/PMContext';
 import { useChatConnection } from '../layouts/ChatConnectionLayer';
 import * as pmApi from '../services/pmApi';
 import * as authApi from '../services/authApi';
+import { getPMThreadList, addPMThread, removePMThread } from '../utils/storage';
+import * as messageApi from '../services/messageApi';
 import Logo from '../components/common/Logo';
 import RoomList from '../components/room/RoomList';
 import MessageList from '../components/chat/MessageList';
@@ -16,7 +18,7 @@ import UserList from '../components/room/UserList';
 import PMList from '../components/pm/PMList';
 import PMView from '../components/pm/PMView';
 import ConnectionStatus from '../components/common/ConnectionStatus';
-import SettingsModal from '../components/settings/SettingsModal';
+import UserDropdown from '../components/common/UserDropdown';
 import SearchModal from '../components/chat/SearchModal';
 
 import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
@@ -25,6 +27,25 @@ import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
 const Responsive = WidthProvider(ResponsiveGridLayout);
+
+function transformPMHistory(messages, currentUsername) {
+  return messages.map(m => {
+    const base = {
+      from: m.sender_name,
+      msg_id: m.message_id,
+      isSelf: m.sender_name === currentUsername,
+      timestamp: m.sent_at,
+      edited_at: m.edited_at ?? null,
+      is_deleted: m.is_deleted ?? false,
+      reactions: m.reactions || [],
+      to: m.sender_name === currentUsername ? undefined : currentUsername,
+    };
+    if (m.is_file && m.file_id) {
+      return { ...base, isFile: true, fileId: m.file_id, text: m.content };
+    }
+    return { ...base, text: m.content };
+  });
+}
 
 const defaultLayouts = {
   lg: [
@@ -45,11 +66,6 @@ function loadLayouts() {
     return defaultLayouts;
   }
 }
-function getInitials(name) {
-  if (!name) return '?';
-  return name.slice(0, 2).toUpperCase();
-}
-
 export default function ChatPage() {
   const { user, logout } = useAuth();
   const { state, dispatch } = useChat();
@@ -59,9 +75,12 @@ export default function ChatPage() {
 
   const { joinRoom, exitRoom, disconnectAll, sendMessage, sendTyping, markAsRead, connectionStatus } = useChatConnection();
   const [editingMessage, setEditingMessage] = useState(null);
+  const [editingPMMessage, setEditingPMMessage] = useState(null);
   const markAsReadTimerRef = useRef(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [highlightMessageId, setHighlightMessageId] = useState(null);
+  const [pmHighlightMessageId, setPmHighlightMessageId] = useState(null);
+  const [clearRoomConfirm, setClearRoomConfirm] = useState(false);
 
   // Add page-active class on mount so the one-shot aurora animation plays,
   // and remove it on unmount so the login page returns to the static gradient.
@@ -81,6 +100,15 @@ export default function ChatPage() {
     globalThis.addEventListener('keydown', handleSearchShortcut);
     return () => globalThis.removeEventListener('keydown', handleSearchShortcut);
   }, []);
+
+  // Restore PM thread list from localStorage on login
+  useEffect(() => {
+    if (!user?.username) return;
+    const saved = getPMThreadList(user.username);
+    saved.forEach(username => {
+      pmDispatch({ type: 'INIT_PM_THREAD', username });
+    });
+  }, [user?.username]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleLayoutChange(_current, allLayouts) {
     setLayouts(allLayouts);
@@ -108,12 +136,34 @@ export default function ChatPage() {
     dispatch({ type: 'SET_ACTIVE_ROOM', roomId });
     dispatch({ type: 'CLEAR_UNREAD', roomId });
     pmDispatch({ type: 'SET_ACTIVE_PM', username: null });
+    setClearRoomConfirm(false);
   }
 
-  function handleSelectPM(username) {
+  async function handleSelectPM(username) {
     pmDispatch({ type: 'SET_ACTIVE_PM', username });
     pmDispatch({ type: 'CLEAR_PM_UNREAD', username });
     dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
+    // Persist the thread immediately so it survives a refresh, even if no
+    // message is sent this session.
+    addPMThread(user?.username, username);
+
+    // Lazy-load history on first open — skip if already loaded this session
+    if (!pmState.loadedThreads[username]) {
+      try {
+        const res = await pmApi.getPMHistory(username);
+        const transformed = transformPMHistory(res.data || [], user?.username);
+        pmDispatch({ type: 'SET_PM_THREAD', username, messages: transformed });
+      } catch {
+        // Non-fatal: thread stays empty; user can still send new messages
+      }
+      pmDispatch({ type: 'MARK_THREAD_LOADED', username });
+    }
+  }
+
+  function handleDeletePMConversation(username) {
+    pmDispatch({ type: 'REMOVE_PM_THREAD', username });
+    pmDispatch({ type: 'CLEAR_PM_UNREAD', username });
+    removePMThread(user?.username, username);
   }
 
   function handleStartPM(username) {
@@ -146,18 +196,74 @@ export default function ChatPage() {
     setEditingMessage(null);
   }
 
-  async function handleSendPM(text) {
+  async function handleSendPM(text, editMsgId) {
     if (!pmState.activePM) return;
+    if (editMsgId) {
+      // Edit mode
+      try {
+        await pmApi.editPM(editMsgId, text);
+        pmDispatch({ type: 'EDIT_PM_MESSAGE', username: pmState.activePM, msg_id: editMsgId, text });
+        setEditingPMMessage(null);
+      } catch (e) {
+        globalThis.alert(e.response?.data?.detail || 'Could not edit message');
+      }
+      return;
+    }
     try {
-      await pmApi.sendPM(pmState.activePM, text);
+      const res = await pmApi.sendPM(pmState.activePM, text);
       pmDispatch({
         type: 'ADD_PM_MESSAGE',
         username: pmState.activePM,
-        message: { from: user.username, text, isSelf: true, to: pmState.activePM },
+        message: { from: user.username, text, isSelf: true, to: pmState.activePM, msg_id: res.data?.msg_id },
       });
+      // Ensure thread survives a refresh — don't rely solely on the WS echo
+      addPMThread(user?.username, pmState.activePM);
     } catch (e) {
-      window.alert(e.response?.data?.detail || 'Could not send message');
+      globalThis.alert(e.response?.data?.detail || 'Could not send message');
     }
+  }
+
+  function handlePMEditMessage(msg) {
+    setEditingPMMessage(msg);
+  }
+
+  async function handlePMDeleteMessage(msg) {
+    if (!msg.msg_id || !pmState.activePM) return;
+    try {
+      await pmApi.deletePM(msg.msg_id);
+      pmDispatch({ type: 'DELETE_PM_MESSAGE', username: pmState.activePM, msg_id: msg.msg_id });
+    } catch (e) {
+      globalThis.alert(e.response?.data?.detail || 'Could not delete message');
+    }
+  }
+
+  async function handlePMAddReaction(msgId, emoji) {
+    if (!pmState.activePM) return;
+    try {
+      await pmApi.addPMReaction(msgId, emoji);
+      pmDispatch({
+        type: 'ADD_PM_REACTION',
+        username: pmState.activePM,
+        msg_id: msgId,
+        emoji,
+        reactor: user.username,
+        reactor_id: user.user_id,
+      });
+    } catch { /* ignore */ }
+  }
+
+  async function handlePMRemoveReaction(msgId, emoji) {
+    if (!pmState.activePM) return;
+    try {
+      await pmApi.removePMReaction(msgId, emoji);
+      pmDispatch({
+        type: 'REMOVE_PM_REACTION',
+        username: pmState.activePM,
+        msg_id: msgId,
+        emoji,
+        reactor: user.username,
+      });
+    } catch { /* ignore */ }
   }
 
   function handleAddReaction(msgId, emoji) {
@@ -175,20 +281,34 @@ export default function ChatPage() {
   function handleUnmute(target) { sendMessage(state.activeRoomId, { type: 'unmute', target }); }
   function handlePromote(target) { sendMessage(state.activeRoomId, { type: 'promote', target }); }
 
-  function handleSearchNavigate(roomId) {
-    // Navigate to a room from a search result — join if not already joined
-    if (!state.joinedRooms.has(roomId)) {
-      joinRoom(roomId);
+  function handleSearchNavigate(roomId, messageId, pmUsername) {
+    // Navigate to a PM conversation from a search result
+    if (pmUsername) {
+      pmDispatch({ type: 'SET_ACTIVE_PM', username: pmUsername });
+      pmDispatch({ type: 'CLEAR_PM_UNREAD', username: pmUsername });
+      dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
+      if (messageId) {
+        setPmHighlightMessageId(messageId);
+        setTimeout(() => setPmHighlightMessageId(null), 3000);
+      }
+      return;
     }
-    dispatch({ type: 'SET_ACTIVE_ROOM', roomId });
-    dispatch({ type: 'CLEAR_UNREAD', roomId });
-    pmDispatch({ type: 'SET_ACTIVE_PM', username: null });
-  }
 
-  function handleGoToAdmin() {
-    pmDispatch({ type: 'SET_ACTIVE_PM', username: null });
-    dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
-    navigate('/admin');
+    // Navigate to a room from a search result — join if not already joined
+    if (roomId) {
+      if (!state.joinedRooms.has(roomId)) {
+        joinRoom(roomId);
+      }
+      dispatch({ type: 'SET_ACTIVE_ROOM', roomId });
+      dispatch({ type: 'CLEAR_UNREAD', roomId });
+      pmDispatch({ type: 'SET_ACTIVE_PM', username: null });
+    }
+
+    // Highlight the message if it's already in local state; don't replace messages
+    if (messageId) {
+      setHighlightMessageId(messageId);
+      setTimeout(() => setHighlightMessageId(null), 3000);
+    }
   }
 
   async function handleLogout() {
@@ -197,6 +317,43 @@ export default function ChatPage() {
     try { await authApi.logout(); } catch { /* best-effort logout */ }
     logout();
     navigate('/login');
+  }
+
+  async function handleClearRoomHistory() {
+    if (!state.activeRoomId) return;
+    try {
+      await messageApi.clearHistory('room', state.activeRoomId);
+      dispatch({ type: 'SET_MESSAGES', roomId: state.activeRoomId, messages: [] });
+    } catch { /* silently ignore — user stays in room */ }
+    setClearRoomConfirm(false);
+  }
+
+  async function handleClearPMHistory() {
+    if (!pmState.activePM) return;
+    const thread = pmState.threads[pmState.activePM] || [];
+
+    // Clear local state immediately regardless of server outcome.
+    pmDispatch({ type: 'CLEAR_PM_THREAD', username: pmState.activePM });
+
+    // Best-effort server-side clear.
+    // Derive the partner's user_id from a message they sent (they are the sender in msg_id).
+    // msg_id format: pm-{senderID}-{recipientID}-{UnixNano}
+    // We don't store user.user_id on the frontend, so we look for a message where
+    // the partner is the sender (parts[1]) rather than the recipient (parts[2]).
+    const partnerMsg = thread.find(m => m.from === pmState.activePM && m.msg_id?.startsWith('pm-'));
+    const myMsg = !partnerMsg && thread.find(m => m.from === user.username && m.msg_id?.startsWith('pm-'));
+    let partnerId = null;
+    if (partnerMsg) {
+      const parts = partnerMsg.msg_id.split('-');
+      partnerId = Number.parseInt(parts[1], 10); // partner is the sender
+    } else if (myMsg) {
+      const parts = myMsg.msg_id.split('-');
+      partnerId = Number.parseInt(parts[2], 10); // partner is the recipient
+    }
+    if (!partnerId || Number.isNaN(partnerId)) return;
+    try {
+      await messageApi.clearHistory('pm', partnerId);
+    } catch { /* local was already cleared above */ }
   }
 
   // ── Derived values ────────────────────────────────────────────────────────
@@ -210,11 +367,15 @@ export default function ChatPage() {
 
   const pmMessages = pmState.activePM
     ? (pmState.threads[pmState.activePM] || []).map(m => ({
-        isPrivate: true,
         from: m.from,
         text: m.text,
-        isSelf: m.isSelf,
-        to: m.to,
+        msg_id: m.msg_id,
+        edited_at: m.edited_at,
+        is_deleted: m.is_deleted,
+        reactions: m.reactions,
+        isFile: m.isFile,
+        fileId: m.fileId,
+        fileSize: m.fileSize,
       }))
     : [];
 
@@ -283,7 +444,7 @@ export default function ChatPage() {
           <Logo />
           {activeRoom && (
             <div className="header-room-title">
-              <span className="header-room-name">#{activeRoom.name}</span>
+              <span className="header-room-name">{activeRoom.name}</span>
               <span className="header-room-sep">|</span>
               <span className="header-room-sub">Team Discussion</span>
             </div>
@@ -300,33 +461,7 @@ export default function ChatPage() {
             Search
           </button>
           <ConnectionStatus status={connectionStatus} />
-          <div className="user-badge">
-            <div className="user-avatar">{getInitials(user?.username)}</div>
-            {user?.username}
-          </div>
-          <button onClick={() => setSettingsOpen(true)} className="btn-ghost" aria-label="Settings">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
-            </svg>
-            Settings
-          </button>
-          {user?.is_global_admin && (
-            <button onClick={handleGoToAdmin} className="btn-ghost">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-              </svg>
-              Admin
-            </button>
-          )}
-          <button onClick={handleLogout} className="btn-ghost">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-            Logout
-          </button>
+          <UserDropdown user={user} onLogout={handleLogout} />
         </div>
       </header>
 
@@ -344,9 +479,7 @@ export default function ChatPage() {
         >
           {/* Left sidebar */}
           <div key="sidebar" className="glass-panel">
-            <div className="drag-handle" style={{ justifyContent: 'flex-end' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>
-            </div>
+            <div className="drag-handle" />
             <aside className="sidebar" style={{ flex: 1, overflow: 'hidden', background: 'transparent', width: '100%', border: 'none' }}>
               <div className="sidebar-content">
                 <RoomList
@@ -363,6 +496,7 @@ export default function ChatPage() {
                   pmUnread={pmState.pmUnread}
                   activePM={pmState.activePM}
                   onSelectPM={handleSelectPM}
+                  onDeletePM={handleDeletePMConversation}
                 />
               </div>
             </aside>
@@ -370,12 +504,35 @@ export default function ChatPage() {
 
           {/* Center message panel */}
           <div key="messages" className="glass-panel">
-            <div className="drag-handle" style={{ justifyContent: 'flex-end' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>
-            </div>
+            <div className="drag-handle" />
             <main className="center-panel" style={{ flex: 1, overflow: 'hidden', background: 'transparent' }}>
               {showRoom && (
                 <>
+                  {/* Room sub-header with clear history */}
+                  <div className="room-panel-header">
+                    <span className="room-panel-name">{activeRoom?.name}</span>
+                    {clearRoomConfirm ? (
+                      <div className="clear-history-confirm" data-testid="clear-room-confirm">
+                        <span className="clear-history-label">Clear all history?</span>
+                        <button className="btn-danger-xs" onClick={handleClearRoomHistory} data-testid="clear-room-yes">Yes</button>
+                        <button className="btn-ghost-xs" onClick={() => setClearRoomConfirm(false)} data-testid="clear-room-no">Cancel</button>
+                      </div>
+                    ) : (
+                      <button
+                        className="btn-icon-sm clear-history-btn"
+                        onClick={() => setClearRoomConfirm(true)}
+                        title="Clear room history"
+                        data-testid="clear-room-history"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6"/>
+                          <path d="M19 6l-1 14H6L5 6"/>
+                          <path d="M10 11v6M14 11v6"/>
+                          <path d="M9 6V4h6v2"/>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                   <MessageList
                     messages={activeMessages}
                     onScrollToBottom={handleRoomScrollBottom}
@@ -385,6 +542,7 @@ export default function ChatPage() {
                     onDeleteMessage={handleDeleteMessage}
                     onAddReaction={handleAddReaction}
                     onRemoveReaction={handleRemoveReaction}
+                    highlightMessageId={highlightMessageId}
                   />
                   <TypingIndicator typingUsers={activeTypingUsers} />
                 </>
@@ -395,6 +553,13 @@ export default function ChatPage() {
                   messages={pmMessages}
                   onScrollToBottom={handlePMScrollBottom}
                   isOnline={isRecipientOnline}
+                  currentUser={user?.username}
+                  onEditMessage={handlePMEditMessage}
+                  onDeleteMessage={handlePMDeleteMessage}
+                  onAddReaction={handlePMAddReaction}
+                  onRemoveReaction={handlePMRemoveReaction}
+                  onClearHistory={handleClearPMHistory}
+                  highlightMessageId={pmHighlightMessageId}
                 />
               )}
               {!showRoom && !showPM && (
@@ -413,9 +578,7 @@ export default function ChatPage() {
 
           {/* Input Panel */}
           <div key="input" className="glass-panel" style={{ borderRadius: 'var(--radius-xl)' }}>
-            <div className="drag-handle" style={{ padding: '4px 12px', borderBottom: 'none', justifyContent: 'flex-end' }}>
-               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>
-            </div>
+            <div className="drag-handle" />
             <div style={{ padding: '0 12px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
               {showRoom ? (
                 <MessageInput
@@ -427,7 +590,13 @@ export default function ChatPage() {
                   onCancelEdit={handleCancelEdit}
                 />
               ) : showPM ? (
-                <MessageInput onSend={handleSendPM} roomName={pmState.activePM} isPM />
+                <MessageInput
+                  onSend={handleSendPM}
+                  roomName={pmState.activePM}
+                  isPM
+                  editingMessage={editingPMMessage}
+                  onCancelEdit={() => setEditingPMMessage(null)}
+                />
               ) : (
                 <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Select a conversation to type...</div>
               )}
@@ -436,9 +605,7 @@ export default function ChatPage() {
 
           {/* Right panel */}
           <div key="users" className="glass-panel">
-            <div className="drag-handle" style={{ justifyContent: 'flex-end' }}>
-               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>
-            </div>
+            <div className="drag-handle" />
             {showRoom ? (
               <div style={{ flex: 1, overflow: 'auto' }}>
                 <UserList
@@ -461,14 +628,12 @@ export default function ChatPage() {
         </Responsive>
       </div>
 
-      {/* Settings slide-over panel */}
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-
       {/* Search modal (Ctrl+K) */}
       <SearchModal
         isOpen={searchOpen}
         onClose={() => setSearchOpen(false)}
         rooms={state.rooms ?? []}
+        pmThreads={pmState.threads}
         onNavigate={handleSearchNavigate}
       />
     </div>

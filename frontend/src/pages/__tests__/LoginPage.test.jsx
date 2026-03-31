@@ -21,6 +21,7 @@ vi.mock('../../services/authApi', () => ({
   register: vi.fn(),
   login: vi.fn(),
   verifyLogin2FA: vi.fn(),
+  forgotPassword: vi.fn(),
 }));
 
 vi.mock('../../components/common/Logo', () => ({
@@ -99,11 +100,12 @@ describe('LoginPage', () => {
 
     await user.click(screen.getByText('Register'));
     await user.type(screen.getByPlaceholderText('Username'), 'newuser');
+    await user.type(screen.getByPlaceholderText('Email'), 'new@example.com');
     await user.type(screen.getByPlaceholderText('Password'), 'pass123');
     await user.click(screen.getByRole('button', { name: 'Create Account' }));
 
     await waitFor(() => {
-      expect(authApi.register).toHaveBeenCalledWith('newuser', 'pass123');
+      expect(authApi.register).toHaveBeenCalledWith('newuser', 'pass123', 'new@example.com');
       expect(screen.getByText('Registered! Now log in.')).toBeInTheDocument();
     });
   });
@@ -205,5 +207,70 @@ describe('LoginPage', () => {
     // Should be back to the normal login form
     expect(screen.getByPlaceholderText('Username')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Password')).toBeInTheDocument();
+  });
+
+  // ── Mode switching ──────────────────────────────────────────────────
+
+  it('switches back to login mode when Sign In tab is clicked', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // Switch to register
+    await user.click(screen.getByText('Register'));
+    expect(screen.getByRole('button', { name: 'Create Account' })).toBeInTheDocument();
+
+    // Switch back to login
+    await user.click(screen.getByText('Sign In'));
+    const submitBtns = screen.getAllByText('Sign In').filter(el => el.getAttribute('type') === 'submit');
+    expect(submitBtns).toHaveLength(1);
+  });
+
+  // ── Forgot password ─────────────────────────────────────────────────
+
+  it('shows forgot password form when "Forgot password?" link is clicked', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByText('Forgot password?'));
+    expect(screen.getByText('Reset Your Password')).toBeInTheDocument();
+    expect(screen.getByTestId('forgot-email-input')).toBeInTheDocument();
+  });
+
+  it('calls forgotPassword API and shows success message', async () => {
+    const user = userEvent.setup();
+    authApi.forgotPassword.mockResolvedValue({ data: {} });
+    renderPage();
+
+    await user.click(screen.getByText('Forgot password?'));
+    await user.type(screen.getByTestId('forgot-email-input'), 'alice@example.com');
+    await user.click(screen.getByRole('button', { name: /send reset link/i }));
+
+    await waitFor(() => {
+      expect(authApi.forgotPassword).toHaveBeenCalledWith('alice@example.com');
+      // Always shows the same message to prevent email enumeration
+      expect(screen.getByText(/a reset link has been sent/i)).toBeInTheDocument();
+    });
+  });
+
+  // ── user_id persistence ─────────────────────────────────────────────
+
+  it('stores user_id from login response in user context', async () => {
+    const user = userEvent.setup();
+    authApi.login.mockResolvedValue({
+      data: { access_token: 'tok', username: 'alice', is_global_admin: false, user_id: 42 },
+    });
+    renderPage();
+
+    await user.type(screen.getByPlaceholderText('Username'), 'alice');
+    await user.type(screen.getByPlaceholderText('Password'), 'pass');
+    const submitBtn = screen.getAllByText('Sign In').find(el => el.getAttribute('type') === 'submit');
+    await user.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockLogin).toHaveBeenCalledWith(
+        'tok',
+        expect.objectContaining({ username: 'alice', user_id: 42 }),
+      );
+    });
   });
 });

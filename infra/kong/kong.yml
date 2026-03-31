@@ -14,6 +14,7 @@ plugins:
         - GET
         - POST
         - PUT
+        - PATCH
         - DELETE
         - OPTIONS
       headers:
@@ -127,6 +128,19 @@ services:
         strip_path: false
         methods:
           - POST
+          - OPTIONS
+
+  # Auth profile (get profile, change email, change password)
+  - name: auth-profile
+    url: http://auth-service:8001
+    routes:
+      - name: auth-profile-route
+        paths:
+          - /auth/profile
+        strip_path: false
+        methods:
+          - GET
+          - PATCH
           - OPTIONS
 
   # Auth 2FA (rate limited: 10/min to prevent TOTP brute-force)
@@ -243,3 +257,12 @@ services:
           policy: local
           fault_tolerant: true
           hide_client_headers: false
+
+  # -- Frontend (catch-all: all paths not matched above go to the React SPA) --
+  - name: frontend
+    url: http://frontend:80
+    routes:
+      - name: frontend-route
+        paths:
+          - /
+        strip_path: false

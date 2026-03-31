@@ -7,6 +7,8 @@ import AdminGuard from './layouts/AdminGuard';
 import LoginPage from './pages/LoginPage';
 import ChatPage from './pages/ChatPage';
 import AdminPage from './pages/AdminPage';
+import SettingsPage from './pages/SettingsPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 
 export default function App() {
   return (
@@ -15,8 +17,10 @@ export default function App() {
         <ChatProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route element={<AuthenticatedShell />}>
               <Route path="/chat" element={<ChatPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
               <Route path="/admin" element={<AdminGuard><AdminPage /></AdminGuard>} />
             </Route>
             <Route path="*" element={<Navigate to="/login" />} />

@@ -42,8 +42,8 @@ _INVALID_TOTP = "Invalid TOTP code"
 async def register(db: Session, body: UserRegister) -> dict:
     """Register a new user.
 
-    Flow: check duplicate -> hash password -> persist -> produce event.
-    Input validation (username format, password length) is handled by the
+    Flow: check duplicate username -> check duplicate email -> hash password -> persist -> produce event.
+    Input validation (username format, password length, email format) is handled by the
     Pydantic schema (UserRegister) before this function is called.
     The Kafka event is fire-and-forget: registration succeeds even if Kafka is down.
     """
@@ -51,14 +51,21 @@ async def register(db: Session, body: UserRegister) -> dict:
         auth_registrations_total.labels(status="duplicate").inc()
         raise HTTPException(status_code=409, detail="Username already taken")
 
+    if user_dal.get_by_email(db, body.email):
+        auth_registrations_total.labels(status="duplicate").inc()
+        raise HTTPException(status_code=409, detail="Email already registered")
+
     try:
         user = user_dal.create(
-            db, username=body.username, password_hash=hash_password(body.password)
+            db,
+            username=body.username,
+            password_hash=hash_password(body.password),
+            email=body.email,
         )
     except IntegrityError:
         db.rollback()
         auth_registrations_total.labels(status="duplicate").inc()
-        raise HTTPException(status_code=409, detail="Username already taken")
+        raise HTTPException(status_code=409, detail="Username or email already taken")
 
     logger.info("user_registered", username=user.username, user_id=user.id)
     auth_registrations_total.labels(status="success").inc()
@@ -69,6 +76,58 @@ async def register(db: Session, body: UserRegister) -> dict:
     )
 
     return {"message": "Registered successfully"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Profile / Settings
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def get_profile(db: Session, user_id: int) -> dict:
+    """Return the authenticated user's profile (username + email)."""
+    user = user_dal.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail=_USER_NOT_FOUND)
+    return {"username": user.username, "email": user.email}
+
+
+def update_email(
+    db: Session, user_id: int, new_email: str, current_password: str
+) -> dict:
+    """Change the user's email after verifying their current password.
+
+    Checks: password correct, new email not already taken, then updates.
+    """
+    user = user_dal.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail=_USER_NOT_FOUND)
+
+    if not verify_password(current_password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    existing = user_dal.get_by_email(db, new_email)
+    if existing and existing.id != user_id:
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    user_dal.update_email(db, user_id, new_email)
+    logger.info("email_updated", user_id=user_id)
+    return {"message": "Email updated successfully"}
+
+
+def update_password(
+    db: Session, user_id: int, current_password: str, new_password: str
+) -> dict:
+    """Change the user's password after verifying their current password."""
+    user = user_dal.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail=_USER_NOT_FOUND)
+
+    if not verify_password(current_password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    user_dal.update_password(db, user_id, hash_password(new_password))
+    logger.info("password_updated", user_id=user_id)
+    return {"message": "Password updated successfully"}
 
 
 _DUMMY_HASH = hash_password("timing-equalization-dummy")
@@ -123,6 +182,7 @@ async def login(db: Session, body: UserLogin) -> TokenResponse | dict:
         access_token=token,
         username=user.username,
         is_global_admin=user.is_global_admin,
+        user_id=user.id,
     )
 
 
@@ -453,6 +513,7 @@ async def verify_login_2fa(db: Session, temp_token: str, code: str) -> TokenResp
         access_token=token,
         username=user.username,
         is_global_admin=user.is_global_admin,
+        user_id=user.id,
     )
 
 

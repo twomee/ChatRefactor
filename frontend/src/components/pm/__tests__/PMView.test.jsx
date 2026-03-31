@@ -1,11 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import PMView from '../PMView';
 
 // Mock fileApi used by MessageList
-vi.mock('../../../services/fileApi', () => ({
-  downloadFile: vi.fn(),
-}));
+vi.mock('../../../services/fileApi');
 
 // Mock useAuth so MessageList (rendered by PMView) can access user context
 vi.mock('../../../context/AuthContext', () => ({
@@ -49,5 +48,76 @@ describe('PMView', () => {
     render(<PMView username="alice" messages={[]} />);
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /send/i })).not.toBeInTheDocument();
+  });
+
+  it('renders clear history button', () => {
+    render(<PMView username="alice" messages={[]} onClearHistory={vi.fn()} />);
+    expect(screen.getByTestId('clear-pm-history')).toBeInTheDocument();
+  });
+
+  it('shows confirmation dialog when clear button clicked', async () => {
+    const user = userEvent.setup();
+    render(<PMView username="alice" messages={[]} onClearHistory={vi.fn()} />);
+
+    await user.click(screen.getByTestId('clear-pm-history'));
+    expect(screen.getByTestId('clear-pm-confirm')).toBeInTheDocument();
+    expect(screen.getByTestId('clear-pm-yes')).toBeInTheDocument();
+    expect(screen.getByTestId('clear-pm-no')).toBeInTheDocument();
+  });
+
+  it('calls onClearHistory when Yes confirmed', async () => {
+    const user = userEvent.setup();
+    const onClearHistory = vi.fn();
+    render(<PMView username="alice" messages={[]} onClearHistory={onClearHistory} />);
+
+    await user.click(screen.getByTestId('clear-pm-history'));
+    await user.click(screen.getByTestId('clear-pm-yes'));
+    expect(onClearHistory).toHaveBeenCalledOnce();
+  });
+
+  it('dismisses confirmation dialog when Cancel clicked', async () => {
+    const user = userEvent.setup();
+    render(<PMView username="alice" messages={[]} onClearHistory={vi.fn()} />);
+
+    await user.click(screen.getByTestId('clear-pm-history'));
+    expect(screen.getByTestId('clear-pm-confirm')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('clear-pm-no'));
+    expect(screen.queryByTestId('clear-pm-confirm')).not.toBeInTheDocument();
+    expect(screen.getByTestId('clear-pm-history')).toBeInTheDocument();
+  });
+
+  it('passes action props through to MessageList', () => {
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    const onAddReaction = vi.fn();
+    const onRemoveReaction = vi.fn();
+
+    const messages = [
+      { from: 'testuser', text: 'hello', msg_id: 'pm-1-2-123' },
+    ];
+
+    // Render with action props and currentUser — if it renders without error,
+    // props are being forwarded correctly. Full action testing belongs in
+    // MessageList tests.
+    const { container } = render(
+      <PMView
+        username="alice"
+        messages={messages}
+        currentUser="testuser"
+        onEditMessage={onEdit}
+        onDeleteMessage={onDelete}
+        onAddReaction={onAddReaction}
+        onRemoveReaction={onRemoveReaction}
+      />
+    );
+    // The message should be rendered via MessageList
+    expect(container.querySelector('.message-list')).toBeInTheDocument();
+  });
+
+  it('does not render a file input or attach button (file upload moved to MessageInput)', () => {
+    render(<PMView username="alice" messages={[]} />);
+    expect(document.querySelector('input[type="file"]')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('pm-attach-btn')).not.toBeInTheDocument();
   });
 });

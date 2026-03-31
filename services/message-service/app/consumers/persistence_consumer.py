@@ -161,7 +161,26 @@ class MessagePersistenceConsumer:
                 else:
                     self._persist_room_message(db, value)
             elif topic == TOPIC_PRIVATE:
-                await self._persist_private_message(db, value)
+                msg_type = value.get("type", "private_message")
+                if msg_type == "add_pm_reaction":
+                    # Normalize field names: PM reactions use reactor_id/reactor
+                    # instead of user_id/username used by room reactions.
+                    normalized = {
+                        "msg_id": value.get("msg_id"),
+                        "user_id": value.get("reactor_id"),
+                        "username": value.get("reactor"),
+                        "emoji": value.get("emoji"),
+                    }
+                    self._persist_add_reaction(db, normalized)
+                elif msg_type == "remove_pm_reaction":
+                    normalized = {
+                        "msg_id": value.get("msg_id"),
+                        "user_id": value.get("reactor_id"),
+                        "emoji": value.get("emoji"),
+                    }
+                    self._persist_remove_reaction(db, normalized)
+                else:
+                    await self._persist_private_message(db, value)
         finally:
             db.close()
 
@@ -175,6 +194,9 @@ class MessagePersistenceConsumer:
         room_id = value.get("room_id")
         text = value.get("text", "")
         ts_str = value.get("timestamp")
+        is_file = bool(value.get("is_file", False))
+        raw_file_id = value.get("file_id")
+        file_id = int(raw_file_id) if raw_file_id is not None else None
 
         # Security: truncate oversized message content to prevent DoS
         if len(text) > MAX_CONTENT_LENGTH:
@@ -196,6 +218,8 @@ class MessagePersistenceConsumer:
             content=text,
             is_private=False,
             sent_at=sent_at,
+            is_file=is_file,
+            file_id=file_id,
         )
         if inserted:
             messages_persisted_total.labels(type="room").inc()
@@ -217,6 +241,9 @@ class MessagePersistenceConsumer:
         recipient_name = value.get("recipient")
         text = value.get("text", "")
         ts_str = value.get("timestamp")
+        is_file = bool(value.get("is_file", False))
+        raw_file_id = value.get("file_id")
+        file_id = int(raw_file_id) if raw_file_id is not None else None
 
         # Security: truncate oversized message content to prevent DoS
         if len(text) > MAX_CONTENT_LENGTH:
@@ -256,6 +283,8 @@ class MessagePersistenceConsumer:
             is_private=True,
             recipient_id=recipient_id,
             sent_at=sent_at,
+            is_file=is_file,
+            file_id=file_id,
         )
         if inserted:
             messages_persisted_total.labels(type="private").inc()

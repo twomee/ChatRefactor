@@ -71,6 +71,7 @@ func (h *PMHandler) SendPM(c *gin.Context) {
 	}
 
 	now := time.Now().UTC()
+	msgID := fmt.Sprintf("pm-%d-%d-%d", senderID.(int), recipient.ID, now.UnixNano())
 
 	// Build WebSocket message matching the format the frontend expects.
 	wsMsg := map[string]interface{}{
@@ -79,6 +80,7 @@ func (h *PMHandler) SendPM(c *gin.Context) {
 		"to":        recipient.Username,
 		"text":      req.Content,
 		"timestamp": now.Format(time.RFC3339),
+		"msg_id":    msgID,
 	}
 
 	// Try live delivery via lobby WebSocket.
@@ -90,7 +92,7 @@ func (h *PMHandler) SendPM(c *gin.Context) {
 	// message-service persistence consumer expects.
 	kafkaPayload := map[string]interface{}{
 		"type":      "private_message",
-		"msg_id":    fmt.Sprintf("pm-%d-%d-%d", senderID.(int), recipient.ID, now.UnixNano()),
+		"msg_id":    msgID,
 		"sender":    senderName.(string),
 		"sender_id": senderID.(int),
 		"recipient": recipient.Username,
@@ -105,5 +107,6 @@ func (h *PMHandler) SendPM(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"detail":         "PM sent",
 		"live_delivered": delivered,
+		"msg_id":         msgID,
 	})
 }

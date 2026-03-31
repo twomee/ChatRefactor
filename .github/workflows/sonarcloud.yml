@@ -40,10 +40,32 @@ jobs:
         working-directory: frontend
         run: npm run test -- --coverage --reporter=default
 
+      - name: Install file-service dependencies
+        working-directory: services/file-service
+        run: npm ci
+
+      - name: Generate file-service coverage report
+        working-directory: services/file-service
+        run: npm run test:coverage
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: services/chat-service/go.sum
+
+      - name: Generate chat-service coverage report
+        working-directory: services/chat-service
+        run: |
+          go test ./internal/... -coverprofile=coverage.out -covermode=atomic
+          # SonarCloud resolves Go paths relative to the project root.
+          # Replace the module import path prefix with the project-relative path.
+          sed -i 's|github.com/twomee/chatbox/chat-service/|services/chat-service/|g' coverage.out
 
       - name: Generate auth-service coverage report
         working-directory: services/auth-service
