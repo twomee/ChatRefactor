@@ -7,6 +7,19 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import fs from "node:fs";
+import path from "node:path";
+
+const IMAGE_MIME: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
+
+function mimeTypeFor(filename: string): string {
+  return IMAGE_MIME[path.extname(filename).toLowerCase()] ?? "application/octet-stream";
+}
 
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import {
@@ -15,6 +28,7 @@ import {
   listRoomFiles,
   FileValidationError,
 } from "../services/file.service.js";
+import { getUserByUsername } from "../clients/auth.client.js";
 import type { AuthenticatedRequest } from "../types/file.types.js";
 import { logger } from "../kafka/logger.js";
 
@@ -33,9 +47,16 @@ fileRouter.post(
   async (req: Request, res: Response): Promise<void> => {
     const authReq = req as AuthenticatedRequest;
     try {
-      const roomId = parseInt(req.query.room_id as string, 10);
-      if (isNaN(roomId)) {
-        res.status(400).json({ error: "room_id query parameter is required and must be a number" });
+      const roomIdParam = req.query.room_id as string | undefined;
+      const recipientParam = req.query.recipient as string | undefined;
+
+      // Exactly one of room_id or recipient is required
+      if (roomIdParam && recipientParam) {
+        res.status(400).json({ error: "room_id and recipient are mutually exclusive" });
+        return;
+      }
+      if (!roomIdParam && !recipientParam) {
+        res.status(400).json({ error: "Either room_id or recipient is required" });
         return;
       }
 
@@ -45,13 +66,39 @@ fileRouter.post(
         return;
       }
 
-      const result = await uploadFile(
-        file.buffer,
-        file.originalname,
-        authReq.user.userId,
-        authReq.user.username,
-        roomId
-      );
+      const senderId = authReq.user.userId;
+      const senderName = authReq.user.username;
+
+      let roomId: number | undefined;
+      let recipientId: number | undefined;
+      let recipientName: string | undefined;
+
+      if (roomIdParam) {
+        roomId = parseInt(roomIdParam, 10);
+        if (isNaN(roomId)) {
+          res.status(400).json({ error: "Invalid room_id: must be a number" });
+          return;
+        }
+      } else {
+        // PM file upload: resolve recipient username to numeric ID via auth service
+        const recipient = await getUserByUsername(recipientParam!);
+        if (!recipient) {
+          res.status(404).json({ error: "Recipient not found" });
+          return;
+        }
+        recipientId = recipient.id;
+        recipientName = recipient.username;
+      }
+
+      const result = await uploadFile({
+        file,
+        senderId,
+        senderName,
+        roomId,
+        recipientId,
+        recipientName,
+        isPrivate: !!recipientId,
+      });
 
       res.status(201).json(result);
     } catch (error) {
@@ -79,6 +126,15 @@ fileRouter.get(
 
       const record = await getFile(fileId);
 
+      // Authorization: private files are only accessible to sender and recipient
+      if (record.isPrivate) {
+        const currentUserId: number = authReq.user.userId;
+        if (record.senderId !== currentUserId && record.recipientId !== currentUserId) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+      }
+
       // Stream the file back to the client
       // SECURITY: Use RFC 5987 filename* for safe encoding of the original name,
       // and strip any characters that could break the header value from the ASCII fallback.
@@ -87,7 +143,7 @@ fileRouter.get(
         "Content-Disposition",
         `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(record.originalName)}`
       );
-      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Content-Type", mimeTypeFor(record.originalName));
       res.setHeader("Content-Length", record.fileSize);
 
       // SECURITY: Defense-in-depth headers to prevent XSS if files are ever

@@ -234,6 +234,103 @@ class TestPersistPrivateMessage:
 
 
 # ══════════════════════════════════════════════════════════════════════
+# PM reaction persistence via _process
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestPMReactionPersistence:
+    """Tests that add_pm_reaction / remove_pm_reaction events on TOPIC_PRIVATE
+    are persisted to the reactions table (bug fix: they were silently dropped
+    because the TOPIC_PRIVATE branch only handled private_message events)."""
+
+    @pytest.mark.asyncio
+    async def test_add_pm_reaction_persisted(self, db, consumer, monkeypatch):
+        """add_pm_reaction event should write a row to the reactions table."""
+        monkeypatch.setattr("app.core.database.SessionLocal", lambda: db)
+
+        await consumer._process(
+            TOPIC_PRIVATE,
+            {
+                "type": "add_pm_reaction",
+                "msg_id": "pm-1-2-9999",
+                "emoji": "👍",
+                "reactor_id": 1,
+                "reactor": "alice",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+
+        from app.dal import reaction_dal
+
+        reactions = reaction_dal.get_reactions_for_messages(db, ["pm-1-2-9999"])
+        assert "pm-1-2-9999" in reactions
+        assert any(r["emoji"] == "👍" for r in reactions["pm-1-2-9999"])
+
+    @pytest.mark.asyncio
+    async def test_remove_pm_reaction_persisted(self, db, consumer, monkeypatch):
+        """remove_pm_reaction event should delete the reaction from the DB."""
+        monkeypatch.setattr("app.core.database.SessionLocal", lambda: db)
+
+        # First add, then remove.
+        await consumer._process(
+            TOPIC_PRIVATE,
+            {
+                "type": "add_pm_reaction",
+                "msg_id": "pm-1-2-8888",
+                "emoji": "❤️",
+                "reactor_id": 2,
+                "reactor": "bob",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        await consumer._process(
+            TOPIC_PRIVATE,
+            {
+                "type": "remove_pm_reaction",
+                "msg_id": "pm-1-2-8888",
+                "emoji": "❤️",
+                "reactor_id": 2,
+                "reactor": "bob",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+
+        from app.dal import reaction_dal
+
+        reactions = reaction_dal.get_reactions_for_messages(db, ["pm-1-2-8888"])
+        assert not reactions.get("pm-1-2-8888")  # removed
+
+    @pytest.mark.asyncio
+    async def test_private_message_still_dispatched(self, db, consumer, monkeypatch):
+        """Existing private_message type on TOPIC_PRIVATE still routes correctly."""
+        monkeypatch.setattr("app.core.database.SessionLocal", lambda: db)
+
+        mock_sender = {"id": 10, "username": "alice"}
+        mock_recipient = {"id": 20, "username": "bob"}
+
+        with patch("app.consumers.persistence_consumer.get_user_by_username") as mock_get:
+            mock_get.side_effect = lambda name: {
+                "alice": mock_sender,
+                "bob": mock_recipient,
+            }.get(name)
+
+            await consumer._process(
+                TOPIC_PRIVATE,
+                {
+                    "msg_id": "pm-dispatch-after-fix",
+                    "sender": "alice",
+                    "recipient": "bob",
+                    "text": "Still works",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+
+        msg = db.query(Message).filter(Message.message_id == "pm-dispatch-after-fix").first()
+        assert msg is not None
+        assert msg.content == "Still works"
+
+
+# ══════════════════════════════════════════════════════════════════════
 # DLQ routing via _process_with_retry
 # ══════════════════════════════════════════════════════════════════════
 

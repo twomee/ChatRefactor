@@ -50,6 +50,11 @@ Why we chose every piece of technology in cHATBOX — from infrastructure to ind
    - [Browser Notifications](#89-browser-notifications)
    - [Online Presence](#810-online-presence)
    - [Technology Choices Per Service](#811-technology-choices-per-service)
+9. [Phase 2 Features — PM Files & Persistence](#9-phase-2-features--pm-files--persistence)
+   - [PM File Sharing](#91-pm-file-sharing)
+   - [PM History Persistence](#92-pm-history-persistence)
+   - [PM Sidebar Persistence](#93-pm-sidebar-persistence)
+   - [Instant Logout Presence](#94-instant-logout-presence)
 
 ---
 
@@ -1253,3 +1258,63 @@ Phase 1 introduced new libraries and modules across all four services. Here's wh
 | **`Notification` Web API** | Desktop push notifications for @mentions | Built into all modern browsers — zero dependencies. Shows a native OS notification with title and body. Alternative: Firebase Cloud Messaging (FCM) — requires a server-side push infrastructure, service worker registration, and Firebase project setup. For a web-only app where users are connected via WebSocket, the `Notification` API is simpler. Alternative: in-app toast notifications — don't work when the tab is in the background, which is the primary use case for @mention notifications. |
 | **`previewCache` (module-level Map)** | Caches link preview API responses for the session duration | A simple `Map` stored outside the component tree. When a user scrolls through messages, URLs that were already previewed don't trigger new API calls. Alternative: React state/context — would cause re-renders across the component tree when the cache updates. Alternative: `localStorage` — preview data is ephemeral (pages change), so persistent caching would serve stale data. Alternative: server-side Redis cache — adds complexity without significant benefit since each user's session is independent. |
 | **CSS `var()` tokens** (glassmorphism theme) | Design tokens for the liquid glass UI | All colors, radii, and blur values are defined as CSS custom properties (`--glass-bg`, `--accent`, `--radius-lg`). This enables the entire theme to be changed by modifying ~20 variables. Alternative: CSS-in-JS (styled-components) — adds runtime overhead and a build dependency. Alternative: Tailwind CSS — would require a major refactor and doesn't naturally support the glassmorphism blur effects. |
+
+---
+
+## 9. Phase 2 Features — PM Files & Persistence
+
+### 9.1 PM File Sharing
+
+**What it does:** Users can upload and download files inside direct message conversations. Images are rendered as inline previews; other file types show a download button. Only the sender and recipient can access a private file.
+
+**Key design decisions:**
+
+**Participant-only authorization in the file-service.** The file-service stores `recipientId` and `isPrivate` on each uploaded file. On download, if `isPrivate` is true, the service verifies `currentUserId === senderId || currentUserId === recipientId` and returns 403 otherwise. This enforces privacy at the service boundary — even if someone guesses a file ID, they cannot download it.
+
+**Recipient lookup via auth-service HTTP client.** The upload endpoint accepts `?recipient=username` (a string). The file-service resolves the username to a numeric user ID by calling the auth-service's internal `/auth/users/by-username/{username}` endpoint. This avoids storing usernames in the files database and keeps user identity authoritative in the auth-service. Alternative: accept `?recipient_id=<int>` from the frontend — would require the frontend to know the partner's numeric ID, which it doesn't store. Alternative: a shared users table — violates database-per-service.
+
+**`file_shared` events routed to personal delivery.** When the file-service publishes a `file.uploaded` event with `is_private=true`, the chat-service's Kafka consumer routes it through the lobby's personal delivery channel (`user:<id>`) instead of broadcasting to a room. The frontend's lobby WebSocket handler receives the `file_shared` event and dispatches it to the PM context.
+
+**Token-based download URL for images.** The `renderFileMessage` component constructs an authenticated download URL with `?token=<jwt>` from `sessionStorage` for use as an `<img src>`. This allows the browser's image renderer to load the file inline without a separate JavaScript fetch. The `downloadFile` service function uses the `Authorization: Bearer` header instead (for the download button), which is more secure (token not in browser history). Both are valid for their respective use cases.
+
+---
+
+### 9.2 PM History Persistence
+
+**What it does:** When a user opens a DM conversation for the first time in a session, the full message history is fetched from the server. Subsequent opens in the same session use the in-memory cache.
+
+**Key design decisions:**
+
+**Lazy-load per conversation, not on login.** History is fetched only when a conversation is first opened (`MARK_THREAD_LOADED` prevents re-fetching). Loading all PM history at login would be expensive and unnecessary — most conversations are never opened in a given session.
+
+**Dedicated `GET /messages/pm/history/{username}` endpoint.** The message-service exposes a specific endpoint for PM history rather than reusing the room history endpoint. Room messages and PM messages have different schemas (`room_id` vs `sender_id`/`recipient_id`) and different access patterns. The endpoint uses a dedicated DB index on `(LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id), sent_at)` to efficiently query the symmetric sender/recipient pair without a full table scan.
+
+**`transformPMHistory` maps server schema to frontend schema.** Server returns `sender_name`, `message_id`, `is_file`, `file_id`; frontend uses `from`, `msg_id`, `isFile`, `fileId`. The transform runs once on load and produces the same shape as messages received via WebSocket, so the rest of the rendering pipeline handles both identically.
+
+---
+
+### 9.3 PM Sidebar Persistence
+
+**What it does:** The list of DM conversations (the sidebar) is preserved across page reloads using `localStorage`. Only the list of usernames is stored — not message content.
+
+**Key design decisions:**
+
+**Two-layer storage: in-memory threads + localStorage username list.** `PMContext` holds the full thread state in memory (`{ username: [messages] }`). `localStorage` holds only `chatbox_pm_threads_<currentUser>` — a flat array of partner usernames. On reload, the app reads `localStorage` to restore the sidebar, then lazy-loads message content on first open.
+
+**Clearing history empties the thread, not the contact.** `CLEAR_PM_THREAD` sets `threads[username] = []` rather than deleting the key. Deleting the key removed the user from `PMList` (which derives from `Object.keys(threads)`), causing the icon to disappear until the next reload. "Clear history" means "delete the messages", not "forget this person exists".
+
+---
+
+### 9.4 Instant Logout Presence
+
+**What it does:** When a user logs out, other users see them leave rooms immediately instead of after a ~5-second delay.
+
+**The problem it solves.** The chat-service has a 5-second reconnect grace period on lobby WebSocket disconnects — designed so that page refreshes don't cause spurious "user left" flashes. On logout, this grace period was unnecessary (the user is genuinely gone) but still triggered, delaying the `user_left` broadcast.
+
+**Key design decisions:**
+
+**Explicit `{"type":"logout"}` message over the lobby WebSocket.** On logout, the frontend sends this message before closing the socket. The lobby handler detects it, sets `intentionalLogout = true`, and skips `time.Sleep(lobbyOfflineGrace)`. The distinction is: intentional logout = message then close; page refresh = socket close with no prior message.
+
+**Grace period preserved for page refreshes.** The 5-second grace period still applies for unexpected disconnects. This is important — without it, every page refresh would briefly show all room members as "offline" and trigger spurious `user_left` system messages.
+
+**`flushPendingLeaves` fires immediately on intentional logout.** When `DisconnectLobby` is called without the grace period, it triggers the `onFullLogout` callbacks, which calls `flushPendingLeaves`. This cancels any pending room grace-period timers and immediately broadcasts `user_left` to all rooms the user was in, in one pass.

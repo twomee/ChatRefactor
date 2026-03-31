@@ -182,6 +182,7 @@ async def login(db: Session, body: UserLogin) -> TokenResponse | dict:
         access_token=token,
         username=user.username,
         is_global_admin=user.is_global_admin,
+        user_id=user.id,
     )
 
 
@@ -512,6 +513,7 @@ async def verify_login_2fa(db: Session, temp_token: str, code: str) -> TokenResp
         access_token=token,
         username=user.username,
         is_global_admin=user.is_global_admin,
+        user_id=user.id,
     )
 
 

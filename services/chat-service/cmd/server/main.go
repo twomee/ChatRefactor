@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -31,6 +32,66 @@ import (
 	"github.com/twomee/chatbox/chat-service/internal/store"
 	"github.com/twomee/chatbox/chat-service/internal/ws"
 )
+
+// routeFileEvent dispatches a file.events Kafka message to either personal
+// delivery (PM file) or room broadcast (room file).
+// sendPersonal, broadcastRoom, and deliverPM are injected so this function is testable.
+// deliverPM may be nil (e.g. in tests that don't need persistence).
+func routeFileEvent(
+	ctx context.Context,
+	value map[string]interface{},
+	sendPersonal func(userID int, msg map[string]interface{}),
+	broadcastRoom func(roomID int, msg map[string]interface{}),
+	deliverPM func(ctx context.Context, fromUserID int, payload []byte) error,
+) {
+	msg := map[string]interface{}{
+		"type":      "file_shared",
+		"file_id":   value["file_id"],
+		"filename":  value["filename"],
+		"size":      value["size"],
+		"from":      value["from"],
+		"room_id":   value["room_id"],
+		"timestamp": value["timestamp"],
+	}
+
+	isPrivate, _ := value["is_private"].(bool)
+	if isPrivate {
+		msg["to"] = value["to"]
+		msg["is_private"] = true
+
+		senderID := 0
+		if sid, ok := value["sender_id"].(float64); ok {
+			senderID = int(sid)
+			sendPersonal(senderID, msg)
+		}
+		if recipientID, ok := value["recipient_id"].(float64); ok {
+			sendPersonal(int(recipientID), msg)
+		}
+
+		// Persist the PM file message via chat.private so it survives page refreshes.
+		// The message-service persistence consumer will pick it up and write to the DB.
+		if deliverPM != nil && senderID != 0 {
+			pmPayload, err := json.Marshal(map[string]interface{}{
+				"type":      "private_message",
+				"msg_id":    fmt.Sprintf("pm-file-%v", value["file_id"]),
+				"sender":    value["from"],
+				"recipient": value["to"],
+				"text":      value["filename"],
+				"is_file":   true,
+				"file_id":   value["file_id"],
+				"timestamp": value["timestamp"],
+			})
+			if err == nil {
+				go func() { _ = deliverPM(ctx, senderID, pmPayload) }()
+			}
+		}
+		return
+	}
+
+	if roomID, ok := value["room_id"].(float64); ok {
+		broadcastRoom(int(roomID), msg)
+	}
+}
 
 func main() {
 	// --- Logger ---
@@ -127,22 +188,14 @@ func main() {
 	var fileEventsConsumer *kafka.Consumer
 	if len(brokers) > 0 && brokers[0] != "" {
 		fileEventsConsumer = kafka.NewConsumer(brokers, "file.events", "chat-file-events",
-			func(_ context.Context, value map[string]interface{}) error {
-				// Broadcast file_shared to the room only.
-				// (Lobby is not notified to avoid duplicates — room users
-				// are connected to both lobby and room WebSockets.)
-				msg := map[string]interface{}{
-					"type":      "file_shared",
-					"file_id":   value["file_id"],
-					"filename":  value["filename"],
-					"size":      value["size"],
-					"from":      value["from"],
-					"room_id":   value["room_id"],
-					"timestamp": value["timestamp"],
-				}
-				if roomID, ok := value["room_id"].(float64); ok {
-					wsManager.BroadcastRoom(int(roomID), msg)
-				}
+			func(evtCtx context.Context, value map[string]interface{}) error {
+				routeFileEvent(
+					evtCtx,
+					value,
+					func(userID int, msg map[string]interface{}) { wsManager.SendPersonal(userID, msg) },
+					func(roomID int, msg map[string]interface{}) { wsManager.BroadcastRoom(roomID, msg) },
+					deliveryStrategy.DeliverPM,
+				)
 				return nil
 			}, logger)
 		fileEventsConsumer.Start(ctx)

@@ -45,6 +45,7 @@ export default function LoginPage() {
         login(res.data.access_token, {
           username: res.data.username,
           is_global_admin: res.data.is_global_admin,
+          user_id: res.data.user_id,
         });
         navigate('/chat');
       }

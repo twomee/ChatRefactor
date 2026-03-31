@@ -402,6 +402,64 @@ class TestSoftDeleteMessage:
 # ══════════════════════════════════════════════════════════════════════
 
 
+class TestGetPmHistory:
+    """Tests for the get_pm_history DAL function."""
+
+    def test_get_pm_history_returns_messages_between_two_users(self, db):
+        """Should return only PM messages between the two specified users, oldest-first."""
+        from datetime import timezone
+        from app.dal import message_dal
+
+        # Create PM messages between user 1 and user 2
+        message_dal.create_idempotent(db, message_id="pm-test-1", sender_id=1,
+            sender_name="alice", room_id=None, content="Hello", is_private=True,
+            recipient_id=2, sent_at=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc))
+        message_dal.create_idempotent(db, message_id="pm-test-2", sender_id=2,
+            sender_name="bob", room_id=None, content="Hi back", is_private=True,
+            recipient_id=1, sent_at=datetime(2026, 1, 1, 10, 1, tzinfo=timezone.utc))
+        # Room message — must not appear
+        message_dal.create_idempotent(db, message_id="room-test-1", sender_id=1,
+            sender_name="alice", room_id=5, content="Room msg", is_private=False,
+            recipient_id=None)
+
+        result = message_dal.get_pm_history(db, me_id=1, other_id=2)
+        assert len(result) == 2
+        assert result[0].content == "Hello"
+        assert result[1].content == "Hi back"
+
+    def test_get_pm_history_excludes_deleted_messages(self, db):
+        """Should not return messages that have been soft-deleted."""
+        from app.dal import message_dal
+
+        message_dal.create_idempotent(db, message_id="pm-del-1", sender_id=1,
+            sender_name="alice", room_id=None, content="Deleted msg", is_private=True,
+            recipient_id=2)
+        # Mark as deleted
+        db.query(message_dal.Message).filter_by(message_id="pm-del-1").update({"is_deleted": True})
+        db.commit()
+
+        result = message_dal.get_pm_history(db, me_id=1, other_id=2)
+        assert all(not m.is_deleted for m in result)
+
+    def test_get_pm_history_pagination_before(self, db):
+        """Should exclude messages at or after the 'before' timestamp."""
+        from datetime import timezone
+        from app.dal import message_dal
+
+        t1 = datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 1, 1, 11, 0, tzinfo=timezone.utc)
+        message_dal.create_idempotent(db, message_id="pm-page-1", sender_id=1,
+            sender_name="alice", room_id=None, content="Early", is_private=True,
+            recipient_id=2, sent_at=t1)
+        message_dal.create_idempotent(db, message_id="pm-page-2", sender_id=1,
+            sender_name="alice", room_id=None, content="Late", is_private=True,
+            recipient_id=2, sent_at=t2)
+
+        result = message_dal.get_pm_history(db, me_id=1, other_id=2, before=t2)
+        assert len(result) == 1
+        assert result[0].content == "Early"
+
+
 class TestSearchMessagesDialectFallback:
     """Tests for the dialect detection exception-handling path in search_messages."""
 

@@ -251,4 +251,26 @@ describe('LoginPage', () => {
       expect(screen.getByText(/a reset link has been sent/i)).toBeInTheDocument();
     });
   });
+
+  // ── user_id persistence ─────────────────────────────────────────────
+
+  it('stores user_id from login response in user context', async () => {
+    const user = userEvent.setup();
+    authApi.login.mockResolvedValue({
+      data: { access_token: 'tok', username: 'alice', is_global_admin: false, user_id: 42 },
+    });
+    renderPage();
+
+    await user.type(screen.getByPlaceholderText('Username'), 'alice');
+    await user.type(screen.getByPlaceholderText('Password'), 'pass');
+    const submitBtn = screen.getAllByText('Sign In').find(el => el.getAttribute('type') === 'submit');
+    await user.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockLogin).toHaveBeenCalledWith(
+        'tok',
+        expect.objectContaining({ username: 'alice', user_id: 42 }),
+      );
+    });
+  });
 });

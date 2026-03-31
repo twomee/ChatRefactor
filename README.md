@@ -66,9 +66,12 @@ Each service owns its own database (database-per-service pattern), communicates 
 ### Option A: Full Stack (Docker) — Recommended
 
 ```bash
-cp .env.example .env          # configure environment
-docker compose up -d --build  # start all microservices + Kong + frontend
+cp .env.example .env   # configure environment
+make deploy            # build all images + start all services + restart Kong
 ```
+
+> **Why `make deploy` and not `docker compose up -d --build`?**
+> Kong caches DNS at startup. When app containers are rebuilt and get new internal IPs, Kong still routes to the old IPs (502 errors) until it is restarted. `make deploy` handles this automatically — it rebuilds, starts, then restarts Kong so it re-resolves service names. See the [Makefile Reference](docs/development/makefile-reference.md) for all Docker Compose targets.
 
 Services available at:
 - **App**: http://localhost (Kong gateway routes all traffic)
@@ -168,6 +171,13 @@ Register additional accounts from the login page.
 - **Two-Factor Authentication (2FA)** — TOTP-based 2FA via the Settings panel. Users scan a QR code with Google Authenticator or Authy, then verify with a 6-digit code. TOTP secrets are encrypted at rest using AES-256-GCM (`TOTP_ENCRYPTION_KEY`). A manual entry key is available for apps that can't scan QR codes.
 - **Browser notifications** — Desktop notifications for @mentions. When another user mentions you with `@username`, a browser notification is sent (requires notification permission). Mention detection is case-insensitive.
 - **Online presence** — Lobby-based presence tracking. Each user maintains a lobby WebSocket connection independent of room connections. When the last lobby connection closes (full logout), `user_offline` is broadcast to all connected users. On login, `user_online` is broadcast. This decouples presence from room membership — a user can leave a room without appearing offline.
+
+### Phase 2 Features (feat/pm-files-and-persistence)
+- **PM file sharing** — Upload and download files in direct message conversations. Files are stored securely with participant-only authorization — only the sender and recipient can download a private file. Images render as inline previews; other files show a download button.
+- **PM history persistence** — DM message history is fetched from the server on first open and lazy-loaded per conversation. The `message-service` exposes a `GET /messages/pm/history/{username}` endpoint backed by a dedicated DB index for efficient participant-pair queries.
+- **PM sidebar persistence** — The DM sidebar (list of conversations) is saved to `localStorage` and restored on page reload, so conversations reappear without needing to receive a new message first.
+- **Instant logout presence** — On logout the frontend sends an explicit `{"type":"logout"}` message over the lobby WebSocket before closing it. The server skips the 5-second reconnect grace period and immediately broadcasts `user_left` to all rooms. Page refreshes are unaffected — the grace period still applies when the socket closes without the logout signal.
+- **PM clear history UX fix** — Clearing a conversation's history empties the messages but keeps the contact in the sidebar. Previously the contact icon disappeared until the next page reload.
 
 ### Infrastructure
 - **Graceful degradation** — Works without Kafka (sync fallback) and without Redis (local-only delivery)

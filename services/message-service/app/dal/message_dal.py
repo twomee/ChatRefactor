@@ -1,7 +1,7 @@
 # app/dal/message_dal.py — Data Access Layer for Message model
 from datetime import datetime, timezone
 
-from sqlalchemy import func
+from sqlalchemy import func, or_, and_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,8 @@ def create_idempotent(
     recipient_id: int | None = None,
     sent_at: datetime | None = None,
     sender_name: str | None = None,
+    is_file: bool = False,
+    file_id: int | None = None,
 ) -> bool:
     """Insert a message only if message_id doesn't already exist. Returns True if inserted."""
     existing = db.query(Message).filter(Message.message_id == message_id).first()
@@ -32,6 +34,8 @@ def create_idempotent(
         content=content,
         is_private=is_private,
         recipient_id=recipient_id,
+        is_file=is_file,
+        file_id=file_id,
     )
     if sent_at:
         msg.sent_at = sent_at
@@ -75,6 +79,34 @@ def get_room_history(db: Session, room_id: int, limit: int = 50) -> list[Message
     )
     msgs.reverse()
     return msgs
+
+
+def get_pm_history(
+    db: Session,
+    me_id: int,
+    other_id: int,
+    limit: int = 50,
+    before: datetime | None = None,
+) -> list[Message]:
+    """Return PM messages between two users, ordered oldest-first.
+
+    Filters out soft-deleted messages. Caller is responsible for applying
+    UserMessageClear and DeletedPMConversation filters on top of this result.
+    """
+    q = (
+        db.query(Message)
+        .filter(
+            Message.is_private == True,  # noqa: E712
+            or_(
+                and_(Message.sender_id == me_id, Message.recipient_id == other_id),
+                and_(Message.sender_id == other_id, Message.recipient_id == me_id),
+            ),
+            Message.is_deleted == False,  # noqa: E712
+        )
+    )
+    if before is not None:
+        q = q.filter(Message.sent_at < before)
+    return q.order_by(Message.sent_at.asc()).limit(limit).all()
 
 
 def edit_message(

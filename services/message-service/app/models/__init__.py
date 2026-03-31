@@ -53,6 +53,8 @@ class Message(Base):
     sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     edited_at = Column(DateTime, nullable=True)
     is_deleted = Column(Boolean, default=False, nullable=False)
+    is_file = Column(Boolean, default=False, nullable=False, server_default="false")
+    file_id = Column(Integer, nullable=True)
     search_vector = Column(TSVector, nullable=True)  # populated by PG trigger
 
 

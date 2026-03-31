@@ -1,4 +1,24 @@
 # ===========================================================================
+# Docker Compose Targets
+# ===========================================================================
+
+.PHONY: build
+build: ## Build all Docker Compose images
+	docker compose build
+
+.PHONY: up
+up: ## Start all services and restart Kong to pick up fresh DNS after container IPs change
+	docker compose up -d
+	docker compose restart kong
+
+.PHONY: deploy
+deploy: build up ## Build images and start all services
+
+.PHONY: down
+down: ## Stop and remove all containers
+	docker compose down
+
+# ===========================================================================
 # Kubernetes Targets
 # ===========================================================================
 

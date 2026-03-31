@@ -20,3 +20,15 @@ export function addPMReaction(msgId, emoji) {
 export function removePMReaction(msgId, emoji) {
   return http.delete(`/pm/reaction/${msgId}/${encodeURIComponent(emoji)}`);
 }
+
+/**
+ * Fetch PM history with a specific user from the backend.
+ * Loaded lazily — only called when a conversation is opened and not yet in state.
+ * @param {string} username - The other participant's username
+ * @param {{ limit?: number, before?: string }} options
+ */
+export function getPMHistory(username, { limit = 50, before } = {}) {
+  return http.get(`/messages/pm/history/${encodeURIComponent(username)}`, {
+    params: { limit, ...(before && { before }) },
+  });
+}

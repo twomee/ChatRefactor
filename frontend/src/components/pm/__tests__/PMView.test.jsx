@@ -4,9 +4,7 @@ import userEvent from '@testing-library/user-event';
 import PMView from '../PMView';
 
 // Mock fileApi used by MessageList
-vi.mock('../../../services/fileApi', () => ({
-  downloadFile: vi.fn(),
-}));
+vi.mock('../../../services/fileApi');
 
 // Mock useAuth so MessageList (rendered by PMView) can access user context
 vi.mock('../../../context/AuthContext', () => ({
@@ -115,5 +113,11 @@ describe('PMView', () => {
     );
     // The message should be rendered via MessageList
     expect(container.querySelector('.message-list')).toBeInTheDocument();
+  });
+
+  it('does not render a file input or attach button (file upload moved to MessageInput)', () => {
+    render(<PMView username="alice" messages={[]} />);
+    expect(document.querySelector('input[type="file"]')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('pm-attach-btn')).not.toBeInTheDocument();
   });
 });

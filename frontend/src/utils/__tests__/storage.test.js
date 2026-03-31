@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { getJoinedRooms, addJoinedRoom, removeJoinedRoom } from '../storage';
+import { getJoinedRooms, addJoinedRoom, removeJoinedRoom, getPMThreadList, savePMThreadList, addPMThread } from '../storage';
 
 describe('storage helpers', () => {
   beforeEach(() => {
@@ -67,5 +67,41 @@ describe('storage helpers', () => {
       removeJoinedRoom('alice', 'room1');
       expect(getJoinedRooms('alice')).toEqual([]);
     });
+  });
+});
+
+describe('PM thread list helpers', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('getPMThreadList returns empty array when nothing saved', () => {
+    expect(getPMThreadList('alice')).toEqual([]);
+  });
+
+  it('savePMThreadList persists list under per-user key', () => {
+    savePMThreadList('alice', ['bob', 'charlie']);
+    expect(getPMThreadList('alice')).toEqual(['bob', 'charlie']);
+  });
+
+  it('getPMThreadList is isolated per user', () => {
+    savePMThreadList('alice', ['bob']);
+    expect(getPMThreadList('carol')).toEqual([]);
+  });
+
+  it('addPMThread appends a new username', () => {
+    addPMThread('alice', 'bob');
+    expect(getPMThreadList('alice')).toContain('bob');
+  });
+
+  it('addPMThread is idempotent — does not duplicate', () => {
+    addPMThread('alice', 'bob');
+    addPMThread('alice', 'bob');
+    const list = getPMThreadList('alice');
+    expect(list.filter(u => u === 'bob').length).toBe(1);
+  });
+
+  it('addPMThread preserves existing entries', () => {
+    addPMThread('alice', 'bob');
+    addPMThread('alice', 'charlie');
+    expect(getPMThreadList('alice')).toEqual(['bob', 'charlie']);
   });
 });

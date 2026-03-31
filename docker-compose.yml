@@ -199,6 +199,7 @@ services:
       - DATABASE_URL=postgresql://chatbox:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/chatbox_files
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in .env}
+      - AUTH_SERVICE_URL=http://auth-service:8001
       - APP_ENV=${APP_ENV:-prod}
     volumes:
       - uploads:/app/uploads

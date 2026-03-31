@@ -14,6 +14,7 @@ plugins:
         - GET
         - POST
         - PUT
+        - PATCH
         - DELETE
         - OPTIONS
       headers:
@@ -127,6 +128,19 @@ services:
         strip_path: false
         methods:
           - POST
+          - OPTIONS
+
+  # Auth profile (get profile, change email, change password)
+  - name: auth-profile
+    url: http://auth-service:8001
+    routes:
+      - name: auth-profile-route
+        paths:
+          - /auth/profile
+        strip_path: false
+        methods:
+          - GET
+          - PATCH
           - OPTIONS
 
   # Auth 2FA (rate limited: 10/min to prevent TOTP brute-force)

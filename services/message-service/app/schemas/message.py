@@ -17,6 +17,8 @@ class MessageResponse(BaseModel):
     sent_at: datetime
     edited_at: datetime | None = None
     is_deleted: bool = False
+    is_file: bool = False
+    file_id: int | None = None
 
     model_config = {"from_attributes": True}
 

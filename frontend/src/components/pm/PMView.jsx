@@ -8,7 +8,11 @@ function getInitials(name) {
   return name.slice(0, 2).toUpperCase();
 }
 
-export default function PMView({ username, messages = [], onScrollToBottom, isOnline = true, currentUser, onEditMessage, onDeleteMessage, onAddReaction, onRemoveReaction, onClearHistory, highlightMessageId }) {
+export default function PMView({
+  username, messages = [], onScrollToBottom, isOnline = true, currentUser,
+  onEditMessage, onDeleteMessage, onAddReaction, onRemoveReaction,
+  onClearHistory, highlightMessageId,
+}) {
   const [confirmClear, setConfirmClear] = useState(false);
 
   function handleClearClick() {
