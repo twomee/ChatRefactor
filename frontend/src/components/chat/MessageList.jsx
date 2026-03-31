@@ -72,55 +72,42 @@ function renderSystemMessage(msg, key) {
 
 function renderFileMessage(msg, key) {
   const fileUrl = `${API_BASE}/files/download/${msg.fileId}?token=${encodeURIComponent(sessionStorage.getItem('token'))}`;
-  const attachmentIcon = (
+  const downloadIcon = (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
     </svg>
   );
 
   const fileContent = isImageFile(msg.text) ? (
+    // Image files: show inline preview + download button below
     <div className="msg-image-preview">
+      <img
+        src={fileUrl}
+        alt={msg.text}
+        className="msg-inline-image"
+        loading="lazy"
+        onError={(e) => { e.target.style.display = 'none'; }}
+      />
       <button
-        className="msg-image-btn"
-        onClick={() => window.open(fileUrl, '_blank')}
-        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+        type="button"
+        onClick={() => downloadFile(msg.fileId, msg.text)}
+        className="msg-file-link"
       >
-        <img
-          src={fileUrl}
-          alt={msg.text}
-          className="msg-inline-image"
-          loading="lazy"
-          onError={(e) => {
-            e.target.style.display = 'none';
-            e.target.nextSibling?.classList?.add('show-fallback');
-          }}
-        />
-      </button>
-      <div className="msg-image-fallback">
-        <a
-          href="#"
-          onClick={(e) => { e.preventDefault(); downloadFile(msg.fileId, msg.text); }}
-          className="msg-file-link"
-        >
-          {attachmentIcon}
-          {msg.text}
-        </a>
-      </div>
-      <span className="msg-image-filename">
+        {downloadIcon}
         {msg.text}{msg.fileSize ? ` (${formatSize(msg.fileSize)})` : ''}
-      </span>
+      </button>
     </div>
   ) : (
+    // Non-image files: download button only
     <>
       <button
         type="button"
         onClick={() => downloadFile(msg.fileId, msg.text)}
         className="msg-file-link"
       >
-        {attachmentIcon}
-        {msg.text}
+        {downloadIcon}
+        {msg.text}{msg.fileSize ? ` (${formatSize(msg.fileSize)})` : ''}
       </button>
-      {msg.fileSize && <span className="msg-file-size">({formatSize(msg.fileSize)})</span>}
     </>
   );
 
@@ -203,25 +190,26 @@ function renderReactionChips(msg, grouped, pickerMsgId, handlers) {
   );
 }
 
-function copyToClipboard(text) {
-  // Prefer the modern async Clipboard API (requires HTTPS or localhost).
-  if (navigator.clipboard?.writeText) {
-    return navigator.clipboard.writeText(text);
-  }
-  // Fallback for older browsers / HTTP contexts: create a hidden textarea,
-  // select its contents, and use execCommand.
+function execCommandCopy(text) {
   try {
     const el = document.createElement('textarea');
     el.value = text;
-    el.style.position = 'fixed';
-    el.style.opacity = '0';
+    el.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
     document.body.appendChild(el);
+    el.focus();
     el.select();
     document.execCommand('copy');
     document.body.removeChild(el);
-  } catch {
-    // If all else fails, do nothing — the button click already signals intent.
+  } catch { /* ignore */ }
+}
+
+function copyToClipboard(text) {
+  // Prefer the modern async Clipboard API (requires HTTPS or localhost).
+  if (navigator.clipboard?.writeText) {
+    // If the Clipboard API rejects (e.g. permission denied), fall back to execCommand.
+    return navigator.clipboard.writeText(text).catch(() => execCommandCopy(text));
   }
+  execCommandCopy(text);
   return Promise.resolve();
 }
 

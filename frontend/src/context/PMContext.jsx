@@ -4,10 +4,11 @@ import { createContext, useContext, useReducer } from 'react';
 const PMContext = createContext(null);
 
 const initialPMState = {
-  threads: {},     // { username: [{ from, text, isSelf, to, timestamp, msg_id }] }
-  pmUnread: {},    // { username: number }
-  activePM: null,  // username of currently open PM conversation (or null)
-  deletedPMs: {},  // { username: deleted_at } — for deleted conversations
+  threads: {},       // { username: [{ from, text, isSelf, to, timestamp, msg_id }] }
+  pmUnread: {},      // { username: number }
+  activePM: null,    // username of currently open PM conversation (or null)
+  deletedPMs: {},    // { username: deleted_at } — for deleted conversations
+  loadedThreads: {}, // { username: true } — tracks which threads have been fetched from server
 };
 
 export function pmReducer(state, action) {
@@ -79,9 +80,13 @@ export function pmReducer(state, action) {
           ...state.threads,
           [action.username]: thread.map(m => {
             if (m.msg_id !== action.msg_id) return m;
-            const reactions = [...(m.reactions || [])];
-            reactions.push({ emoji: action.emoji, username: action.reactor, user_id: action.reactor_id });
-            return { ...m, reactions };
+            const reactions = m.reactions || [];
+            // Dedup: skip if this user already reacted with the same emoji
+            // (optimistic update + WS echo both fire for the sender).
+            if (reactions.some(r => r.emoji === action.emoji && r.username === action.reactor)) {
+              return m;
+            }
+            return { ...m, reactions: [...reactions, { emoji: action.emoji, username: action.reactor, user_id: action.reactor_id }] };
           }),
         },
       };
@@ -105,9 +110,20 @@ export function pmReducer(state, action) {
     }
 
     case 'CLEAR_PM_THREAD': {
-      // Destructure to remove the key; _removed is intentionally unused.
-      const { [action.username]: _removed, ...rest } = state.threads; // eslint-disable-line no-unused-vars
-      return { ...state, threads: rest };
+      // Empty the messages but keep the key so the sidebar icon stays visible.
+      return { ...state, threads: { ...state.threads, [action.username]: [] } };
+    }
+
+    case 'REMOVE_PM_THREAD': {
+      // Remove the conversation entirely from state — used when the user clicks X.
+      const { [action.username]: _removed, ...remainingThreads } = state.threads; // eslint-disable-line no-unused-vars
+      const { [action.username]: _removedLoaded, ...remainingLoaded } = state.loadedThreads; // eslint-disable-line no-unused-vars
+      return {
+        ...state,
+        threads: remainingThreads,
+        loadedThreads: remainingLoaded,
+        activePM: state.activePM === action.username ? null : state.activePM,
+      };
     }
 
     case 'DELETE_PM_CONVERSATION': {
@@ -122,6 +138,26 @@ export function pmReducer(state, action) {
       const { [action.username]: _removed, ...rest } = state.deletedPMs; // eslint-disable-line no-unused-vars
       return { ...state, deletedPMs: rest };
     }
+
+    case 'SET_PM_THREAD':
+      return {
+        ...state,
+        threads: { ...state.threads, [action.username]: action.messages },
+      };
+
+    case 'MARK_THREAD_LOADED':
+      return {
+        ...state,
+        loadedThreads: { ...state.loadedThreads, [action.username]: true },
+      };
+
+    case 'INIT_PM_THREAD':
+      // Don't overwrite a thread that already has live messages
+      if (state.threads[action.username]) return state;
+      return {
+        ...state,
+        threads: { ...state.threads, [action.username]: [] },
+      };
 
     default:
       return state;

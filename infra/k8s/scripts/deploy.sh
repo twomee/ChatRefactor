@@ -10,6 +10,10 @@ OVERLAY="${1:-dev}"
 echo "Deploying with overlay: $OVERLAY"
 kubectl apply -k "$K8S_DIR/overlays/$OVERLAY"
 
+# Kustomize overwrites secrets with CHANGE_ME placeholders from secrets.yaml.
+# Re-apply real secrets immediately so pods start with correct credentials.
+bash "$SCRIPT_DIR/generate-secrets.sh"
+
 echo ""
 echo "Waiting for rollouts..."
 for svc in auth-service chat-service message-service file-service frontend kong; do

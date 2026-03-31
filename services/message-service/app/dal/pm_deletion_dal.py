@@ -84,3 +84,24 @@ def remove_deletion(
     )
     db.commit()
     return count > 0
+
+
+def get_pm_deletion_timestamp(
+    db: Session,
+    user_id: int,
+    other_user_id: int,
+) -> datetime | None:
+    """Return the deleted_at timestamp for a specific PM conversation, or None.
+
+    Mirrors clear_dal.get_clear — used by the PM history endpoint to filter
+    messages sent before the user deleted this conversation.
+    """
+    record = (
+        db.query(DeletedPMConversation)
+        .filter(
+            DeletedPMConversation.user_id == user_id,
+            DeletedPMConversation.other_user_id == other_user_id,
+        )
+        .first()
+    )
+    return record.deleted_at if record else None

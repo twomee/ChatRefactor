@@ -185,7 +185,7 @@ describe('SearchModal', () => {
     // Click the result item
     await user.click(screen.getByText('bob').closest('button'));
 
-    expect(onNavigate).toHaveBeenCalledWith(2, 'msg-nav');
+    expect(onNavigate).toHaveBeenCalledWith(2, 'msg-nav', undefined);
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -289,7 +289,7 @@ describe('SearchModal', () => {
     await user.keyboard('{ArrowDown}');
     await user.keyboard('{Enter}');
 
-    expect(onNavigate).toHaveBeenCalledWith(1, 'msg-1');
+    expect(onNavigate).toHaveBeenCalledWith(1, 'msg-1', undefined);
     expect(onClose).toHaveBeenCalled();
   });
 

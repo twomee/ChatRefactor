@@ -7,6 +7,10 @@ export interface FileUploadedEvent {
   filename: string;
   size: number;
   from: string; // username of uploader
-  room_id: number;
+  sender_id: number; // user ID of uploader — needed so chat-service can notify the sender via SendPersonal
+  room_id: number | null;
+  to?: string; // recipient username for PM uploads
+  recipient_id?: number | null;
+  is_private: boolean;
   timestamp: string; // ISO 8601 UTC
 }

@@ -1,7 +1,7 @@
 // src/components/MessageInput.jsx
 import { useRef, useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { uploadFile } from '../../services/fileApi';
+import { uploadFile, uploadPMFile } from '../../services/fileApi';
 
 function getPlaceholder(editingMessage, isPM, roomName) {
   if (editingMessage) return 'Edit your message...';
@@ -60,10 +60,16 @@ export default function MessageInput({ onSend, roomName, roomId, isPM = false, o
     setUploadError('');
     setUploading(true);
     setProgress(0);
+    const progressCb = (evt) => {
+      if (evt.total) setProgress(Math.round((evt.loaded / evt.total) * 100));
+    };
     try {
-      await uploadFile(roomId, file, (evt) => {
-        if (evt.total) setProgress(Math.round((evt.loaded / evt.total) * 100));
-      });
+      if (isPM) {
+        // PM file upload — recipient username is carried in roomName prop
+        await uploadPMFile(roomName, file, progressCb);
+      } else {
+        await uploadFile(roomId, file, progressCb);
+      }
     } catch (err) {
       setUploadError(err.response?.data?.error || err.response?.data?.detail || 'Upload failed');
     } finally {
@@ -103,8 +109,8 @@ export default function MessageInput({ onSend, roomName, roomId, isPM = false, o
       )}
 
       <form onSubmit={handleSubmit} className="message-input-form">
-        {/* File attachment — hidden in PM mode and edit mode */}
-        {!isPM && !editingMessage && (
+        {/* File attachment button — shown in both room and PM mode; hidden only during edit */}
+        {!editingMessage && (
           <>
             <input
               ref={fileRef}

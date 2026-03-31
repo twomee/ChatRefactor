@@ -136,6 +136,19 @@ class TestPMDeletionDAL:
         assert len(user1_deleted) == 1
         assert len(user2_deleted) == 0
 
+    def test_get_pm_deletion_timestamp_returns_none_when_not_deleted(self, db):
+        """get_pm_deletion_timestamp should return None when no deletion record exists."""
+        result = pm_deletion_dal.get_pm_deletion_timestamp(db, user_id=1, other_user_id=2)
+        assert result is None
+
+    def test_get_pm_deletion_timestamp_returns_datetime_after_deletion(self, db):
+        """get_pm_deletion_timestamp should return the deleted_at datetime after deletion."""
+        pm_deletion_dal.delete_conversation(db, user_id=1, other_user_id=2)
+        result = pm_deletion_dal.get_pm_deletion_timestamp(db, user_id=1, other_user_id=2)
+        assert result is not None
+        from datetime import datetime
+        assert isinstance(result, datetime)
+
 
 # ══════════════════════════════════════════════════════════════════════
 # REST API — Clear history endpoint: POST /messages/clear

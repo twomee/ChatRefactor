@@ -330,8 +330,21 @@ POSTGRES_PASSWORD=<strong-password>
 ### Step 2: Build and Start All Services
 
 ```bash
-docker compose up -d --build
+make deploy
 ```
+
+This is equivalent to `docker compose build && docker compose up -d && docker compose restart kong`.
+
+| Target | What it does |
+|--------|-------------|
+| `make build` | Build all Docker images |
+| `make up` | Start all containers, then restart Kong to re-resolve DNS |
+| `make deploy` | `build` + `up` in one command — the standard deploy workflow |
+| `make down` | Stop and remove all containers |
+
+**Why `make deploy` and not `docker compose up -d --build` directly?**
+
+Kong caches DNS resolutions at startup. When app containers are rebuilt and get new internal IPs, Kong still routes to the old IPs (502 errors) until it is restarted. `make up` always runs `docker compose restart kong` afterwards so Kong re-resolves service names with fresh IPs. `KONG_DNS_STALE_TTL=0` is already set in `docker-compose.yml` but this only prevents serving entries after their TTL expires — it does not force re-resolution when container IPs change mid-session.
 
 This builds and starts the following containers:
 
@@ -413,15 +426,15 @@ docker compose down -v
 ### Rebuilding After Code Changes
 
 ```bash
-# Rebuild a specific service
-docker compose up -d --build auth-service
-docker compose up -d --build chat-service
-docker compose up -d --build message-service
-docker compose up -d --build file-service
+# Rebuild everything (recommended — also restarts Kong)
+make deploy
 
-# Rebuild everything
-docker compose up -d --build
+# Rebuild a specific service only
+docker compose build auth-service && docker compose up -d auth-service
+docker compose build chat-service && docker compose up -d chat-service && docker compose restart kong
 ```
+
+> When rebuilding services that Kong proxies (any app service), always run `docker compose restart kong` or use `make deploy` — otherwise Kong routes to the old container IP.
 
 ---
 

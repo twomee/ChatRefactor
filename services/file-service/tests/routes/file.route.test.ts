@@ -54,6 +54,12 @@ vi.mock("kafkajs", () => {
   };
 });
 
+// ── Mock auth client ───────────────────────────────────────────────────────
+const mockGetUserByUsername = vi.hoisted(() => vi.fn());
+vi.mock("../../src/clients/auth.client.js", () => ({
+  getUserByUsername: mockGetUserByUsername,
+}));
+
 // ── Mock fs to avoid actual disk writes in tests ───────────────────────────
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -220,6 +226,65 @@ describe("routes/file.route", () => {
       expect(res.status).toBe(500);
       expect(res.body.error).toBe("Internal server error");
     });
+
+    it("should upload a PM file with ?recipient=bob", async () => {
+      mockGetUserByUsername.mockResolvedValue({ id: 7, username: "bob" });
+      const mockRecord = {
+        id: 2, originalName: "doc.txt", storedPath: "/app/uploads/abc_doc.txt",
+        fileSize: 11, senderId: 1, senderName: "alice", roomId: null, recipientId: 7, isPrivate: true,
+        uploadedAt: new Date(),
+      };
+      mockPrismaFile.create.mockResolvedValue(mockRecord);
+
+      const res = await request(app)
+        .post("/files/upload?recipient=bob")
+        .set("Authorization", `Bearer ${validToken}`)
+        .attach("file", Buffer.from("hello world"), "doc.txt");
+
+      expect(res.status).toBe(201);
+      expect(res.body.recipientId).toBe(7);
+      expect(res.body.isPrivate).toBe(true);
+      // Verify the DB record was created with PM-specific fields
+      expect(mockPrismaFile.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            recipientId: 7,
+            isPrivate: true,
+            roomId: null,
+          }),
+        })
+      );
+    });
+
+    it("should return 400 if both room_id and recipient are provided", async () => {
+      const res = await request(app)
+        .post("/files/upload?room_id=1&recipient=bob")
+        .set("Authorization", `Bearer ${validToken}`)
+        .attach("file", Buffer.from("content"), "test.txt");
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/room_id.*recipient|mutually exclusive/i);
+    });
+
+    it("should return 400 if neither room_id nor recipient is provided", async () => {
+      const res = await request(app)
+        .post("/files/upload")
+        .set("Authorization", `Bearer ${validToken}`)
+        .attach("file", Buffer.from("content"), "test.txt");
+
+      expect(res.status).toBe(400);
+    });
+
+    it("should return 404 if recipient username does not exist", async () => {
+      mockGetUserByUsername.mockResolvedValue(null);
+      const res = await request(app)
+        .post("/files/upload?recipient=ghost")
+        .set("Authorization", `Bearer ${validToken}`)
+        .attach("file", Buffer.from("content"), "test.txt");
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toMatch(/recipient|not found/i);
+    });
   });
 
   // ── Download Endpoint ──────────────────────────────────────────────────
@@ -349,6 +414,39 @@ describe("routes/file.route", () => {
 
       expect(res.status).toBe(500);
       expect(res.body.error).toBe("Internal server error");
+    });
+
+    it("should return 403 if requester is not sender or recipient of a private file", async () => {
+      // validToken is for userId=1; file belongs to sender=2, recipient=7; user 1 is neither
+      const privateFile = {
+        id: 99, originalName: "secret.txt", storedPath: path.join(uploadDir, "secret.txt"),
+        fileSize: 10, senderId: 2, senderName: "other", recipientId: 7, isPrivate: true,
+        roomId: null, uploadedAt: new Date(),
+      };
+      mockPrismaFile.findUnique.mockResolvedValue(privateFile);
+
+      const res = await request(app)
+        .get("/files/download/99")
+        .set("Authorization", `Bearer ${validToken}`);
+
+      expect(res.status).toBe(403);
+    });
+
+    it("should allow sender to download their own private file", async () => {
+      // validToken is for userId=1; sender=1 matches the current user
+      const privateFile = {
+        id: 100, originalName: "mine.txt", storedPath: path.join(uploadDir, "mine.txt"),
+        fileSize: 12, senderId: 1, senderName: "alice", recipientId: 7, isPrivate: true,
+        roomId: null, uploadedAt: new Date(),
+      };
+      mockPrismaFile.findUnique.mockResolvedValue(privateFile);
+
+      const res = await request(app)
+        .get("/files/download/100")
+        .set("Authorization", `Bearer ${validToken}`)
+        .buffer(true);
+
+      expect(res.status).toBe(200);
     });
   });
 

@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -10,6 +12,16 @@ import (
 	"github.com/twomee/chatbox/chat-service/internal/middleware"
 	"github.com/twomee/chatbox/chat-service/internal/ws"
 )
+
+// lobbyOfflineGrace is how long to wait before broadcasting user_offline after
+// a lobby disconnect. During this window the old (dead) connection is still
+// present in the manager's lobbyConns map, so HasLobbyConnection returns true
+// and room handlers schedule their normal 10-second grace period rather than
+// broadcasting user_left immediately. If the user reconnects within this window
+// (e.g. page refresh) their new lobby connection is already registered by the
+// time DisconnectLobby fires, so no user_offline is ever broadcast and the
+// PM status indicator never flickers.
+const lobbyOfflineGrace = 5 * time.Second
 
 // LobbyHandler manages the lobby WebSocket endpoint used for PM delivery
 // and real-time room list updates.
@@ -67,14 +79,31 @@ func (h *LobbyHandler) HandleLobbyWS(c *gin.Context) {
 	h.manager.ConnectLobby(conn, user)
 
 	// Hold connection open — the lobby is primarily for server -> client push.
-	// Read loop just keeps the connection alive and detects disconnection.
+	// Read loop keeps the connection alive, detects disconnection, and handles
+	// an explicit {"type":"logout"} message for immediate graceful logout.
+	intentionalLogout := false
 	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure, websocket.CloseAbnormalClosure, websocket.CloseNoStatusReceived) {
 				h.logger.Warn("lobby_ws_read_error", zap.Error(err))
 			}
 			break
 		}
+		var payload struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(msg, &payload) == nil && payload.Type == "logout" {
+			intentionalLogout = true
+			break
+		}
+	}
+
+	// For intentional logouts skip the grace period — the user is gone now.
+	// For unexpected closes (page refresh, network drop) keep the grace period
+	// so the user's presence doesn't flicker while the browser reconnects.
+	if !intentionalLogout {
+		time.Sleep(lobbyOfflineGrace)
 	}
 
 	cleanup := h.manager.DisconnectLobby(conn)

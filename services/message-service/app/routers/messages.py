@@ -21,6 +21,7 @@ from app.dal import message_dal
 from app.dal import reaction_dal
 from app.dal import clear_dal
 from app.dal import pm_deletion_dal
+from app.infrastructure.auth_client import get_user_by_username
 from app.infrastructure.redis_client import get_redis
 from app.schemas.message import (
     ClearHistoryRequest,
@@ -167,6 +168,53 @@ def get_deleted_pm_conversations(
 ):
     """Return all deleted PM conversations for the current user."""
     return pm_deletion_dal.get_deleted_conversations(db, current_user["user_id"])
+
+
+@router.get("/pm/history/{username}", response_model=list[MessageWithReactionsResponse])
+async def get_pm_history_endpoint(
+    username: str,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    before: Annotated[
+        str | None,
+        Query(description="ISO timestamp — return messages before this time"),
+    ] = None,
+):
+    """Fetch PM history between the current user and another user.
+
+    Applies UserMessageClear and DeletedPMConversation filters so cleared/
+    deleted history is never returned. Supports backward pagination via
+    the `before` query parameter (ISO 8601 timestamp).
+    """
+    other = await get_user_by_username(username)
+    if not other:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    me_id: int = current_user["user_id"]
+    other_id: int = other["id"]
+
+    before_dt: datetime | None = None
+    if before:
+        try:
+            before_dt = datetime.fromisoformat(before.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid 'before' timestamp format")
+
+    messages = message_dal.get_pm_history(
+        db, me_id=me_id, other_id=other_id, limit=limit, before=before_dt
+    )
+    validated = [MessageResponse.model_validate(m) for m in messages]
+
+    # Apply UserMessageClear filter
+    validated = _apply_clear_filter(db, me_id, "pm", other_id, validated)
+
+    # Apply DeletedPMConversation filter
+    deleted_at = pm_deletion_dal.get_pm_deletion_timestamp(db, me_id, other_id)
+    if deleted_at is not None:
+        validated = [m for m in validated if m.sent_at > deleted_at]
+
+    return _enrich_with_reactions(db, validated)
 
 
 # ── Context endpoints (scroll-to-message for search results) ───────

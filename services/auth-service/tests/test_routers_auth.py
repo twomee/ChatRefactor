@@ -82,6 +82,19 @@ class TestLogin:
         resp = client.post("/auth/login", json={"username": "heidi"})
         assert resp.status_code == 422
 
+    def test_login_returns_user_id(self, client):
+        client.post("/auth/register", json={"username": "testuid", "password": "pass1234w", "email": "uid@test.com"})
+        resp = client.post("/auth/login", json={"username": "testuid", "password": "pass1234w"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "user_id" in data
+        assert isinstance(data["user_id"], int)
+        assert data["user_id"] > 0
+        # Verify the returned user_id actually belongs to this user
+        user_resp = client.get("/auth/users/by-username/testuid")
+        assert user_resp.status_code == 200
+        assert user_resp.json()["id"] == data["user_id"]
+
 
 # -- Logout --------------------------------------------------------------------
 

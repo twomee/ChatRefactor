@@ -7,6 +7,7 @@ import { usePM } from '../context/PMContext';
 import { useChatConnection } from '../layouts/ChatConnectionLayer';
 import * as pmApi from '../services/pmApi';
 import * as authApi from '../services/authApi';
+import { getPMThreadList, addPMThread, removePMThread } from '../utils/storage';
 import * as messageApi from '../services/messageApi';
 import Logo from '../components/common/Logo';
 import RoomList from '../components/room/RoomList';
@@ -26,6 +27,25 @@ import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
 const Responsive = WidthProvider(ResponsiveGridLayout);
+
+function transformPMHistory(messages, currentUsername) {
+  return messages.map(m => {
+    const base = {
+      from: m.sender_name,
+      msg_id: m.message_id,
+      isSelf: m.sender_name === currentUsername,
+      timestamp: m.sent_at,
+      edited_at: m.edited_at ?? null,
+      is_deleted: m.is_deleted ?? false,
+      reactions: m.reactions || [],
+      to: m.sender_name === currentUsername ? undefined : currentUsername,
+    };
+    if (m.is_file && m.file_id) {
+      return { ...base, isFile: true, fileId: m.file_id, text: m.content };
+    }
+    return { ...base, text: m.content };
+  });
+}
 
 const defaultLayouts = {
   lg: [
@@ -59,6 +79,7 @@ export default function ChatPage() {
   const markAsReadTimerRef = useRef(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [highlightMessageId, setHighlightMessageId] = useState(null);
+  const [pmHighlightMessageId, setPmHighlightMessageId] = useState(null);
   const [clearRoomConfirm, setClearRoomConfirm] = useState(false);
 
   // Add page-active class on mount so the one-shot aurora animation plays,
@@ -79,6 +100,15 @@ export default function ChatPage() {
     globalThis.addEventListener('keydown', handleSearchShortcut);
     return () => globalThis.removeEventListener('keydown', handleSearchShortcut);
   }, []);
+
+  // Restore PM thread list from localStorage on login
+  useEffect(() => {
+    if (!user?.username) return;
+    const saved = getPMThreadList(user.username);
+    saved.forEach(username => {
+      pmDispatch({ type: 'INIT_PM_THREAD', username });
+    });
+  }, [user?.username]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleLayoutChange(_current, allLayouts) {
     setLayouts(allLayouts);
@@ -109,10 +139,31 @@ export default function ChatPage() {
     setClearRoomConfirm(false);
   }
 
-  function handleSelectPM(username) {
+  async function handleSelectPM(username) {
     pmDispatch({ type: 'SET_ACTIVE_PM', username });
     pmDispatch({ type: 'CLEAR_PM_UNREAD', username });
     dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
+    // Persist the thread immediately so it survives a refresh, even if no
+    // message is sent this session.
+    addPMThread(user?.username, username);
+
+    // Lazy-load history on first open — skip if already loaded this session
+    if (!pmState.loadedThreads[username]) {
+      try {
+        const res = await pmApi.getPMHistory(username);
+        const transformed = transformPMHistory(res.data || [], user?.username);
+        pmDispatch({ type: 'SET_PM_THREAD', username, messages: transformed });
+      } catch {
+        // Non-fatal: thread stays empty; user can still send new messages
+      }
+      pmDispatch({ type: 'MARK_THREAD_LOADED', username });
+    }
+  }
+
+  function handleDeletePMConversation(username) {
+    pmDispatch({ type: 'REMOVE_PM_THREAD', username });
+    pmDispatch({ type: 'CLEAR_PM_UNREAD', username });
+    removePMThread(user?.username, username);
   }
 
   function handleStartPM(username) {
@@ -165,6 +216,8 @@ export default function ChatPage() {
         username: pmState.activePM,
         message: { from: user.username, text, isSelf: true, to: pmState.activePM, msg_id: res.data?.msg_id },
       });
+      // Ensure thread survives a refresh — don't rely solely on the WS echo
+      addPMThread(user?.username, pmState.activePM);
     } catch (e) {
       globalThis.alert(e.response?.data?.detail || 'Could not send message');
     }
@@ -228,7 +281,19 @@ export default function ChatPage() {
   function handleUnmute(target) { sendMessage(state.activeRoomId, { type: 'unmute', target }); }
   function handlePromote(target) { sendMessage(state.activeRoomId, { type: 'promote', target }); }
 
-  async function handleSearchNavigate(roomId, messageId) {
+  function handleSearchNavigate(roomId, messageId, pmUsername) {
+    // Navigate to a PM conversation from a search result
+    if (pmUsername) {
+      pmDispatch({ type: 'SET_ACTIVE_PM', username: pmUsername });
+      pmDispatch({ type: 'CLEAR_PM_UNREAD', username: pmUsername });
+      dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
+      if (messageId) {
+        setPmHighlightMessageId(messageId);
+        setTimeout(() => setPmHighlightMessageId(null), 3000);
+      }
+      return;
+    }
+
     // Navigate to a room from a search result — join if not already joined
     if (roomId) {
       if (!state.joinedRooms.has(roomId)) {
@@ -239,19 +304,10 @@ export default function ChatPage() {
       pmDispatch({ type: 'SET_ACTIVE_PM', username: null });
     }
 
-    // If we have a messageId, fetch surrounding context and highlight
-    if (messageId && roomId) {
-      try {
-        const contextRes = await messageApi.getMessageContext(roomId, messageId);
-        if (contextRes.data && contextRes.data.length > 0) {
-          dispatch({ type: 'SET_MESSAGES', roomId, messages: contextRes.data });
-        }
-        setHighlightMessageId(messageId);
-        // Clear highlight after animation completes
-        setTimeout(() => setHighlightMessageId(null), 3000);
-      } catch {
-        // Fallback: just navigate without scroll — room was already set above
-      }
+    // Highlight the message if it's already in local state; don't replace messages
+    if (messageId) {
+      setHighlightMessageId(messageId);
+      setTimeout(() => setHighlightMessageId(null), 3000);
     }
   }
 
@@ -274,21 +330,30 @@ export default function ChatPage() {
 
   async function handleClearPMHistory() {
     if (!pmState.activePM) return;
-    // Extract partner's user_id from the first available msg_id in the thread.
-    // msg_id format: pm-{senderID}-{recipientID}-{UnixNano}
-    // The partner's ID is whichever of parts[1]/parts[2] is NOT the current user's ID.
     const thread = pmState.threads[pmState.activePM] || [];
-    const msgWithId = thread.find(m => m.msg_id?.startsWith('pm-'));
-    if (!msgWithId) return; // no persisted messages — nothing to clear
-    const parts = msgWithId.msg_id.split('-');
-    const id1 = Number.parseInt(parts[1], 10);
-    const id2 = Number.parseInt(parts[2], 10);
-    const partnerId = id1 === user.user_id ? id2 : id1;
+
+    // Clear local state immediately regardless of server outcome.
+    pmDispatch({ type: 'CLEAR_PM_THREAD', username: pmState.activePM });
+
+    // Best-effort server-side clear.
+    // Derive the partner's user_id from a message they sent (they are the sender in msg_id).
+    // msg_id format: pm-{senderID}-{recipientID}-{UnixNano}
+    // We don't store user.user_id on the frontend, so we look for a message where
+    // the partner is the sender (parts[1]) rather than the recipient (parts[2]).
+    const partnerMsg = thread.find(m => m.from === pmState.activePM && m.msg_id?.startsWith('pm-'));
+    const myMsg = !partnerMsg && thread.find(m => m.from === user.username && m.msg_id?.startsWith('pm-'));
+    let partnerId = null;
+    if (partnerMsg) {
+      const parts = partnerMsg.msg_id.split('-');
+      partnerId = Number.parseInt(parts[1], 10); // partner is the sender
+    } else if (myMsg) {
+      const parts = myMsg.msg_id.split('-');
+      partnerId = Number.parseInt(parts[2], 10); // partner is the recipient
+    }
     if (!partnerId || Number.isNaN(partnerId)) return;
     try {
       await messageApi.clearHistory('pm', partnerId);
-      pmDispatch({ type: 'CLEAR_PM_THREAD', username: pmState.activePM });
-    } catch { /* silently ignore */ }
+    } catch { /* local was already cleared above */ }
   }
 
   // ── Derived values ────────────────────────────────────────────────────────
@@ -308,6 +373,9 @@ export default function ChatPage() {
         edited_at: m.edited_at,
         is_deleted: m.is_deleted,
         reactions: m.reactions,
+        isFile: m.isFile,
+        fileId: m.fileId,
+        fileSize: m.fileSize,
       }))
     : [];
 
@@ -428,6 +496,7 @@ export default function ChatPage() {
                   pmUnread={pmState.pmUnread}
                   activePM={pmState.activePM}
                   onSelectPM={handleSelectPM}
+                  onDeletePM={handleDeletePMConversation}
                 />
               </div>
             </aside>
@@ -490,6 +559,7 @@ export default function ChatPage() {
                   onAddReaction={handlePMAddReaction}
                   onRemoveReaction={handlePMRemoveReaction}
                   onClearHistory={handleClearPMHistory}
+                  highlightMessageId={pmHighlightMessageId}
                 />
               )}
               {!showRoom && !showPM && (
@@ -563,6 +633,7 @@ export default function ChatPage() {
         isOpen={searchOpen}
         onClose={() => setSearchOpen(false)}
         rooms={state.rooms ?? []}
+        pmThreads={pmState.threads}
         onNavigate={handleSearchNavigate}
       />
     </div>
