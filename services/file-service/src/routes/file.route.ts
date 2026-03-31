@@ -7,6 +7,19 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import fs from "node:fs";
+import path from "node:path";
+
+const IMAGE_MIME: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
+
+function mimeTypeFor(filename: string): string {
+  return IMAGE_MIME[path.extname(filename).toLowerCase()] ?? "application/octet-stream";
+}
 
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import {
@@ -130,7 +143,7 @@ fileRouter.get(
         "Content-Disposition",
         `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(record.originalName)}`
       );
-      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Content-Type", mimeTypeFor(record.originalName));
       res.setHeader("Content-Length", record.fileSize);
 
       // SECURITY: Defense-in-depth headers to prevent XSS if files are ever

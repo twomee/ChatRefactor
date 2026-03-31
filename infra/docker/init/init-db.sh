@@ -80,6 +80,8 @@ ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_name VARCHAR(64);
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE NOT NULL;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS search_vector tsvector;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_file BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_id INTEGER;
 CREATE INDEX IF NOT EXISTS idx_messages_message_id ON messages(message_id);
 CREATE INDEX IF NOT EXISTS idx_messages_room_sent ON messages(room_id, sent_at);
 CREATE INDEX IF NOT EXISTS idx_messages_search ON messages USING GIN(search_vector);

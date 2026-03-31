@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -78,22 +79,32 @@ func (h *LobbyHandler) HandleLobbyWS(c *gin.Context) {
 	h.manager.ConnectLobby(conn, user)
 
 	// Hold connection open — the lobby is primarily for server -> client push.
-	// Read loop just keeps the connection alive and detects disconnection.
+	// Read loop keeps the connection alive, detects disconnection, and handles
+	// an explicit {"type":"logout"} message for immediate graceful logout.
+	intentionalLogout := false
 	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure, websocket.CloseAbnormalClosure, websocket.CloseNoStatusReceived) {
 				h.logger.Warn("lobby_ws_read_error", zap.Error(err))
 			}
 			break
 		}
+		var payload struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(msg, &payload) == nil && payload.Type == "logout" {
+			intentionalLogout = true
+			break
+		}
 	}
 
-	// Grace period before broadcasting user_offline. During this window the old
-	// (now-dead) lobby connection remains in the manager so HasLobbyConnection
-	// still returns true. If the user reconnects (e.g. page refresh) their new
-	// lobby connection is registered before DisconnectLobby fires, preventing
-	// the spurious user_offline broadcast and the 1-second "Offline" flicker.
-	time.Sleep(lobbyOfflineGrace)
+	// For intentional logouts skip the grace period — the user is gone now.
+	// For unexpected closes (page refresh, network drop) keep the grace period
+	// so the user's presence doesn't flicker while the browser reconnects.
+	if !intentionalLogout {
+		time.Sleep(lobbyOfflineGrace)
+	}
 
 	cleanup := h.manager.DisconnectLobby(conn)
 	_ = conn.Close()

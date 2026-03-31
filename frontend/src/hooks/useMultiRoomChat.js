@@ -142,10 +142,17 @@ export function createHandleMessage({
       }
 
       case 'pm_reaction_added': {
-        const pmUser = msg.from === user?.username ? msg.to : msg.from;
+        // The backend sends `from: ""` on pm_reaction_added (the field is
+        // determined by msg_id participants but was never implemented).
+        // Use the same scan-by-msg_id strategy as pm_message_edited / deleted.
+        const reactionAddedThreads = pmStateRef.current.threads;
+        const reactionAddedPMUser = Object.keys(reactionAddedThreads).find(u =>
+          reactionAddedThreads[u].some(m => m.msg_id === msg.msg_id)
+        );
+        if (!reactionAddedPMUser) break;
         pmDispatch({
           type: 'ADD_PM_REACTION',
-          username: pmUser,
+          username: reactionAddedPMUser,
           msg_id: msg.msg_id,
           emoji: msg.emoji,
           reactor: msg.reactor,
@@ -155,10 +162,15 @@ export function createHandleMessage({
       }
 
       case 'pm_reaction_removed': {
-        const pmUser = msg.from === user?.username ? msg.to : msg.from;
+        // Same scan-by-msg_id strategy — `from` is unreliable on this event.
+        const reactionRemovedThreads = pmStateRef.current.threads;
+        const reactionRemovedPMUser = Object.keys(reactionRemovedThreads).find(u =>
+          reactionRemovedThreads[u].some(m => m.msg_id === msg.msg_id)
+        );
+        if (!reactionRemovedPMUser) break;
         pmDispatch({
           type: 'REMOVE_PM_REACTION',
-          username: pmUser,
+          username: reactionRemovedPMUser,
           msg_id: msg.msg_id,
           emoji: msg.emoji,
           reactor: msg.reactor,
@@ -179,7 +191,7 @@ export function createHandleMessage({
               text: msg.filename,
               fileId: msg.file_id,
               fileSize: msg.size,
-              isSelf: false,
+              isSelf: msg.from === user?.username,
               msg_id: `pm-file-${msg.file_id}`,
               timestamp: msg.timestamp,
             },
@@ -538,6 +550,9 @@ export function useMultiRoomChat() {
     socketsRef.current.forEach(ws => ws.close());
     socketsRef.current.clear();
     if (lobbyRef.current) {
+      if (lobbyRef.current.readyState === WebSocket.OPEN) {
+        lobbyRef.current.send(JSON.stringify({ type: 'logout' }));
+      }
       lobbyRef.current.close();
       lobbyRef.current = null;
     }

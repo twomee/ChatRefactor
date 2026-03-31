@@ -35,15 +35,22 @@ export function uploadPMFile(recipientUsername, file, onProgress) {
  * This avoids leaking the JWT in browser history and server logs.
  */
 export async function downloadFile(fileId, filename) {
-  const response = await http.get(`/files/download/${fileId}`, {
-    responseType: 'blob',
-  });
-  const url = URL.createObjectURL(response.data);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename || 'download';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  try {
+    const response = await http.get(`/files/download/${fileId}`, {
+      responseType: 'blob',
+    });
+    const url = URL.createObjectURL(response.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || 'download';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  } catch (err) {
+    const status = err.response?.status;
+    if (status === 403) window.alert('You do not have permission to download this file.');
+    else if (status === 404) window.alert('File not found.');
+    else window.alert('Download failed. Please try again.');
+  }
 }

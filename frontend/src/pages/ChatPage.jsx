@@ -29,17 +29,22 @@ import 'react-resizable/css/styles.css';
 const Responsive = WidthProvider(ResponsiveGridLayout);
 
 function transformPMHistory(messages, currentUsername) {
-  return messages.map(m => ({
-    from: m.sender_name,
-    text: m.content,
-    msg_id: m.message_id,
-    isSelf: m.sender_name === currentUsername,
-    timestamp: m.sent_at,
-    edited_at: m.edited_at ?? null,
-    is_deleted: m.is_deleted ?? false,
-    reactions: m.reactions || [],
-    to: m.sender_name === currentUsername ? undefined : currentUsername,
-  }));
+  return messages.map(m => {
+    const base = {
+      from: m.sender_name,
+      msg_id: m.message_id,
+      isSelf: m.sender_name === currentUsername,
+      timestamp: m.sent_at,
+      edited_at: m.edited_at ?? null,
+      is_deleted: m.is_deleted ?? false,
+      reactions: m.reactions || [],
+      to: m.sender_name === currentUsername ? undefined : currentUsername,
+    };
+    if (m.is_file && m.file_id) {
+      return { ...base, isFile: true, fileId: m.file_id, text: m.content };
+    }
+    return { ...base, text: m.content };
+  });
 }
 
 const defaultLayouts = {
@@ -370,6 +375,9 @@ export default function ChatPage() {
         edited_at: m.edited_at,
         is_deleted: m.is_deleted,
         reactions: m.reactions,
+        isFile: m.isFile,
+        fileId: m.fileId,
+        fileSize: m.fileSize,
       }))
     : [];
 

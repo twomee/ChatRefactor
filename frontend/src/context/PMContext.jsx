@@ -80,9 +80,13 @@ export function pmReducer(state, action) {
           ...state.threads,
           [action.username]: thread.map(m => {
             if (m.msg_id !== action.msg_id) return m;
-            const reactions = [...(m.reactions || [])];
-            reactions.push({ emoji: action.emoji, username: action.reactor, user_id: action.reactor_id });
-            return { ...m, reactions };
+            const reactions = m.reactions || [];
+            // Dedup: skip if this user already reacted with the same emoji
+            // (optimistic update + WS echo both fire for the sender).
+            if (reactions.some(r => r.emoji === action.emoji && r.username === action.reactor)) {
+              return m;
+            }
+            return { ...m, reactions: [...reactions, { emoji: action.emoji, username: action.reactor, user_id: action.reactor_id }] };
           }),
         },
       };
@@ -106,9 +110,8 @@ export function pmReducer(state, action) {
     }
 
     case 'CLEAR_PM_THREAD': {
-      // Destructure to remove the key; _removed is intentionally unused.
-      const { [action.username]: _removed, ...rest } = state.threads; // eslint-disable-line no-unused-vars
-      return { ...state, threads: rest };
+      // Empty the messages but keep the key so the sidebar icon stays visible.
+      return { ...state, threads: { ...state.threads, [action.username]: [] } };
     }
 
     case 'DELETE_PM_CONVERSATION': {

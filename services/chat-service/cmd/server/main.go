@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -34,11 +35,14 @@ import (
 
 // routeFileEvent dispatches a file.events Kafka message to either personal
 // delivery (PM file) or room broadcast (room file).
-// sendPersonal and broadcastRoom are injected so this function is testable.
+// sendPersonal, broadcastRoom, and deliverPM are injected so this function is testable.
+// deliverPM may be nil (e.g. in tests that don't need persistence).
 func routeFileEvent(
+	ctx context.Context,
 	value map[string]interface{},
 	sendPersonal func(userID int, msg map[string]interface{}),
 	broadcastRoom func(roomID int, msg map[string]interface{}),
+	deliverPM func(ctx context.Context, fromUserID int, payload []byte) error,
 ) {
 	msg := map[string]interface{}{
 		"type":      "file_shared",
@@ -54,8 +58,32 @@ func routeFileEvent(
 	if isPrivate {
 		msg["to"] = value["to"]
 		msg["is_private"] = true
+
+		senderID := 0
+		if sid, ok := value["sender_id"].(float64); ok {
+			senderID = int(sid)
+			sendPersonal(senderID, msg)
+		}
 		if recipientID, ok := value["recipient_id"].(float64); ok {
 			sendPersonal(int(recipientID), msg)
+		}
+
+		// Persist the PM file message via chat.private so it survives page refreshes.
+		// The message-service persistence consumer will pick it up and write to the DB.
+		if deliverPM != nil && senderID != 0 {
+			pmPayload, err := json.Marshal(map[string]interface{}{
+				"type":      "private_message",
+				"msg_id":    fmt.Sprintf("pm-file-%v", value["file_id"]),
+				"sender":    value["from"],
+				"recipient": value["to"],
+				"text":      value["filename"],
+				"is_file":   true,
+				"file_id":   value["file_id"],
+				"timestamp": value["timestamp"],
+			})
+			if err == nil {
+				go func() { _ = deliverPM(ctx, senderID, pmPayload) }()
+			}
 		}
 		return
 	}
@@ -160,11 +188,13 @@ func main() {
 	var fileEventsConsumer *kafka.Consumer
 	if len(brokers) > 0 && brokers[0] != "" {
 		fileEventsConsumer = kafka.NewConsumer(brokers, "file.events", "chat-file-events",
-			func(_ context.Context, value map[string]interface{}) error {
+			func(evtCtx context.Context, value map[string]interface{}) error {
 				routeFileEvent(
+					evtCtx,
 					value,
 					func(userID int, msg map[string]interface{}) { wsManager.SendPersonal(userID, msg) },
 					func(roomID int, msg map[string]interface{}) { wsManager.BroadcastRoom(roomID, msg) },
+					deliveryStrategy.DeliverPM,
 				)
 				return nil
 			}, logger)

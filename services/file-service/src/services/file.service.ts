@@ -143,6 +143,7 @@ export async function uploadFile(params: UploadFileParams): Promise<FileUploadRe
       filename: cleanName,
       size: fileBuffer.length,
       from: senderName,
+      sender_id: senderId,
       room_id: roomId ?? null,
       ...(recipientName !== undefined && { to: recipientName }),
       recipient_id: recipientId ?? null,

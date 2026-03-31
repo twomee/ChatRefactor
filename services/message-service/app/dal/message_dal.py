@@ -18,6 +18,8 @@ def create_idempotent(
     recipient_id: int | None = None,
     sent_at: datetime | None = None,
     sender_name: str | None = None,
+    is_file: bool = False,
+    file_id: int | None = None,
 ) -> bool:
     """Insert a message only if message_id doesn't already exist. Returns True if inserted."""
     existing = db.query(Message).filter(Message.message_id == message_id).first()
@@ -32,6 +34,8 @@ def create_idempotent(
         content=content,
         is_private=is_private,
         recipient_id=recipient_id,
+        is_file=is_file,
+        file_id=file_id,
     )
     if sent_at:
         msg.sent_at = sent_at
