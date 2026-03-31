@@ -199,7 +199,9 @@ async def get_pm_history_endpoint(
         try:
             before_dt = datetime.fromisoformat(before.replace("Z", "+00:00"))
         except ValueError:
-            raise HTTPException(status_code=422, detail="Invalid 'before' timestamp format")
+            raise HTTPException(
+                status_code=422, detail="Invalid 'before' timestamp format"
+            )
 
     messages = message_dal.get_pm_history(
         db, me_id=me_id, other_id=other_id, limit=limit, before=before_dt

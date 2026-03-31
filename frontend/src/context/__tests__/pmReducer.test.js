@@ -6,6 +6,7 @@ const initialState = {
   pmUnread: {},
   activePM: null,
   deletedPMs: {},
+  loadedThreads: {},
 };
 
 describe('pmReducer', () => {
@@ -203,7 +204,7 @@ describe('pmReducer', () => {
           bob: [{ msg_id: 'pm-2', text: 'hey' }],
         },
       };
-      const next = pmReducer(state, { type: 'CLEAR_PM_THREAD', username: 'alice' });
+      const next = pmReducer(state, { type: 'REMOVE_PM_THREAD', username: 'alice' });
       expect(next.threads.alice).toBeUndefined();
       expect(next.threads.bob).toBeDefined();
     });

@@ -37,9 +37,10 @@ describe('MessageList', () => {
   it('renders file messages with download link', () => {
     const messages = [{ isFile: true, from: 'bob', text: 'report.pdf', fileId: 'f1', fileSize: 2048 }];
     render(<MessageList messages={messages} />);
-    const link = screen.getByText('report.pdf');
-    expect(link.closest('button')).toBeInTheDocument();
-    expect(screen.getByText('(2.0 KB)')).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: /report\.pdf/ });
+    expect(button).toBeInTheDocument();
+    expect(button).toHaveTextContent('report.pdf');
+    expect(button).toHaveTextContent('2.0 KB');
   });
 
   it('renders private messages with direction labels', () => {

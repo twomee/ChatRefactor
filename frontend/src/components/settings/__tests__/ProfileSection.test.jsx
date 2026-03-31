@@ -129,7 +129,7 @@ describe('ProfileSection', () => {
     await user.type(pf.getByLabelText('Confirm New Password'), 'abc');
     await user.click(pf.getByRole('button', { name: /update password/i }));
 
-    expect(screen.getByText('New password must be at least 6 characters.')).toBeInTheDocument();
+    expect(screen.getByText('New password must be at least 8 characters.')).toBeInTheDocument();
   });
 
   it('calls updatePassword and shows success on valid submit', async () => {

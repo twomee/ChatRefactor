@@ -93,16 +93,13 @@ def get_pm_history(
     Filters out soft-deleted messages. Caller is responsible for applying
     UserMessageClear and DeletedPMConversation filters on top of this result.
     """
-    q = (
-        db.query(Message)
-        .filter(
-            Message.is_private == True,  # noqa: E712
-            or_(
-                and_(Message.sender_id == me_id, Message.recipient_id == other_id),
-                and_(Message.sender_id == other_id, Message.recipient_id == me_id),
-            ),
-            Message.is_deleted == False,  # noqa: E712
-        )
+    q = db.query(Message).filter(
+        Message.is_private == True,  # noqa: E712
+        or_(
+            and_(Message.sender_id == me_id, Message.recipient_id == other_id),
+            and_(Message.sender_id == other_id, Message.recipient_id == me_id),
+        ),
+        Message.is_deleted == False,  # noqa: E712
     )
     if before is not None:
         q = q.filter(Message.sent_at < before)

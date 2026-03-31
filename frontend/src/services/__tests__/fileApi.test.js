@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { uploadFile, listRoomFiles, downloadFile } from '../fileApi';
 import http from '../http';
 
@@ -43,6 +43,9 @@ describe('fileApi', () => {
   });
 
   describe('downloadFile', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
     it('fetches file as blob via Authorization header and triggers download', async () => {
       const blob = new Blob(['file-content'], { type: 'application/octet-stream' });
       http.get.mockResolvedValue({ data: blob });
@@ -71,6 +74,9 @@ describe('fileApi', () => {
       });
       expect(createObjectURL).toHaveBeenCalledWith(blob);
       expect(clickSpy).toHaveBeenCalled();
+
+      // revokeObjectURL is called after a 100ms delay — advance timers to trigger it
+      vi.advanceTimersByTime(100);
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:http://localhost/fake');
     });
   });
