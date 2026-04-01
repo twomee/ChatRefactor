@@ -125,7 +125,16 @@ EOF
     helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true
     helm repo update 2>/dev/null
 
-    echo "  Installing PostgreSQL (may take a few minutes on first run — pulling images)..."
+    step "Pre-pulling infrastructure images into Kind cluster..."
+    # Kind can't pull large images fast enough during Helm install.
+    # Pull on the host (cached) and load into Kind instead.
+    for img in bitnami/postgresql:latest bitnami/redis:latest apache/kafka:3.8.1 postgres:16-alpine; do
+        docker pull "$img" 2>/dev/null || true
+        kind load docker-image "$img" --name "$E2E_CLUSTER" 2>/dev/null || true
+    done
+    success "Infrastructure images loaded"
+
+    echo "  Installing PostgreSQL..."
     helm upgrade --install postgres bitnami/postgresql \
         --namespace chatbox-infra \
         --values "$K8S_DIR/infra/helm-values/postgres.yaml" \
