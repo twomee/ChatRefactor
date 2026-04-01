@@ -106,7 +106,9 @@ describe('getPasswordStrength', () => {
   });
 
   it('returns strong for a complex long password', () => {
-    const result = getPasswordStrength('MyStr0ng!Pass#2024');
+    // Constructed to hit all 5 scoring criteria: 12+ chars, uppercase, digit, special
+    const strong = 'Aa1!' + 'x'.repeat(10);
+    const result = getPasswordStrength(strong);
     expect(result.level).toBe('strong');
     expect(result.label).toBe('Strong');
     expect(result.bars).toBe(3);
@@ -115,7 +117,7 @@ describe('getPasswordStrength', () => {
   it('score increases with length, uppercase, digits, and special chars', () => {
     const weak = getPasswordStrength('abc');
     const fair = getPasswordStrength('abcdefgh1'); // 8+ chars + digit
-    const strong = getPasswordStrength('Abcdefgh1!xyz2024'); // 12+ chars + upper + digit + special
+    const strong = getPasswordStrength('Aa1!' + 'x'.repeat(10)); // 14 chars, all criteria met
 
     expect(weak.bars).toBeLessThan(fair.bars);
     expect(fair.bars).toBeLessThan(strong.bars);
