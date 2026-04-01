@@ -112,6 +112,7 @@ export default function LoginPage() {
     setMode(newMode);
     setFieldErrors({});
     setShowPassword(false);
+    if (newMode === 'login') setEmail('');
   }
 
   // ── Main submit ───────────────────────────────────────────────────────────
@@ -362,6 +363,7 @@ export default function LoginPage() {
                   onBlur={handleBlur}
                   className={fieldErrors.email ? 'input-error' : ''}
                   required={mode === 'register'}
+                  disabled={mode !== 'register'}
                 />
                 {fieldErrors.email && <p className="field-error">{fieldErrors.email}</p>}
               </div>
