@@ -1,6 +1,7 @@
 // src/components/common/Toast.jsx
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import PropTypes from 'prop-types';
 import { useToast } from '../../context/ToastContext';
 
 const ICONS = {
@@ -57,6 +58,15 @@ function ToastCard({ toast }) {
     </div>
   );
 }
+
+ToastCard.propTypes = {
+  toast: PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    type: PropTypes.oneOf(['danger', 'warning', 'info', 'success']).isRequired,
+    title: PropTypes.string.isRequired,
+    message: PropTypes.string,
+  }).isRequired,
+};
 
 export default function Toast() {
   const { toasts } = useToast();

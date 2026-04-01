@@ -29,7 +29,7 @@ vi.mock('../../config/constants', () => ({
 
 import { addPMThread } from '../../utils/storage';
 import { sendBrowserNotification } from '../../utils/notifications';
-import { createHandleMessage } from '../useMultiRoomChat';
+import { createHandleMessage, getBackoffDelay } from '../useMultiRoomChat';
 
 // ── Shared test harness ───────────────────────────────────────────────────────
 
@@ -516,5 +516,36 @@ describe('createHandleMessage', () => {
       expect(refs.dispatch).not.toHaveBeenCalled();
       expect(refs.pmDispatch).not.toHaveBeenCalled();
     });
+  });
+});
+
+// ── getBackoffDelay ───────────────────────────────────────────────────────────
+
+describe('getBackoffDelay', () => {
+  it('returns a delay close to 1000ms for attempt 0', () => {
+    const delay = getBackoffDelay(0);
+    // 1000ms ± 20% jitter
+    expect(delay).toBeGreaterThanOrEqual(800);
+    expect(delay).toBeLessThanOrEqual(1200);
+  });
+
+  it('grows exponentially — attempt 1 is roughly double attempt 0', () => {
+    // Mock Math.random to return 0 (no jitter) so we can test deterministically
+    vi.spyOn(Math, 'random').mockReturnValue(0.5); // jitter = 0
+    const d0 = getBackoffDelay(0);
+    const d1 = getBackoffDelay(1);
+    expect(d1).toBeCloseTo(d0 * 2, 0);
+    vi.restoreAllMocks();
+  });
+
+  it('is capped at 30000ms for large attempt numbers', () => {
+    const delay = getBackoffDelay(20); // 1000 * 2^20 >> 30000
+    expect(delay).toBeLessThanOrEqual(30000);
+  });
+
+  it('always returns a positive number', () => {
+    for (let i = 0; i < 10; i++) {
+      expect(getBackoffDelay(i)).toBeGreaterThan(0);
+    }
   });
 });

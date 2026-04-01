@@ -48,6 +48,10 @@ export default function AdminPage() {
   const { showToast } = useToast();
   const navigate = useNavigate();
 
+  function handleFileDownload(fileId, fileName) {
+    downloadFile(fileId, fileName).catch(err => showToast('danger', 'Download failed', err.message));
+  }
+
   // Add page-active class on mount so the one-shot aurora animation plays,
   // and remove it on unmount so the login page returns to the static gradient.
   useEffect(() => {
@@ -318,9 +322,9 @@ export default function AdminPage() {
                                       <td>{formatSize(f.fileSize)}</td>
                                       <td>{new Date(f.uploadedAt).toLocaleString()}</td>
                                       <td>
-                                        <a href="#" onClick={(e) => { e.preventDefault(); downloadFile(f.id, f.originalName).catch(err => showToast('danger', 'Download failed', err.message)); }}>
+                                        <button type="button" className="btn-link" onClick={() => handleFileDownload(f.id, f.originalName)}>
                                           Download
-                                        </a>
+                                        </button>
                                       </td>
                                     </tr>
                                   ))}

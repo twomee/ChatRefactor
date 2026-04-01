@@ -1,5 +1,6 @@
 // src/context/ToastContext.jsx
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import PropTypes from 'prop-types';
 
 const ToastContext = createContext(null);
 
@@ -27,12 +28,16 @@ export function ToastProvider({ children }) {
     setTimeout(() => removeToast(id), duration);
   }, [removeToast]);
 
+  const value = useMemo(() => ({ toasts, showToast, removeToast }), [toasts, showToast, removeToast]);
+
   return (
-    <ToastContext.Provider value={{ toasts, showToast, removeToast }}>
+    <ToastContext.Provider value={value}>
       {children}
     </ToastContext.Provider>
   );
 }
+
+ToastProvider.propTypes = { children: PropTypes.node.isRequired };
 
 export function useToast() {
   const ctx = useContext(ToastContext);

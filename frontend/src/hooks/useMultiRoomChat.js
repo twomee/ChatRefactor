@@ -13,7 +13,7 @@ import { requestNotificationPermission, sendBrowserNotification } from '../utils
 const BACKOFF_BASE_MS = 1000;
 const BACKOFF_MAX_MS = 30000;
 
-function getBackoffDelay(attempt) {
+export function getBackoffDelay(attempt) {
   const delay = BACKOFF_BASE_MS * Math.pow(2, attempt);
   // Add ±20 % jitter to prevent thundering herd on server restart
   const jitter = delay * 0.2 * (Math.random() * 2 - 1);
