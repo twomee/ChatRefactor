@@ -4,11 +4,12 @@ import { createContext, useContext, useReducer } from 'react';
 const PMContext = createContext(null);
 
 const initialPMState = {
-  threads: {},       // { username: [{ from, text, isSelf, to, timestamp, msg_id }] }
-  pmUnread: {},      // { username: number }
-  activePM: null,    // username of currently open PM conversation (or null)
-  deletedPMs: {},    // { username: deleted_at } — for deleted conversations
-  loadedThreads: {}, // { username: true } — tracks which threads have been fetched from server
+  threads: {},        // { username: [{ from, text, isSelf, to, timestamp, msg_id }] }
+  pmUnread: {},       // { username: number }
+  activePM: null,     // username of currently open PM conversation (or null)
+  deletedPMs: {},     // { username: deleted_at } — for deleted conversations
+  loadedThreads: {},  // { username: true } — tracks which threads have been fetched from server
+  pmTypingUsers: {},  // { username: timestamp } — users currently typing to the current user
 };
 
 export function pmReducer(state, action) {
@@ -147,6 +148,16 @@ export function pmReducer(state, action) {
         ...state,
         threads: { ...state.threads, [action.username]: action.messages },
       };
+
+    case 'SET_PM_TYPING': {
+      const updated = { ...state.pmTypingUsers };
+      if (action.isTyping) {
+        updated[action.username] = Date.now();
+      } else {
+        delete updated[action.username];
+      }
+      return { ...state, pmTypingUsers: updated };
+    }
 
     case 'MARK_THREAD_LOADED':
       return {

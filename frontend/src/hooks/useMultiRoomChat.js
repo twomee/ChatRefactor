@@ -163,6 +163,11 @@ export function createHandleMessage({
     setTimeout(() => dispatch({ type: 'SET_TYPING', roomId: msg.room_id, username: msg.username, isTyping: false }), 3000);
   }
 
+  function onPMTyping(msg) {
+    pmDispatch({ type: 'SET_PM_TYPING', username: msg.from, isTyping: true });
+    setTimeout(() => pmDispatch({ type: 'SET_PM_TYPING', username: msg.from, isTyping: false }), 3000);
+  }
+
   // ── Dispatch table — O(1) lookup, no switch complexity ───────────────────
   const msgHandlers = {
     history:              (msg)         => onHistory(msg),
@@ -185,6 +190,7 @@ export function createHandleMessage({
     room_list_updated:    (msg)         => onRoomListUpdated(msg),
     chat_closed:          (msg, roomId) => onChatClosed(msg, roomId),
     typing:               (msg)         => onTyping(msg),
+    typing_pm:            (msg)         => onPMTyping(msg),
     read_position:        (msg)         => dispatch({ type: 'SET_READ_POSITION', roomId: msg.room_id, messageId: msg.last_read_message_id }),
     reaction_added:       (msg)         => dispatch({ type: 'ADD_REACTION', roomId: msg.room_id, msgId: msg.msg_id, emoji: msg.emoji, username: msg.username, userId: msg.user_id }),
     reaction_removed:     (msg)         => dispatch({ type: 'REMOVE_REACTION', roomId: msg.room_id, msgId: msg.msg_id, emoji: msg.emoji, username: msg.username }),
@@ -432,6 +438,15 @@ export function useMultiRoomChat() {
     }
   }, []);
 
+  // ── sendPMTyping — notify a PM recipient that the current user is typing ──
+  const sendPMTyping = useCallback((recipientUsername) => {
+    if (!recipientUsername) return;
+    const ws = lobbyRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'typing_pm', to: recipientUsername }));
+    }
+  }, []);
+
   // ── markAsRead — persist the user's last-read position for a room ──
   const markAsRead = useCallback((roomId, messageId) => {
     if (!roomId || !messageId) return;
@@ -525,5 +540,5 @@ export function useMultiRoomChat() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { joinRoom, exitRoom, exitAllRooms, disconnectAll, sendMessage, sendTyping, markAsRead, connectionStatus };
+  return { joinRoom, exitRoom, exitAllRooms, disconnectAll, sendMessage, sendTyping, sendPMTyping, markAsRead, connectionStatus };
 }

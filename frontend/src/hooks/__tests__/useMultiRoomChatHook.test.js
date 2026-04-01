@@ -243,6 +243,31 @@ describe('useMultiRoomChat hook', () => {
     expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'typing' }));
   });
 
+  // ── sendPMTyping ──────────────────────────────────────────────────────────────
+
+  it('sends typing_pm event through the lobby socket', () => {
+    const { result } = renderHook(() => useMultiRoomChat());
+    const lobbyWs = wsInstances.find(ws => ws.url.includes('/ws/lobby'));
+    expect(lobbyWs).toBeDefined();
+    lobbyWs.readyState = MockWebSocket.OPEN;
+
+    act(() => result.current.sendPMTyping('alice'));
+    expect(lobbyWs.send).toHaveBeenCalledWith(JSON.stringify({ type: 'typing_pm', to: 'alice' }));
+  });
+
+  it('does nothing when sendPMTyping is called with no recipient', () => {
+    const { result } = renderHook(() => useMultiRoomChat());
+    const lobbyWs = wsInstances.find(ws => ws.url.includes('/ws/lobby'));
+    expect(lobbyWs).toBeDefined();
+    lobbyWs.readyState = MockWebSocket.OPEN;
+
+    act(() => result.current.sendPMTyping(null));
+    const pmTypingCalls = (lobbyWs.send.mock?.calls ?? []).filter(([msg]) => {
+      try { return JSON.parse(msg).type === 'typing_pm'; } catch { return false; }
+    });
+    expect(pmTypingCalls).toHaveLength(0);
+  });
+
   // ── markAsRead ───────────────────────────────────────────────────────────────
 
   it('sends mark_read event and dispatches SET_READ_POSITION', () => {

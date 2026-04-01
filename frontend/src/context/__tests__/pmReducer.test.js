@@ -7,6 +7,7 @@ const initialState = {
   activePM: null,
   deletedPMs: {},
   loadedThreads: {},
+  pmTypingUsers: {},
 };
 
 describe('pmReducer', () => {
@@ -281,6 +282,33 @@ describe('pmReducer new actions', () => {
       const existing = { ...baseState, threads: { alice: [{ text: 'live msg' }] } };
       const state = pmReducer(existing, { type: 'INIT_PM_THREAD', username: 'alice' });
       expect(state.threads.alice).toEqual([{ text: 'live msg' }]);
+    });
+  });
+
+  describe('SET_PM_TYPING', () => {
+    it('adds a user with a timestamp when isTyping is true', () => {
+      const before = Date.now();
+      const state = pmReducer(initialState, { type: 'SET_PM_TYPING', username: 'alice', isTyping: true });
+      expect(state.pmTypingUsers.alice).toBeGreaterThanOrEqual(before);
+    });
+
+    it('removes the user when isTyping is false', () => {
+      const withTyping = { ...initialState, pmTypingUsers: { alice: Date.now() } };
+      const state = pmReducer(withTyping, { type: 'SET_PM_TYPING', username: 'alice', isTyping: false });
+      expect(state.pmTypingUsers.alice).toBeUndefined();
+    });
+
+    it('does not affect other typing users when one is cleared', () => {
+      const withTyping = { ...initialState, pmTypingUsers: { alice: 1000, bob: 2000 } };
+      const state = pmReducer(withTyping, { type: 'SET_PM_TYPING', username: 'alice', isTyping: false });
+      expect(state.pmTypingUsers.bob).toBe(2000);
+      expect(state.pmTypingUsers.alice).toBeUndefined();
+    });
+
+    it('does not affect other state slices', () => {
+      const withThread = { ...initialState, threads: { alice: [{ text: 'hi' }] } };
+      const state = pmReducer(withThread, { type: 'SET_PM_TYPING', username: 'alice', isTyping: true });
+      expect(state.threads.alice).toEqual([{ text: 'hi' }]);
     });
   });
 });

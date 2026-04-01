@@ -156,6 +156,19 @@ func (m *Manager) GetLobbyUsernames() []string {
 	return names
 }
 
+// GetUserIDByUsername returns the userID for a connected lobby user by username.
+// Returns 0, false if the user is not currently connected to the lobby.
+func (m *Manager) GetUserIDByUsername(username string) (int, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, info := range m.lobbyConns {
+		if info.Username == username {
+			return info.UserID, true
+		}
+	}
+	return 0, false
+}
+
 // SendPersonal delivers a JSON message to all lobby connections belonging to a user.
 // Returns true if at least one delivery succeeded.
 func (m *Manager) SendPersonal(userID int, msg any) bool {
