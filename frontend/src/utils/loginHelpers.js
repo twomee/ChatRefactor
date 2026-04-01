@@ -13,10 +13,16 @@ export function validateField(name, value, mode) {
       if (!value.trim()) return 'Username is required';
       if (value.trim().length < 3) return 'Must be at least 3 characters';
       return null;
-    case 'email':
+    case 'email': {
       if (!value.trim()) return 'Email is required';
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return 'Enter a valid email address';
+      // Split-based check avoids ReDoS-vulnerable regex (SonarCloud S5852).
+      // The browser's type="email" input enforces stricter RFC validation;
+      // this is a quick sanity check for the error message only.
+      const parts = value.trim().split('@');
+      if (parts.length !== 2 || !parts[0] || !parts[1].includes('.'))
+        return 'Enter a valid email address';
       return null;
+    }
     case 'password':
       if (!value) return 'Password is required';
       if (mode === 'register' && value.length < 6) return 'Must be at least 6 characters';
