@@ -4,6 +4,7 @@ import PropTypes from 'prop-types';
 import { formatSize } from '../../utils/formatting';
 import { isImageFile } from '../../utils/fileHelpers';
 import { downloadFile } from '../../services/fileApi';
+import { useToast } from '../../context/ToastContext';
 import MarkdownMessage from './MarkdownMessage';
 import LinkPreview from './LinkPreview';
 import { API_BASE } from '../../config/constants';
@@ -70,7 +71,7 @@ function renderSystemMessage(msg, key) {
   );
 }
 
-function renderFileMessage(msg, key) {
+function renderFileMessage(msg, key, onDownload) {
   const fileUrl = `${API_BASE}/files/download/${msg.fileId}?token=${encodeURIComponent(sessionStorage.getItem('token'))}`;
   const downloadIcon = (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -90,7 +91,7 @@ function renderFileMessage(msg, key) {
       />
       <button
         type="button"
-        onClick={() => downloadFile(msg.fileId, msg.text)}
+        onClick={() => onDownload(msg.fileId, msg.text)}
         className="msg-file-link"
       >
         {downloadIcon}
@@ -101,7 +102,7 @@ function renderFileMessage(msg, key) {
     // Non-image files: download button only
     <button
       type="button"
-      onClick={() => downloadFile(msg.fileId, msg.text)}
+      onClick={() => onDownload(msg.fileId, msg.text)}
       className="msg-file-link"
     >
       {downloadIcon}
@@ -283,6 +284,15 @@ export default function MessageList({ messages, onScrollToBottom, currentUser, l
   const endRef = useRef(null);
   const containerRef = useRef(null);
   const [pickerMsgId, setPickerMsgId] = useState(null);
+  const { showToast } = useToast();
+
+  async function handleDownload(fileId, filename) {
+    try {
+      await downloadFile(fileId, filename);
+    } catch (err) {
+      showToast('danger', 'Download failed', err.message);
+    }
+  }
 
   useEffect(() => {
     const el = containerRef.current;
@@ -360,7 +370,7 @@ export default function MessageList({ messages, onScrollToBottom, currentUser, l
         if (msg.isSystem) {
           msgEl = renderSystemMessage(msg, key);
         } else if (msg.isFile) {
-          msgEl = renderFileMessage(msg, key);
+          msgEl = renderFileMessage(msg, key, handleDownload);
         } else if (msg.isPrivate) {
           msgEl = renderPrivateMessage(msg, key);
         } else if (msg.is_deleted) {

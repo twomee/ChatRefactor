@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -67,7 +67,15 @@ vi.mock('../../components/chat/TypingIndicator', () => ({
   ),
 }));
 vi.mock('../../components/room/UserList', () => ({
-  default: () => <div data-testid="user-list">Users</div>,
+  default: ({ onKick, onMute, onUnmute, onPromote, onStartPM }) => (
+    <div data-testid="user-list">
+      <button data-testid="trigger-kick" onClick={() => onKick('bob')}>Kick</button>
+      <button data-testid="trigger-mute" onClick={() => onMute('bob')}>Mute</button>
+      <button data-testid="trigger-unmute" onClick={() => onUnmute('bob')}>Unmute</button>
+      <button data-testid="trigger-promote" onClick={() => onPromote('bob')}>Promote</button>
+      <button data-testid="trigger-start-pm" onClick={() => onStartPM('bob')}>PM</button>
+    </div>
+  ),
 }));
 vi.mock('../../components/pm/PMList', () => ({
   default: ({ onSelectPM }) => (
@@ -78,7 +86,12 @@ vi.mock('../../components/pm/PMList', () => ({
   ),
 }));
 vi.mock('../../components/pm/PMView', () => ({
-  default: () => <div data-testid="pm-view">PM View</div>,
+  default: ({ onScrollToBottom, onClearHistory }) => (
+    <div data-testid="pm-view">
+      <button data-testid="pm-scroll-bottom" onClick={onScrollToBottom}>scroll</button>
+      <button data-testid="pm-clear-history" onClick={onClearHistory}>clear</button>
+    </div>
+  ),
 }));
 vi.mock('../../components/common/ConnectionStatus', () => ({
   default: ({ status }) => <div data-testid="connection-status">{status}</div>,
@@ -99,6 +112,12 @@ vi.mock('../../components/chat/SearchModal', () => ({
         <button data-testid="navigate-search" onClick={() => onNavigate(42)}>Go to room 42</button>
       </div>
     ) : null,
+}));
+
+vi.mock('../../services/messageApi', () => ({
+  clearHistory: vi.fn().mockResolvedValue({}),
+  editMessage: vi.fn().mockResolvedValue({}),
+  deleteMessage: vi.fn().mockResolvedValue({}),
 }));
 
 // Mock APIs
@@ -170,6 +189,7 @@ import { usePM } from '../../context/PMContext';
 import { useChatConnection } from '../../layouts/ChatConnectionLayer';
 import * as authApi from '../../services/authApi';
 import * as pmApi from '../../services/pmApi';
+import * as messageApi from '../../services/messageApi';
 import { savePMThreadList } from '../../utils/storage';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -194,13 +214,16 @@ function setupMocks({
 }
 
 import ChatPage from '../ChatPage';
+import { ToastProvider } from '../../context/ToastContext';
 
 function renderChatPage(options = {}) {
   setupMocks(options);
   return render(
-    <MemoryRouter>
-      <ChatPage />
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter>
+        <ChatPage />
+      </MemoryRouter>
+    </ToastProvider>,
   );
 }
 
@@ -415,9 +438,11 @@ describe('ChatPage', () => {
     try {
       setupMocks();
       render(
-        <MemoryRouter>
-          <ChatPage />
-        </MemoryRouter>,
+        <ToastProvider>
+          <MemoryRouter>
+            <ChatPage />
+          </MemoryRouter>
+        </ToastProvider>,
       );
 
       fireEvent.click(screen.getByTestId('trigger-scroll-bottom'));
@@ -465,6 +490,177 @@ describe('ChatPage', () => {
     renderChatPage();
     localStorage.removeItem('chatbox-chat-layouts');
     // No throw === pass
+  });
+});
+
+// ── PM view ───────────────────────────────────────────────────────────────────
+
+describe('PM view', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('renders PM MessageInput when PM is active and no room is selected', () => {
+    renderChatPage({
+      chatState: { ...defaultChatState, activeRoomId: null },
+      pmState: { ...defaultPmState, activePM: 'alice' },
+    });
+    // PM MessageInput should be in the input panel
+    expect(screen.getByTestId('message-input')).toBeInTheDocument();
+  });
+
+  it('dispatches CLEAR_PM_UNREAD when PM message list scrolls to bottom', async () => {
+    const user = userEvent.setup();
+    renderChatPage({
+      chatState: { ...defaultChatState, activeRoomId: null },
+      pmState: { ...defaultPmState, activePM: 'alice' },
+    });
+    await user.click(screen.getByTestId('pm-scroll-bottom'));
+    expect(mockPmDispatch).toHaveBeenCalledWith({ type: 'CLEAR_PM_UNREAD', username: 'alice' });
+  });
+
+  it('clears PM thread locally when onClearHistory fires with no msg_id', async () => {
+    const user = userEvent.setup();
+    renderChatPage({
+      chatState: { ...defaultChatState, activeRoomId: null },
+      pmState: {
+        ...defaultPmState,
+        activePM: 'alice',
+        threads: { alice: [{ from: 'alice', text: 'hi', msg_id: null }] },
+      },
+    });
+    await user.click(screen.getByTestId('pm-clear-history'));
+    expect(mockPmDispatch).toHaveBeenCalledWith({ type: 'CLEAR_PM_THREAD', username: 'alice' });
+  });
+
+  it('calls messageApi.clearHistory when partner msg_id is available', async () => {
+    const user = userEvent.setup();
+    // msg_id format: pm-{senderId}-{recipientId}-{timestamp}
+    // alice is the partner (sender), so parts[1] = partnerId
+    renderChatPage({
+      chatState: { ...defaultChatState, activeRoomId: null },
+      pmState: {
+        ...defaultPmState,
+        activePM: 'alice',
+        threads: { alice: [{ from: 'alice', text: 'hi', msg_id: 'pm-7-3-1234567890' }] },
+      },
+    });
+    await user.click(screen.getByTestId('pm-clear-history'));
+    await waitFor(() => {
+      expect(messageApi.clearHistory).toHaveBeenCalledWith('pm', 7);
+    });
+  });
+});
+
+// ── Muted banner ──────────────────────────────────────────────────────────────
+
+describe('muted banner', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('shows muted banner instead of MessageInput when current user is muted', () => {
+    renderChatPage({
+      chatState: { ...defaultChatState, mutedUsers: { 1: ['testuser'] } },
+    });
+    expect(screen.getByTestId('muted-banner')).toBeInTheDocument();
+    expect(screen.queryByTestId('message-input')).toBeNull();
+  });
+
+  it('does not show muted banner when user is not muted', () => {
+    renderChatPage();
+    expect(screen.queryByTestId('muted-banner')).toBeNull();
+    expect(screen.getByTestId('message-input')).toBeInTheDocument();
+  });
+});
+
+// ── Clear room history ─────────────────────────────────────────────────────────
+
+describe('clear room history', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('shows confirmation dialog when clear button is clicked', async () => {
+    const user = userEvent.setup();
+    renderChatPage();
+    await user.click(screen.getByTestId('clear-room-history'));
+    expect(screen.getByTestId('clear-room-confirm')).toBeInTheDocument();
+  });
+
+  it('calls messageApi.clearHistory and dispatches SET_MESSAGES when confirmed', async () => {
+    const user = userEvent.setup();
+    renderChatPage();
+    await user.click(screen.getByTestId('clear-room-history'));
+    await user.click(screen.getByTestId('clear-room-yes'));
+    await waitFor(() => {
+      expect(messageApi.clearHistory).toHaveBeenCalledWith('room', 1);
+      expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_MESSAGES', roomId: 1, messages: [] });
+    });
+  });
+
+  it('dismisses confirmation without calling API when Cancel is clicked', async () => {
+    const user = userEvent.setup();
+    renderChatPage();
+    await user.click(screen.getByTestId('clear-room-history'));
+    await user.click(screen.getByTestId('clear-room-no'));
+    expect(screen.queryByTestId('clear-room-confirm')).toBeNull();
+    expect(messageApi.clearHistory).not.toHaveBeenCalled();
+  });
+});
+
+// ── UserList action handlers ───────────────────────────────────────────────────
+
+describe('UserList action handlers', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('sends kick WS message when onKick fires', async () => {
+    const user = userEvent.setup();
+    renderChatPage();
+    await user.click(screen.getByTestId('trigger-kick'));
+    expect(mockSendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ type: 'kick', target: 'bob' }));
+  });
+
+  it('sends mute WS message when onMute fires', async () => {
+    const user = userEvent.setup();
+    renderChatPage();
+    await user.click(screen.getByTestId('trigger-mute'));
+    expect(mockSendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ type: 'mute', target: 'bob' }));
+  });
+
+  it('sends unmute WS message when onUnmute fires', async () => {
+    const user = userEvent.setup();
+    renderChatPage();
+    await user.click(screen.getByTestId('trigger-unmute'));
+    expect(mockSendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ type: 'unmute', target: 'bob' }));
+  });
+
+  it('sends promote WS message when onPromote fires', async () => {
+    const user = userEvent.setup();
+    renderChatPage();
+    await user.click(screen.getByTestId('trigger-promote'));
+    expect(mockSendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ type: 'promote', target: 'bob' }));
+  });
+
+  it('opens a PM thread when onStartPM fires', async () => {
+    const user = userEvent.setup();
+    renderChatPage();
+    await user.click(screen.getByTestId('trigger-start-pm'));
+    expect(mockPmDispatch).toHaveBeenCalledWith({ type: 'SET_ACTIVE_PM', username: 'bob' });
+    expect(mockPmDispatch).toHaveBeenCalledWith({ type: 'CLEAR_PM_UNREAD', username: 'bob' });
+    expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_ACTIVE_ROOM', roomId: null });
+  });
+});
+
+// ── Search navigation ──────────────────────────────────────────────────────────
+
+describe('search navigation', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('does NOT call joinRoom when navigating to a room already in joinedRooms', async () => {
+    const user = userEvent.setup();
+    // Room 1 is already in joinedRooms (default state)
+    renderChatPage({
+      chatState: { ...defaultChatState, joinedRooms: new Set([1, 42]) },
+    });
+    await user.click(screen.getByLabelText('Search messages'));
+    await user.click(screen.getByTestId('navigate-search')); // navigates to room 42
+    expect(mockJoinRoom).not.toHaveBeenCalled();
+    expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_ACTIVE_ROOM', roomId: 42 });
   });
 });
 

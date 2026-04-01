@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
+import { useToast } from '../context/ToastContext';
 import { useChatConnection } from '../layouts/ChatConnectionLayer';
 import * as pmApi from '../services/pmApi';
 import * as authApi from '../services/authApi';
@@ -70,6 +71,7 @@ export default function ChatPage() {
   const { user, logout } = useAuth();
   const { state, dispatch } = useChat();
   const { pmState, pmDispatch } = usePM();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const [layouts, setLayouts] = useState(loadLayouts);
 
@@ -205,7 +207,7 @@ export default function ChatPage() {
         pmDispatch({ type: 'EDIT_PM_MESSAGE', username: pmState.activePM, msg_id: editMsgId, text });
         setEditingPMMessage(null);
       } catch (e) {
-        globalThis.alert(e.response?.data?.detail || 'Could not edit message');
+        showToast('danger', 'Error', e.response?.data?.detail || 'Could not edit message');
       }
       return;
     }
@@ -219,7 +221,7 @@ export default function ChatPage() {
       // Ensure thread survives a refresh — don't rely solely on the WS echo
       addPMThread(user?.username, pmState.activePM);
     } catch (e) {
-      globalThis.alert(e.response?.data?.detail || 'Could not send message');
+      showToast('danger', 'Error', e.response?.data?.detail || 'Could not send message');
     }
   }
 
@@ -233,7 +235,7 @@ export default function ChatPage() {
       await pmApi.deletePM(msg.msg_id);
       pmDispatch({ type: 'DELETE_PM_MESSAGE', username: pmState.activePM, msg_id: msg.msg_id });
     } catch (e) {
-      globalThis.alert(e.response?.data?.detail || 'Could not delete message');
+      showToast('danger', 'Error', e.response?.data?.detail || 'Could not delete message');
     }
   }
 
@@ -364,6 +366,7 @@ export default function ChatPage() {
   const activeMuted = state.mutedUsers[state.activeRoomId] || [];
   const activeTypingUsers = state.typingUsers[state.activeRoomId];
   const isCurrentUserAdmin = activeAdmins.includes(user?.username);
+  const isCurrentUserMuted = activeMuted.includes(user?.username);
 
   const pmMessages = pmState.activePM
     ? (pmState.threads[pmState.activePM] || []).map(m => ({
@@ -433,6 +436,50 @@ export default function ChatPage() {
   const handlePMScrollBottom = useCallback(() => {
     if (pmState.activePM) pmDispatch({ type: 'CLEAR_PM_UNREAD', username: pmState.activePM });
   }, [pmState.activePM, pmDispatch]);
+
+  // ── Input panel — extracted to avoid nested ternary (SonarCloud S3358) ───
+  let inputPanel;
+  if (showRoom && isCurrentUserMuted) {
+    inputPanel = (
+      <div className="muted-banner" data-testid="muted-banner">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+          strokeLinejoin="round" aria-hidden="true">
+          <line x1="1" y1="1" x2="23" y2="23"/>
+          <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+          <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+        <span>You are muted in this room</span>
+      </div>
+    );
+  } else if (showRoom) {
+    inputPanel = (
+      <MessageInput
+        onSend={handleSend}
+        roomName={activeRoom?.name}
+        roomId={state.activeRoomId}
+        onTyping={() => sendTyping(state.activeRoomId)}
+        editingMessage={editingMessage}
+        onCancelEdit={handleCancelEdit}
+      />
+    );
+  } else if (showPM) {
+    inputPanel = (
+      <MessageInput
+        onSend={handleSendPM}
+        roomName={pmState.activePM}
+        isPM
+        editingMessage={editingPMMessage}
+        onCancelEdit={() => setEditingPMMessage(null)}
+      />
+    );
+  } else {
+    inputPanel = (
+      <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Select a conversation to type...</div>
+    );
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -580,26 +627,7 @@ export default function ChatPage() {
           <div key="input" className="glass-panel" style={{ borderRadius: 'var(--radius-xl)' }}>
             <div className="drag-handle" />
             <div style={{ padding: '0 12px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
-              {showRoom ? (
-                <MessageInput
-                  onSend={handleSend}
-                  roomName={activeRoom?.name}
-                  roomId={state.activeRoomId}
-                  onTyping={() => sendTyping(state.activeRoomId)}
-                  editingMessage={editingMessage}
-                  onCancelEdit={handleCancelEdit}
-                />
-              ) : showPM ? (
-                <MessageInput
-                  onSend={handleSendPM}
-                  roomName={pmState.activePM}
-                  isPM
-                  editingMessage={editingPMMessage}
-                  onCancelEdit={() => setEditingPMMessage(null)}
-                />
-              ) : (
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Select a conversation to type...</div>
-              )}
+              {inputPanel}
             </div>
           </div>
 

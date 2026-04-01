@@ -49,8 +49,8 @@ export async function downloadFile(fileId, filename) {
     setTimeout(() => URL.revokeObjectURL(url), 100);
   } catch (err) {
     const status = err.response?.status;
-    if (status === 403) globalThis.alert('You do not have permission to download this file.');
-    else if (status === 404) globalThis.alert('File not found.');
-    else globalThis.alert('Download failed. Please try again.');
+    if (status === 403) throw new Error('You do not have permission to download this file.');
+    if (status === 404) throw new Error('File not found.');
+    throw new Error('Download failed. Please try again.');
   }
 }

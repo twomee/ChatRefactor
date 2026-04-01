@@ -29,7 +29,7 @@ vi.mock('../../config/constants', () => ({
 
 import { addPMThread } from '../../utils/storage';
 import { sendBrowserNotification } from '../../utils/notifications';
-import { createHandleMessage } from '../useMultiRoomChat';
+import { createHandleMessage, getBackoffDelay } from '../useMultiRoomChat';
 
 // ── Shared test harness ───────────────────────────────────────────────────────
 
@@ -44,6 +44,7 @@ function makeRefs(overrides = {}) {
     lastMsgTimeRef: { current: new Map() },
     exitRoomRef: { current: vi.fn() },
     stateRef: { current: { rooms: [], joinedRooms: new Set() } },
+    showToast: vi.fn(),
     ...overrides,
   };
 }
@@ -54,7 +55,6 @@ describe('createHandleMessage', () => {
   beforeEach(() => {
     refs = makeRefs();
     vi.clearAllMocks();
-    vi.spyOn(window, 'alert').mockImplementation(() => {});
   });
 
   function handle(msg, roomId) {
@@ -345,11 +345,11 @@ describe('createHandleMessage', () => {
   // ── kicked ────────────────────────────────────────────────────────────────
 
   describe('kicked event', () => {
-    it('calls exitRoomRef and alerts the user', () => {
+    it('calls exitRoomRef and shows a danger toast', () => {
       refs.stateRef.current.rooms = [{ id: 3, name: 'lobby' }];
       handle({ type: 'kicked', room_id: 3 });
       expect(refs.exitRoomRef.current).toHaveBeenCalledWith(3);
-      expect(window.alert).toHaveBeenCalledWith('You were kicked from lobby');
+      expect(refs.showToast).toHaveBeenCalledWith('danger', 'Removed from room', 'You were kicked from #lobby');
     });
 
     it('changes active room when kicked from the current active room', () => {
@@ -410,16 +410,21 @@ describe('createHandleMessage', () => {
   // ── chat_closed ───────────────────────────────────────────────────────────
 
   describe('chat_closed event', () => {
-    it('exits the closed room and alerts the user', () => {
+    it('exits the closed room and shows a warning toast', () => {
       refs.activeRoomIdRef.current = 5;
       handle({ type: 'chat_closed', room_id: 5, detail: 'Room was closed by admin' });
       expect(refs.exitRoomRef.current).toHaveBeenCalledWith(5);
-      expect(window.alert).toHaveBeenCalledWith('Room was closed by admin');
+      expect(refs.showToast).toHaveBeenCalledWith('warning', 'Room closed', 'Room was closed by admin');
     });
 
     it('uses roomId fallback when room_id is absent', () => {
       handle({ type: 'chat_closed', detail: 'closed' }, 7);
       expect(refs.exitRoomRef.current).toHaveBeenCalledWith(7);
+    });
+
+    it('uses default message when detail is absent', () => {
+      handle({ type: 'chat_closed', room_id: 5 });
+      expect(refs.showToast).toHaveBeenCalledWith('warning', 'Room closed', 'This room has been closed');
     });
 
     it('sets active room to null when the closed room was active', () => {
@@ -492,9 +497,14 @@ describe('createHandleMessage', () => {
   // ── error ─────────────────────────────────────────────────────────────────
 
   describe('error event', () => {
-    it('calls window.alert with the error detail', () => {
+    it('shows a danger toast with the error detail', () => {
       handle({ type: 'error', detail: 'Token expired' });
-      expect(window.alert).toHaveBeenCalledWith('Token expired');
+      expect(refs.showToast).toHaveBeenCalledWith('danger', 'Error', 'Token expired');
+    });
+
+    it('shows a fallback message when detail is absent', () => {
+      handle({ type: 'error' });
+      expect(refs.showToast).toHaveBeenCalledWith('danger', 'Error', 'Something went wrong');
     });
   });
 
@@ -506,5 +516,36 @@ describe('createHandleMessage', () => {
       expect(refs.dispatch).not.toHaveBeenCalled();
       expect(refs.pmDispatch).not.toHaveBeenCalled();
     });
+  });
+});
+
+// ── getBackoffDelay ───────────────────────────────────────────────────────────
+
+describe('getBackoffDelay', () => {
+  it('returns a delay close to 1000ms for attempt 0', () => {
+    const delay = getBackoffDelay(0);
+    // 1000ms ± 20% jitter
+    expect(delay).toBeGreaterThanOrEqual(800);
+    expect(delay).toBeLessThanOrEqual(1200);
+  });
+
+  it('grows exponentially — attempt 1 is roughly double attempt 0', () => {
+    // Mock Math.random to return 0 (no jitter) so we can test deterministically
+    vi.spyOn(Math, 'random').mockReturnValue(0.5); // jitter = 0
+    const d0 = getBackoffDelay(0);
+    const d1 = getBackoffDelay(1);
+    expect(d1).toBeCloseTo(d0 * 2, 0);
+    vi.restoreAllMocks();
+  });
+
+  it('is capped at 30000ms for large attempt numbers', () => {
+    const delay = getBackoffDelay(20); // 1000 * 2^20 >> 30000
+    expect(delay).toBeLessThanOrEqual(30000);
+  });
+
+  it('always returns a positive number', () => {
+    for (let i = 0; i < 10; i++) {
+      expect(getBackoffDelay(i)).toBeGreaterThan(0);
+    }
   });
 });

@@ -5,6 +5,7 @@ import * as adminApi from '../services/adminApi';
 import { createRoom } from '../services/roomApi';
 import { listRoomFiles, downloadFile } from '../services/fileApi';
 import { formatSize } from '../utils/formatting';
+import { useToast } from '../context/ToastContext';
 
 import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
 import { WidthProvider } from 'react-grid-layout/legacy';
@@ -44,7 +45,12 @@ export default function AdminPage() {
   const [newRoomName, setNewRoomName] = useState('');
   const [expandedRoomFiles, setExpandedRoomFiles] = useState(null);
   const [layouts, setLayouts] = useState(loadAdminLayouts);
+  const { showToast } = useToast();
   const navigate = useNavigate();
+
+  function handleFileDownload(fileId, fileName) {
+    downloadFile(fileId, fileName).catch(err => showToast('danger', 'Download failed', err.message));
+  }
 
   // Add page-active class on mount so the one-shot aurora animation plays,
   // and remove it on unmount so the login page returns to the static gradient.
@@ -316,9 +322,9 @@ export default function AdminPage() {
                                       <td>{formatSize(f.fileSize)}</td>
                                       <td>{new Date(f.uploadedAt).toLocaleString()}</td>
                                       <td>
-                                        <a href="#" onClick={(e) => { e.preventDefault(); downloadFile(f.id, f.originalName); }}>
+                                        <button type="button" className="btn-link" onClick={() => handleFileDownload(f.id, f.originalName)}>
                                           Download
-                                        </a>
+                                        </button>
                                       </td>
                                     </tr>
                                   ))}

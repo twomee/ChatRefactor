@@ -6,7 +6,14 @@ import { MemoryRouter } from 'react-router-dom';
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 vi.mock('react-grid-layout', () => ({
-  Responsive: ({ children }) => <div data-testid="grid-layout">{children}</div>,
+  Responsive: ({ children, onLayoutChange }) => (
+    <div data-testid="grid-layout">
+      {children}
+      <button data-testid="trigger-layout-change" onClick={() => onLayoutChange?.({}, { lg: [] })}>
+        layout
+      </button>
+    </div>
+  ),
 }));
 vi.mock('react-grid-layout/legacy', () => ({
   WidthProvider: (Component) => Component,
@@ -44,12 +51,15 @@ import * as adminApi from '../../services/adminApi';
 import * as roomApi from '../../services/roomApi';
 import * as fileApi from '../../services/fileApi';
 import AdminPage from '../AdminPage';
+import { ToastProvider } from '../../context/ToastContext';
 
 function renderAdminPage() {
   return render(
-    <MemoryRouter>
-      <AdminPage />
-    </MemoryRouter>
+    <ToastProvider>
+      <MemoryRouter>
+        <AdminPage />
+      </MemoryRouter>
+    </ToastProvider>
   );
 }
 
@@ -219,5 +229,123 @@ describe('AdminPage', () => {
     await waitFor(() => expect(adminApi.getRooms).toHaveBeenCalled());
     await user.click(screen.getByRole('button', { name: /open all rooms/i }));
     await waitFor(() => expect(adminApi.openAllRooms).toHaveBeenCalled());
+  });
+
+  it('shows status message on successful close-all', async () => {
+    const user = userEvent.setup();
+    renderAdminPage();
+    await waitFor(() => expect(adminApi.getRooms).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: /close all rooms/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/all rooms closed/i)).toBeInTheDocument();
+    });
+  });
+
+  it('hides Files panel when Files button is clicked a second time', async () => {
+    const user = userEvent.setup();
+    fileApi.listRoomFiles.mockResolvedValue({ data: [] });
+    renderAdminPage();
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+
+    const fileBtns = screen.getAllByRole('button', { name: /files/i });
+    // First click: expand
+    await user.click(fileBtns[0]);
+    await waitFor(() => expect(screen.getByText(/no files/i)).toBeInTheDocument());
+
+    // Second click: collapse
+    await user.click(screen.getAllByRole('button', { name: /files/i })[0]);
+    await waitFor(() => expect(screen.queryByText(/no files/i)).not.toBeInTheDocument());
+  });
+
+  it('shows file list entries when room has files', async () => {
+    const user = userEvent.setup();
+    fileApi.listRoomFiles.mockResolvedValue({
+      data: [{ id: 1, originalName: 'report.pdf', senderName: 'alice', fileSize: 2048, uploadedAt: '2024-01-01T12:00:00Z' }],
+    });
+    renderAdminPage();
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+
+    const fileBtns = screen.getAllByRole('button', { name: /files/i });
+    await user.click(fileBtns[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('report.pdf')).toBeInTheDocument();
+    });
+  });
+
+  it('shows error status when close room fails', async () => {
+    const user = userEvent.setup();
+    adminApi.closeRoom.mockRejectedValue({ response: { data: { detail: 'Permission denied' } } });
+    renderAdminPage();
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /^close$/i }));
+    await waitFor(() => {
+      expect(screen.getByText('Permission denied')).toBeInTheDocument();
+    });
+  });
+
+  it('resets database when Reset Database button clicked and confirm accepted', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    adminApi.resetDatabase.mockResolvedValue({});
+    renderAdminPage();
+    await waitFor(() => expect(adminApi.getRooms).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: /reset database/i }));
+    await waitFor(() => expect(adminApi.resetDatabase).toHaveBeenCalled());
+    vi.restoreAllMocks();
+  });
+
+  it('does not reset database when confirm is cancelled', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderAdminPage();
+    await waitFor(() => expect(adminApi.getRooms).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: /reset database/i }));
+    expect(adminApi.resetDatabase).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it('saves layout to localStorage when onLayoutChange fires', async () => {
+    const user = userEvent.setup();
+    renderAdminPage();
+    await user.click(screen.getByTestId('trigger-layout-change'));
+    // No throw = layout saved; verify localStorage was written
+    expect(localStorage.getItem('chatbox-admin-layouts')).toBeTruthy();
+  });
+
+  it('shows "Failed to load files" when listRoomFiles throws', async () => {
+    const user = userEvent.setup();
+    fileApi.listRoomFiles.mockRejectedValue(new Error('Network error'));
+    renderAdminPage();
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+
+    const fileBtns = screen.getAllByRole('button', { name: /files/i });
+    await user.click(fileBtns[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to load files')).toBeInTheDocument();
+    });
+  });
+
+  it('triggers file download when Download button is clicked', async () => {
+    const user = userEvent.setup();
+    fileApi.listRoomFiles.mockResolvedValue({
+      data: [{ id: 5, originalName: 'notes.txt', senderName: 'bob', fileSize: 512, uploadedAt: '2024-01-01T00:00:00Z' }],
+    });
+    fileApi.downloadFile.mockResolvedValue(undefined);
+    renderAdminPage();
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+
+    const fileBtns = screen.getAllByRole('button', { name: /files/i });
+    await user.click(fileBtns[0]);
+    await waitFor(() => expect(screen.getByText('notes.txt')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /download/i }));
+    await waitFor(() => {
+      expect(fileApi.downloadFile).toHaveBeenCalledWith(5, 'notes.txt');
+    });
   });
 });
