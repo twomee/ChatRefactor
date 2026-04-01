@@ -142,8 +142,9 @@ EOF
         --set auth.password="$POSTGRES_PASSWORD" \
         --set metrics.enabled=false \
         --set metrics.serviceMonitor.enabled=false \
+        --set primary.persistence.enabled=false \
         --version 18.5.14 \
-        --wait --timeout 600s
+        --wait --timeout 300s
 
     echo "  Installing Redis..."
     helm upgrade --install redis bitnami/redis \
@@ -152,6 +153,8 @@ EOF
         --set auth.password="$REDIS_PASSWORD" \
         --set metrics.enabled=false \
         --set metrics.serviceMonitor.enabled=false \
+        --set master.persistence.enabled=false \
+        --set replica.persistence.enabled=false \
         --version 25.3.9 \
         --wait --timeout 300s
 
