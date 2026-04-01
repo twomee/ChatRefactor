@@ -183,17 +183,17 @@ e2e-setup: ## Install e2e test dependencies
 	pip install -r $(E2E_DIR)/requirements.txt
 
 e2e: ## Run all e2e tests (auto-detects Docker Compose or K8s)
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python -m pytest $(E2E_DIR) -v --tb=short -c $(E2E_DIR)/pytest.ini
+	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR) -v --tb=short -c $(E2E_DIR)/pytest.ini
 
 e2e-smoke: ## Run smoke tests (~15 core tests)
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python -m pytest $(E2E_DIR) -v --tb=short -m smoke -c $(E2E_DIR)/pytest.ini
+	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR) -v --tb=short -m smoke -c $(E2E_DIR)/pytest.ini
 
 e2e-all: ## Run e2e against both Docker Compose and K8s
 	@echo "══════════════════════════════════════════"
 	@echo "  E2E: Docker Compose (localhost:80)"
 	@echo "══════════════════════════════════════════"
 	@if curl -sf http://localhost:80 > /dev/null 2>&1; then \
-		KONG_URL=http://localhost:80 python -m pytest $(E2E_DIR) -v --tb=short -c $(E2E_DIR)/pytest.ini; \
+		KONG_URL=http://localhost:80 python3 -m pytest $(E2E_DIR) -v --tb=short -c $(E2E_DIR)/pytest.ini; \
 	else \
 		echo "  ⚠  Docker Compose not running (port 80 unresponsive), skipping."; \
 	fi
@@ -202,28 +202,28 @@ e2e-all: ## Run e2e against both Docker Compose and K8s
 	@echo "  E2E: Kubernetes (localhost:30080)"
 	@echo "══════════════════════════════════════════"
 	@if curl -sf http://localhost:30080 > /dev/null 2>&1; then \
-		KONG_URL=http://localhost:30080 python -m pytest $(E2E_DIR) -v --tb=short -c $(E2E_DIR)/pytest.ini; \
+		KONG_URL=http://localhost:30080 python3 -m pytest $(E2E_DIR) -v --tb=short -c $(E2E_DIR)/pytest.ini; \
 	else \
 		echo "  ⚠  K8s not running (port 30080 unresponsive), skipping."; \
 	fi
 
 e2e-auth: ## Run only auth tests
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python -m pytest $(E2E_DIR)/test_auth.py -v --tb=short -c $(E2E_DIR)/pytest.ini
+	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR)/test_auth.py -v --tb=short -c $(E2E_DIR)/pytest.ini
 
 e2e-pm: ## Run only PM tests
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python -m pytest $(E2E_DIR)/test_pm.py -v --tb=short -c $(E2E_DIR)/pytest.ini
+	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR)/test_pm.py -v --tb=short -c $(E2E_DIR)/pytest.ini
 
 e2e-files: ## Run only file tests
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python -m pytest $(E2E_DIR)/test_files.py -v --tb=short -c $(E2E_DIR)/pytest.ini
+	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR)/test_files.py -v --tb=short -c $(E2E_DIR)/pytest.ini
 
 e2e-chat: ## Run only chat room + WebSocket tests
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python -m pytest $(E2E_DIR)/test_chat_rooms.py $(E2E_DIR)/test_chat_websocket.py -v --tb=short -c $(E2E_DIR)/pytest.ini
+	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR)/test_chat_rooms.py $(E2E_DIR)/test_chat_websocket.py -v --tb=short -c $(E2E_DIR)/pytest.ini
 
 e2e-messages: ## Run only message service tests
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python -m pytest $(E2E_DIR)/test_messages.py -v --tb=short -c $(E2E_DIR)/pytest.ini
+	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR)/test_messages.py -v --tb=short -c $(E2E_DIR)/pytest.ini
 
 e2e-admin: ## Run only admin tests
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python -m pytest $(E2E_DIR)/test_admin.py -v --tb=short -c $(E2E_DIR)/pytest.ini
+	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR)/test_admin.py -v --tb=short -c $(E2E_DIR)/pytest.ini
 
 e2e-monitoring: ## Run only monitoring tests
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python -m pytest $(E2E_DIR)/test_monitoring.py -v --tb=short -c $(E2E_DIR)/pytest.ini
+	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR)/test_monitoring.py -v --tb=short -c $(E2E_DIR)/pytest.ini
