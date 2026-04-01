@@ -70,7 +70,7 @@ class TestMessageActions:
             json={"content": "edited via REST"},
             headers=auth_header(user1["token"]),
         )
-        assert resp.status_code == 201
+        assert resp.status_code == 200
         assert resp.json()["edited"] is True
 
     def test_delete_message(self, api: requests.Session, kong_url: str, user1: dict, ws_url: str, test_room: dict):

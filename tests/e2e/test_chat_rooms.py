@@ -54,7 +54,8 @@ class TestRoomAdminActions:
     """Room-level admin actions: mute, unmute, kick, promote, deactivate."""
 
     def test_admin_mutes_user_blocks_messages(
-        self, api: requests.Session, kong_url: str, admin_token: str, user3: dict, timestamp: str
+        self, api: requests.Session, kong_url: str, admin_token: str,
+        admin_user_id: int, user3: dict, timestamp: str
     ):
         # Create a dedicated room for mute tests
         resp = api.post(
@@ -64,6 +65,13 @@ class TestRoomAdminActions:
         )
         assert resp.status_code == 201
         room_id = resp.json()["id"]
+
+        # Global admin must also be a room admin to mute users
+        api.post(
+            f"{kong_url}/rooms/{room_id}/admins",
+            json={"user_id": admin_user_id},
+            headers=auth_header(admin_token),
+        )
 
         # Mute user3
         resp = api.post(
@@ -85,7 +93,8 @@ class TestRoomAdminActions:
         assert resp.status_code == 200
 
     def test_kick_muted_user_mute_persists_on_rejoin(
-        self, api: requests.Session, kong_url: str, admin_token: str, user3: dict, timestamp: str
+        self, api: requests.Session, kong_url: str, admin_token: str,
+        admin_user_id: int, user3: dict, timestamp: str
     ):
         # Create a fresh room
         resp = api.post(
@@ -94,6 +103,13 @@ class TestRoomAdminActions:
             headers=auth_header(admin_token),
         )
         room_id = resp.json()["id"]
+
+        # Global admin must also be a room admin to mute users
+        api.post(
+            f"{kong_url}/rooms/{room_id}/admins",
+            json={"user_id": admin_user_id},
+            headers=auth_header(admin_token),
+        )
 
         # Mute user3
         resp = api.post(

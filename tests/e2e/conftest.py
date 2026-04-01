@@ -191,16 +191,27 @@ def admin_creds() -> tuple[str, str]:
 
 
 @pytest.fixture(scope="session")
-def admin_token(kong_url: str, api: requests.Session, admin_creds: tuple[str, str]) -> str:
-    """JWT obtained by logging in as the admin user."""
+def _admin_login_data(kong_url: str, api: requests.Session, admin_creds: tuple[str, str]) -> dict:
+    """Full admin login response data."""
     username, password = admin_creds
     resp = api.post(
         f"{kong_url}/auth/login",
         json={"username": username, "password": password},
     )
     assert resp.status_code == 200, f"Admin login failed ({resp.status_code}): {resp.text}"
-    data = resp.json()
-    return data["access_token"]
+    return resp.json()
+
+
+@pytest.fixture(scope="session")
+def admin_token(_admin_login_data: dict) -> str:
+    """JWT obtained by logging in as the admin user."""
+    return _admin_login_data["access_token"]
+
+
+@pytest.fixture(scope="session")
+def admin_user_id(_admin_login_data: dict) -> int:
+    """User ID of the admin."""
+    return _admin_login_data["user_id"]
 
 
 def _register_and_login(
@@ -273,6 +284,30 @@ def user3(kong_url: str, api: requests.Session, timestamp: str) -> dict:
         username=f"charlie_{timestamp}",
         password="TestPass123!",
         email=f"charlie_{timestamp}@test.com",
+    )
+
+
+@pytest.fixture(scope="session")
+def user4(kong_url: str, api: requests.Session, timestamp: str) -> dict:
+    """Test user for 2FA tests — registered and logged in."""
+    return _register_and_login(
+        kong_url,
+        api,
+        username=f"delta_{timestamp}",
+        password="TestPass123!",
+        email=f"delta_{timestamp}@test.com",
+    )
+
+
+@pytest.fixture(scope="session")
+def user5(kong_url: str, api: requests.Session, timestamp: str) -> dict:
+    """Test user for password change / logout tests — registered and logged in."""
+    return _register_and_login(
+        kong_url,
+        api,
+        username=f"echo_{timestamp}",
+        password="TestPass123!",
+        email=f"echo_{timestamp}@test.com",
     )
 
 
