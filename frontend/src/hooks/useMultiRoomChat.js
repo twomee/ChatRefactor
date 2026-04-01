@@ -3,6 +3,7 @@ import { useEffect, useRef, useCallback, useMemo, useState, startTransition } fr
 import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { WS_BASE } from '../config/constants';
 import { listRooms, getMessagesSince } from '../services/roomApi';
 import { getJoinedRooms, addJoinedRoom, removeJoinedRoom, addPMThread } from '../utils/storage';
@@ -55,6 +56,7 @@ export function createHandleMessage({
   lastMsgTimeRef,
   exitRoomRef,
   stateRef = { current: { rooms: [], joinedRooms: new Set() } },
+  showToast = () => {},
 }) {
   function trackTimestamp(roomId) {
     if (lastMsgTimeRef) lastMsgTimeRef.current.set(roomId, new Date().toISOString());
@@ -133,7 +135,7 @@ export function createHandleMessage({
     if (activeRoomIdRef.current === msg.room_id) {
       dispatch({ type: 'SET_ACTIVE_ROOM', roomId: [...stateRef.current.joinedRooms].find(id => id !== msg.room_id) ?? null });
     }
-    globalThis.alert(`You were kicked from ${roomName}`);
+    showToast('danger', 'Removed from room', `You were kicked from #${roomName}`);
   }
 
   function onRoomListUpdated(msg) {
@@ -152,7 +154,7 @@ export function createHandleMessage({
     const closedId = msg.room_id ?? roomId;
     exitRoomRef.current(closedId);
     if (activeRoomIdRef.current === closedId) dispatch({ type: 'SET_ACTIVE_ROOM', roomId: null });
-    globalThis.alert(msg.detail || 'Room was closed');
+    showToast('warning', 'Room closed', msg.detail || 'This room has been closed');
   }
 
   function onTyping(msg) {
@@ -188,7 +190,7 @@ export function createHandleMessage({
     reaction_removed:     (msg)         => dispatch({ type: 'REMOVE_REACTION', roomId: msg.room_id, msgId: msg.msg_id, emoji: msg.emoji, username: msg.username }),
     user_online:          (msg)         => dispatch({ type: 'USER_ONLINE', username: msg.username }),
     user_offline:         (msg)         => dispatch({ type: 'USER_OFFLINE', username: msg.username }),
-    error:                (msg)         => globalThis.alert(msg.detail),
+    error:                (msg)         => showToast('danger', 'Error', msg.detail || 'Something went wrong'),
   };
 
   return function handleMessage(msg, roomId) {
@@ -200,6 +202,7 @@ export function useMultiRoomChat() {
   const { state, dispatch } = useChat();
   const { pmState, pmDispatch } = usePM();
   const { token, user } = useAuth();
+  const { showToast } = useToast();
   const username = user?.username ?? 'anonymous';
 
   // ── Connection status ─────────────────────────────────────────────────────
@@ -273,8 +276,9 @@ export function useMultiRoomChat() {
       lastMsgTimeRef,
       exitRoomRef,
       stateRef,
+      showToast,
     }),
-    [dispatch, pmDispatch, user?.username] // eslint-disable-line react-hooks/exhaustive-deps
+    [dispatch, pmDispatch, user?.username, showToast] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const handleMessageRef = useRef(handleMessage);

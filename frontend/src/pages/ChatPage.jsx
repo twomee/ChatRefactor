@@ -364,6 +364,7 @@ export default function ChatPage() {
   const activeMuted = state.mutedUsers[state.activeRoomId] || [];
   const activeTypingUsers = state.typingUsers[state.activeRoomId];
   const isCurrentUserAdmin = activeAdmins.includes(user?.username);
+  const isCurrentUserMuted = activeMuted.includes(user?.username);
 
   const pmMessages = pmState.activePM
     ? (pmState.threads[pmState.activePM] || []).map(m => ({
@@ -580,7 +581,20 @@ export default function ChatPage() {
           <div key="input" className="glass-panel" style={{ borderRadius: 'var(--radius-xl)' }}>
             <div className="drag-handle" />
             <div style={{ padding: '0 12px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
-              {showRoom ? (
+              {showRoom && isCurrentUserMuted ? (
+                <div className="muted-banner" data-testid="muted-banner">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                    strokeLinejoin="round" aria-hidden="true">
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+                    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
+                  </svg>
+                  <span>You are muted in this room</span>
+                </div>
+              ) : showRoom ? (
                 <MessageInput
                   onSend={handleSend}
                   roomName={activeRoom?.name}

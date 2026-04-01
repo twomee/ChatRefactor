@@ -2,6 +2,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ChatProvider } from './context/ChatContext';
+import { ToastProvider } from './context/ToastContext';
+import Toast from './components/common/Toast';
 import AuthenticatedShell from './layouts/AuthenticatedShell';
 import AdminGuard from './layouts/AdminGuard';
 import LoginPage from './pages/LoginPage';
@@ -12,21 +14,24 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <ChatProvider>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route element={<AuthenticatedShell />}>
-              <Route path="/chat" element={<ChatPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/admin" element={<AdminGuard><AdminPage /></AdminGuard>} />
-            </Route>
-            <Route path="*" element={<Navigate to="/login" />} />
-          </Routes>
-        </ChatProvider>
-      </BrowserRouter>
-    </AuthProvider>
+    <ToastProvider>
+      <Toast />
+      <AuthProvider>
+        <BrowserRouter>
+          <ChatProvider>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route element={<AuthenticatedShell />}>
+                <Route path="/chat" element={<ChatPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/admin" element={<AdminGuard><AdminPage /></AdminGuard>} />
+              </Route>
+              <Route path="*" element={<Navigate to="/login" />} />
+            </Routes>
+          </ChatProvider>
+        </BrowserRouter>
+      </AuthProvider>
+    </ToastProvider>
   );
 }
