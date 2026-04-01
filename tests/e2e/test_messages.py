@@ -7,8 +7,7 @@ import time
 import pytest
 import requests
 
-from conftest import auth_header
-from test_chat_websocket import ws_connect, recv_until, drain
+from conftest import auth_header, ws_connect, recv_until, drain
 
 
 @pytest.fixture(scope="module")
@@ -26,7 +25,7 @@ def sent_message(api, kong_url: str, ws_url: str, user1: dict, test_room: dict):
         await lobby.close()
         return {"msg_id": msg["msg_id"], "text": text}
 
-    result = asyncio.get_event_loop().run_until_complete(_send())
+    result = asyncio.run(_send())
     time.sleep(2)
     return result
 
@@ -85,7 +84,7 @@ class TestMessageActions:
             await lobby.close()
             return msg["msg_id"]
 
-        msg_id = asyncio.get_event_loop().run_until_complete(_send())
+        msg_id = asyncio.run(_send())
         time.sleep(2)
 
         resp = api.delete(

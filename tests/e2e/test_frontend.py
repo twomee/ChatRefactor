@@ -3,8 +3,6 @@
 import pytest
 import requests
 
-from conftest import auth_header
-
 
 class TestFrontend:
     """Verify the frontend is served through Kong."""
