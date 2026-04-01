@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(64) UNIQUE NOT NULL,
     password_hash VARCHAR(256) NOT NULL,
+    email VARCHAR(256),
     is_global_admin BOOLEAN DEFAULT FALSE NOT NULL,
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
     totp_secret VARCHAR(256),
@@ -26,9 +27,19 @@ CREATE TABLE IF NOT EXISTS users (
     backup_codes TEXT
 );
 -- Idempotent column addition for existing databases.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(256);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(256);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_2fa_enabled BOOLEAN DEFAULT FALSE NOT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS backup_codes TEXT;
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    token VARCHAR(256) UNIQUE NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    used BOOLEAN DEFAULT FALSE NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 EOSQL
 
