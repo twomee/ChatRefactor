@@ -138,16 +138,19 @@ class TestPMHistory:
             json={"to": user2["username"], "text": "history test"},
             headers=auth_header(user1["token"]),
         )
-        time.sleep(2)  # wait for Kafka persistence
-
-        resp = api.get(
-            f"{kong_url}/messages/pm/history/{user2['username']}",
-            headers=auth_header(user1["token"]),
-        )
-        assert resp.status_code == 200
-        messages = resp.json()
-        assert len(messages) > 0
-        assert any("history test" in m.get("content", "") for m in messages)
+        # Poll for Kafka persistence (up to 10s)
+        for _ in range(5):
+            time.sleep(2)
+            resp = api.get(
+                f"{kong_url}/messages/pm/history/{user2['username']}",
+                headers=auth_header(user1["token"]),
+            )
+            assert resp.status_code == 200
+            messages = resp.json()
+            if any("history test" in m.get("content", "") for m in messages):
+                break
+        else:
+            assert False, f"PM 'history test' not found in history after 10s. Got: {[m.get('content','') for m in messages]}"
 
     def test_delete_pm_conversation(self, api, kong_url: str, user1: dict, user2: dict):
         resp = api.post(
