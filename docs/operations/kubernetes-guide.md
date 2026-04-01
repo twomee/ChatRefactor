@@ -1,6 +1,6 @@
 # Kubernetes Guide — Understanding Chatbox on K8s
 
-This guide explains **what** the Kubernetes setup does and **why** each piece exists. If you're looking for commands and step-by-step instructions, see [k8s-operations.md](./k8s-operations.md).
+This guide explains **what** the Kubernetes setup does and **why** each piece exists. If you're looking for commands and step-by-step instructions, see [kubernetes-commands.md](./kubernetes-commands.md).
 
 ---
 

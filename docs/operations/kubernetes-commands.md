@@ -1,6 +1,6 @@
 # Kubernetes Operations Guide — Running Chatbox on K8s
 
-This guide contains **commands and step-by-step instructions** for running, managing, and troubleshooting Chatbox on Kubernetes. For understanding the architecture and concepts, see [k8s-concepts.md](./k8s-concepts.md).
+This guide contains **commands and step-by-step instructions** for running, managing, and troubleshooting Chatbox on Kubernetes. For understanding the architecture and concepts, see [kubernetes-guide.md](./kubernetes-guide.md).
 
 ---
 
@@ -250,11 +250,7 @@ make k8s-shell SVC=message-service   # Same for message-service
 make k8s-shell SVC=file-service      # Same for file-service
 
 make k8s-restart SVC=auth-service    # Rolling restart auth-service (zero downtime)
-make k8s-restart SVC=chat-service    # Rolling restart chat-service
-make k8s-restart SVC=message-service # Rolling restart message-service
-make k8s-restart SVC=file-service    # Rolling restart file-service
-
-make k8s-port-forward                # Print the NodePort access URLs
+make k8s-restart SVC=chat-service
 ```
 
 ---
@@ -262,10 +258,12 @@ make k8s-port-forward                # Print the NodePort access URLs
 ### Monitoring
 
 ```bash
-make k8s-monitoring-setup  # Install Prometheus + Grafana via Helm (run once)
-make k8s-grafana           # Print Grafana URL (http://localhost:30030) and credentials (admin/admin)
-make k8s-prometheus        # Port-forward Prometheus to http://localhost:9090 (Ctrl+C to stop)
+make k8s-monitoring-setup            # Install Prometheus + Grafana via Helm
+make k8s-monitoring-teardown         # Uninstall monitoring stack
+make k8s-monitoring-access           # Print Grafana URL + admin password
 ```
+
+> For non-K8s Make targets (Docker Compose), see [Makefile Reference](makefile-reference.md).
 
 ---
 
@@ -993,7 +991,7 @@ helm uninstall monitoring --namespace chatbox-monitoring
 
 ### All Makefile Targets
 
-See [Running via Makefile](#running-via-makefile) above for the full categorised command reference with examples for every target.
+See [Running via Makefile](#running-via-makefile) above for the essential K8s targets, or see [Makefile Reference](makefile-reference.md) for the full categorised command reference.
 
 ### Services & Ports
 

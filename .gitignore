@@ -21,8 +21,12 @@ __pycache__/
 .pytest_cache/
 .coverage
 coverage/
-.venv/
-venv/          # both naming conventions
+**/.venv/
+**/venv/
+
+# Test coverage output
+*.out
+coverage.xml
 
 # Uploaded files (test artifacts and user content — never commit)
 **/uploads/

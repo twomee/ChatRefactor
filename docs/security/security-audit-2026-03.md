@@ -65,6 +65,12 @@ This audit reviewed all 5 services (Auth, Chat, Message, File, Frontend) plus in
 
 ---
 
+## Prior Audit & Remediation Log
+
+The initial security audit (2026-03-24) and its 13-step remediation log are preserved in [initial-security-audit.md](initial-security-audit.md). That audit covered CORS, security headers, Kong admin API, file upload validation, Redis auth, WebSocket hardening, and log redaction — all of which were fixed before this deeper OWASP audit began.
+
+---
+
 ## Phase Reports
 
 | Phase | Service | Report |
