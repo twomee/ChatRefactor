@@ -1,308 +1,23 @@
-# cHATBOX Operations Guide
+# Docker Compose Operations
 
-A complete guide for running, debugging, and troubleshooting the cHATBOX microservices application.
-
-> **Architecture note:** cHATBOX uses a **microservices architecture** with 4 backend services (Auth, Chat, Message, File) behind a Kong API Gateway. The original monolith is preserved at `v1/backend/` for reference only. This guide covers the microservices stack.
+> **First time?** See [Getting Started](../getting-started.md) to get cHATBOX running. This guide covers day-to-day Docker Compose operations, infrastructure commands, and troubleshooting.
 
 ---
 
 ## Table of Contents
 
-1. [Prerequisites](#1-prerequisites)
-2. [Project Overview](#2-project-overview)
-3. [Environment Configuration](#3-environment-configuration)
-4. [Running in Development Mode (Local)](#4-running-in-development-mode-local)
-5. [Running in Production Mode (Docker)](#5-running-in-production-mode-docker)
-6. [Running in Staging Mode](#6-running-in-staging-mode)
-7. [Frontend: Local and Production](#7-frontend-local-and-production)
-8. [PostgreSQL: Access and Commands](#8-postgresql-access-and-commands)
-9. [Redis: Access and Commands](#9-redis-access-and-commands)
-10. [Kafka: Access and Commands](#10-kafka-access-and-commands)
-11. [Health Checks and Monitoring](#11-health-checks-and-monitoring)
-12. [Troubleshooting](#12-troubleshooting)
+1. [Running in Production Mode (Docker)](#1-running-in-production-mode-docker)
+2. [Running in Staging Mode](#2-running-in-staging-mode)
+3. [Frontend: Local and Production](#3-frontend-local-and-production)
+4. [PostgreSQL: Access and Commands](#4-postgresql-access-and-commands)
+5. [Redis: Access and Commands](#5-redis-access-and-commands)
+6. [Kafka: Access and Commands](#6-kafka-access-and-commands)
+7. [Health Checks and Monitoring](#7-health-checks-and-monitoring)
+8. [Troubleshooting](#8-troubleshooting)
 
 ---
 
-## 1. Prerequisites
-
-Install the following before starting:
-
-| Tool | Version | Install | Used By |
-|------|---------|---------|---------|
-| Docker | 20+ | [docs.docker.com](https://docs.docker.com/get-docker/) | All services |
-| Docker Compose | v2+ | Included with Docker Desktop | Orchestration |
-| Python | 3.11+ | [python.org](https://www.python.org/downloads/) | Auth & Message services |
-| Go | 1.22+ | [go.dev](https://go.dev/dl/) | Chat service |
-| Node.js | 20+ | [nodejs.org](https://nodejs.org/) | File service & frontend |
-| npm | 9+ | Comes with Node.js | File service & frontend |
-| Git | 2.x | [git-scm.com](https://git-scm.com/) | Version control |
-
-> **Docker-only deployment:** If you only need to run via Docker (production), only Docker, Docker Compose, and Git are required. Python, Go, and Node.js are only needed for local development.
-
-Verify installations:
-
-```bash
-docker --version
-docker compose version
-python3 --version
-go version
-node --version
-npm --version
-git --version
-```
-
----
-
-## 2. Project Overview
-
-### Architecture
-
-```
-                          +-----------+
-                          |  Frontend |  (React + Nginx, port 80)
-                          +-----+-----+
-                                |
-                          +-----+-----+
-                          |   Kong    |  (API Gateway, port 80)
-                          |  Gateway  |
-                          +-----+-----+
-                                |
-          +----------+----------+----------+----------+
-          |          |          |          |          |
-     /api/auth  /ws/chat  /api/messages  /api/files
-          |          |          |          |
-    +-----+----+ +--+------+ +-+--------+ +--+------+
-    |  Auth    | |  Chat   | | Message  | |  File   |
-    | Service  | | Service | | Service  | | Service |
-    | (Python) | |  (Go)   | | (Python) | | (Node)  |
-    | :8001    | | :8003   | | :8004    | | :8005   |
-    +-----+----+ +--+------+ +-+--------+ +--+------+
-          |          |          |          |
-     +----+---+ +---+----+ +--+-----+ +--+-----+
-     |Postgres| | Redis  | |Postgres| |Postgres|
-     | (auth) | | PubSub | | (msgs) | | (files)|
-     +--------+ +--------+ +--------+ +--------+
-                     |
-                  +--+---+
-                  | Kafka |
-                  +------+
-```
-
-Each service owns its own database (database-per-service pattern), communicates asynchronously via Kafka, and is independently deployable.
-
-### Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 19 + Vite 8 |
-| API Gateway | Kong 3.6 (declarative, dbless) |
-| Auth Service | Python 3.11, FastAPI, Argon2id, JWT |
-| Chat Service | Go 1.22, gorilla/websocket, Redis pub/sub |
-| Message Service | Python 3.11, FastAPI, SQLAlchemy, Alembic |
-| File Service | Node.js 20, TypeScript, Express, Multer, Prisma |
-| Database | PostgreSQL 16 (4 databases, one per service) |
-| Cache/PubSub | Redis 7 |
-| Message Queue | Apache Kafka (KRaft mode) |
-| Reverse Proxy | Nginx 1.25 (frontend SPA routing) |
-| Containerization | Docker + Docker Compose |
-
-### Default Credentials
-
-| What | Username | Password |
-|------|----------|----------|
-| Admin user | `ido` | `changeme` |
-| PostgreSQL | `chatbox` | `chatbox_pass` |
-
-### Databases
-
-Each service has its own PostgreSQL database, created automatically by `infra/docker/init/init-db.sh`:
-
-| Service | Database | Key Tables |
-|---------|----------|-----------|
-| Auth Service | `chatbox_auth` | `users`, `token_blacklist` |
-| Chat Service | `chatbox_chat` | `rooms`, `muted_users`, `room_state` |
-| Message Service | `chatbox_messages` | `messages`, `private_messages` |
-| File Service | `chatbox_files` | `files` (Prisma managed) |
-
----
-
-## 3. Environment Configuration
-
-### .env File (Project Root)
-
-Copy the example and customize:
-
-```bash
-cp .env.example .env
-```
-
-**Key .env variables:**
-
-```env
-# App environment: dev | staging | prod
-APP_ENV=dev
-
-# Shared across all services
-SECRET_KEY=change-this-in-production-use-openssl-rand-hex-32
-ADMIN_USERNAME=ido
-ADMIN_PASSWORD=changeme
-
-# PostgreSQL (used by init-db.sh to create per-service databases)
-POSTGRES_USER=chatbox
-POSTGRES_PASSWORD=chatbox_pass
-
-# Infrastructure
-REDIS_URL=redis://localhost:6379/0
-KAFKA_BOOTSTRAP_SERVERS=localhost:29092
-
-# CORS (comma-separated origins)
-CORS_ORIGINS=http://localhost:3000,http://localhost:5173
-
-# Frontend (used during Vite build)
-VITE_API_BASE=/api
-VITE_WS_BASE=
-```
-
-### Key Differences Between Modes
-
-| Variable | Dev (local services) | Prod (Docker) |
-|----------|---------------------|---------------|
-| `APP_ENV` | `dev` | `prod` |
-| Database host | `localhost:5432` | `postgres:5432` |
-| `REDIS_URL` | `redis://localhost:6379/0` | `redis://redis:6379/0` |
-| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:29092` | `kafka:9092` |
-| `SECRET_KEY` | dev default | strong random |
-| `VITE_API_BASE` | `http://localhost:8001` (or per-service ports) | `/api` (Kong routes) |
-
-> **Important:** In Docker Compose, services connect by Docker service names (`postgres`, `redis`, `kafka`), not `localhost`. When running services locally, use `localhost` since Docker maps ports to the host.
-
----
-
-## 4. Running in Development Mode (Local)
-
-This is the recommended setup for day-to-day development. Infrastructure runs in Docker, but services and frontend run natively for hot-reload.
-
-### Step 1: Clone the Repository
-
-```bash
-git clone <repo-url> Chat-Project-Final
-cd Chat-Project-Final
-```
-
-### Step 2: Set Up Environment Variables
-
-```bash
-cp .env.example .env
-# Edit .env if needed — defaults work for local dev
-```
-
-### Step 3: Start Infrastructure Services
-
-```bash
-docker compose -f docker-compose.dev.yml up -d
-```
-
-This starts:
-- **PostgreSQL** on port `5432` (with 4 databases auto-created)
-- **Redis** on port `6379`
-- **Kafka** on port `29092` (external listener for host access)
-
-Verify services are healthy:
-
-```bash
-docker compose -f docker-compose.dev.yml ps
-```
-
-All services should show `healthy` status. Kafka may take 30-60 seconds to become healthy.
-
-### Step 4: Start the Microservices
-
-Each service runs in its own terminal:
-
-**Auth Service (Python):**
-```bash
-cd services/auth-service
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8001
-```
-
-**Chat Service (Go):**
-```bash
-cd services/chat-service
-go run ./cmd/...
-```
-
-**Message Service (Python):**
-```bash
-cd services/message-service
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8004
-```
-
-**File Service (Node.js):**
-```bash
-cd services/file-service
-npm install
-npm run dev
-```
-
-On first start, each service will:
-1. Run database migrations (Alembic for Python services, Prisma for file-service)
-2. Connect to Redis and Kafka
-3. Auth service seeds the admin user and default rooms
-
-**Services ready at:**
-- Auth: `http://localhost:8001` (Swagger: `http://localhost:8001/docs`)
-- Chat: `http://localhost:8003`
-- Message: `http://localhost:8004` (Swagger: `http://localhost:8004/docs`)
-- File: `http://localhost:8005`
-
-### Step 5: Start the Frontend
-
-```bash
-cd frontend
-npm install     # First time only
-npm run dev
-```
-
-**Frontend is ready at:** `http://localhost:5173`
-
-> **Note:** In local dev without Kong, update `frontend/.env` to point to the correct service ports for API calls.
-
-### Step 6: Verify Everything Works
-
-1. Open `http://localhost:5173` in your browser
-2. Register a new user or log in with `ido` / `changeme`
-3. Join a room and send a message
-4. Check health endpoints:
-
-```bash
-curl http://localhost:8001/health    # Auth service
-curl http://localhost:8003/health    # Chat service
-curl http://localhost:8004/health    # Message service
-curl http://localhost:8005/health    # File service
-```
-
-### Stopping Development
-
-```bash
-# Stop infrastructure
-docker compose -f docker-compose.dev.yml down
-
-# Stop each service: Ctrl+C in their respective terminals
-# Stop frontend: Ctrl+C in the terminal
-```
-
-To **wipe all data** (all databases, Kafka logs):
-```bash
-docker compose -f docker-compose.dev.yml down -v
-```
-
----
-
-## 5. Running in Production Mode (Docker)
+## 1. Running in Production Mode (Docker)
 
 Everything runs inside Docker containers — no local Python, Go, or Node needed.
 
@@ -438,7 +153,7 @@ docker compose build chat-service && docker compose up -d chat-service && docker
 
 ---
 
-## 6. Running in Staging Mode
+## 2. Running in Staging Mode
 
 Staging uses the same infrastructure as dev (Docker infra + local services) but with `APP_ENV=staging`. This enables production-like behavior (rate limiting via Redis, structured JSON logging) while still allowing hot-reload.
 
@@ -477,7 +192,7 @@ docker compose -f docker-compose.dev.yml up -d
 
 ---
 
-## 7. Frontend: Local and Production
+## 3. Frontend: Local and Production
 
 ### Local Development
 
@@ -531,7 +246,7 @@ VITE_WS_BASE=
 
 ---
 
-## 8. PostgreSQL: Access and Commands
+## 4. PostgreSQL: Access and Commands
 
 ### Per-Service Databases
 
@@ -659,7 +374,7 @@ SELECT pg_size_pretty(pg_database_size('chatbox_messages'));
 
 ---
 
-## 9. Redis: Access and Commands
+## 5. Redis: Access and Commands
 
 ### Connecting to Redis
 
@@ -751,7 +466,7 @@ QUIT
 
 ---
 
-## 10. Kafka: Access and Commands
+## 6. Kafka: Access and Commands
 
 ### Connecting to Kafka
 
@@ -878,7 +593,7 @@ docker compose -f docker-compose.dev.yml exec kafka bash
 
 ---
 
-## 11. Health Checks and Monitoring
+## 7. Health Checks and Monitoring
 
 ### Per-Service Health Endpoints
 
@@ -938,7 +653,7 @@ docker compose logs -f --tail=100 kafka
 
 ---
 
-## 12. Troubleshooting
+## 8. Troubleshooting
 
 ### Service Won't Start
 
@@ -1148,4 +863,3 @@ alembic upgrade head
 | Active WebSocket channels | `redis-cli PUBSUB CHANNELS *` |
 | Token blacklist count | `redis-cli KEYS blacklist:* \| wc -l` |
 | Kong routes | `curl localhost:8001/routes` |
-
