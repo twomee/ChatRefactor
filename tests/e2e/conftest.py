@@ -36,7 +36,7 @@ def _resolve_kong_url() -> str:
     if env_url:
         return env_url.rstrip("/")
 
-    for port in (80, 30080):
+    for port in (80, 8090, 30080, 31080):
         url = f"http://localhost:{port}"
         try:
             resp = requests.get(url, timeout=3)
@@ -48,7 +48,7 @@ def _resolve_kong_url() -> str:
 
     pytest.exit(
         "Could not reach Kong gateway.\n"
-        "Tried: KONG_URL env var, localhost:80, localhost:30080.\n"
+        "Tried: KONG_URL env var, localhost:80, localhost:8090, localhost:30080, localhost:31080.\n"
         "Make sure Docker Compose or K8s is running and Kong is accessible.",
         returncode=1,
     )
@@ -169,14 +169,13 @@ def ws_url(kong_url: str) -> str:
 
 @pytest.fixture(scope="session")
 def api() -> requests.Session:
-    """A requests.Session pre-configured with JSON content type.
+    """A shared requests.Session.
 
-    Note: When using files= parameter for uploads, requests automatically
-    overrides Content-Type to multipart/form-data.
+    Do NOT set a default Content-Type header here — it corrupts multipart
+    file uploads.  The json= kwarg sets application/json automatically,
+    and files= sets multipart/form-data automatically.
     """
-    session = requests.Session()
-    session.headers.update({"Content-Type": "application/json"})
-    return session
+    return requests.Session()
 
 
 @pytest.fixture(scope="session")
