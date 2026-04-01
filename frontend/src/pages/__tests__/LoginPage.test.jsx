@@ -273,4 +273,116 @@ describe('LoginPage', () => {
       );
     });
   });
+
+  // ── New UX feature tests ────────────────────────────────────────────
+
+  it('shows per-field error on blur for empty username', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const usernameInput = screen.getByPlaceholderText('Username');
+    await user.click(usernameInput);
+    await user.tab(); // triggers blur without typing
+
+    await waitFor(() => {
+      expect(screen.getByText('Username is required')).toBeInTheDocument();
+    });
+  });
+
+  it('shows per-field error on blur for empty password', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const passwordInput = screen.getByPlaceholderText('Password');
+    await user.click(passwordInput);
+    await user.tab(); // triggers blur without typing
+
+    await waitFor(() => {
+      expect(screen.getByText('Password is required')).toBeInTheDocument();
+    });
+  });
+
+  it('shows per-field error on blur for short username', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const usernameInput = screen.getByPlaceholderText('Username');
+    await user.type(usernameInput, 'ab');
+    await user.tab(); // triggers blur
+
+    await waitFor(() => {
+      expect(screen.getByText('Must be at least 3 characters')).toBeInTheDocument();
+    });
+  });
+
+  it('toggles password visibility when eye button is clicked', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const passwordInput = screen.getByPlaceholderText('Password');
+    expect(passwordInput).toHaveAttribute('type', 'password');
+
+    const toggleBtn = screen.getByRole('button', { name: 'Show password' });
+    await user.click(toggleBtn);
+
+    expect(passwordInput).toHaveAttribute('type', 'text');
+    expect(screen.getByRole('button', { name: 'Hide password' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Hide password' }));
+    expect(passwordInput).toHaveAttribute('type', 'password');
+  });
+
+  it('shows password strength meter in register mode when password is typed', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByText('Register'));
+    await user.type(screen.getByPlaceholderText('Password'), 'weakpw');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('password-strength')).toBeInTheDocument();
+    });
+  });
+
+  it('does not show password strength meter in login mode', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(screen.getByPlaceholderText('Password'), 'somepassword');
+    expect(screen.queryByTestId('password-strength')).not.toBeInTheDocument();
+  });
+
+  it('disables submit button while loading', async () => {
+    const user = userEvent.setup();
+    // Never-resolving promise to hold the loading state
+    authApi.login.mockReturnValue(new Promise(() => {}));
+    renderPage();
+
+    await user.type(screen.getByPlaceholderText('Username'), 'alice');
+    await user.type(screen.getByPlaceholderText('Password'), 'pass123');
+    const submitBtn = screen.getAllByText('Sign In').find(el => el.getAttribute('type') === 'submit');
+    await user.click(submitBtn);
+
+    await waitFor(() => {
+      const btn = screen.getByRole('button', { name: /signing in/i });
+      expect(btn).toBeDisabled();
+    });
+  });
+
+  it('clears field errors when switching tabs', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // Trigger an error by submitting empty
+    const submitBtn = screen.getAllByText('Sign In').find(el => el.getAttribute('type') === 'submit');
+    await user.click(submitBtn);
+    await waitFor(() => {
+      expect(screen.getByText('Username is required')).toBeInTheDocument();
+    });
+
+    // Switch tab — errors should clear
+    await user.click(screen.getByText('Register'));
+    expect(screen.queryByText('Username is required')).not.toBeInTheDocument();
+  });
 });
+
