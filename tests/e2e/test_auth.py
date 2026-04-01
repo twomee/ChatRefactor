@@ -6,7 +6,7 @@ import pyotp
 import pytest
 import requests
 
-from conftest import auth_header
+from helpers import auth_header
 
 
 class TestRegisterLogin:

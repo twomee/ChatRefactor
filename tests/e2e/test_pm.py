@@ -9,7 +9,7 @@ import time
 import pytest
 import websockets
 
-from conftest import auth_header, ws_connect, recv_until, drain
+from helpers import auth_header, ws_connect, recv_until, drain
 
 
 class TestPMSendReceive:

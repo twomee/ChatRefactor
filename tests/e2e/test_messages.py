@@ -7,7 +7,7 @@ import time
 import pytest
 import requests
 
-from conftest import auth_header, ws_connect, recv_until, drain
+from helpers import auth_header, ws_connect, recv_until, drain
 
 
 @pytest.fixture(scope="module")
