@@ -75,7 +75,7 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const [layouts, setLayouts] = useState(loadLayouts);
 
-  const { joinRoom, exitRoom, disconnectAll, sendMessage, sendTyping, markAsRead, connectionStatus } = useChatConnection();
+  const { joinRoom, exitRoom, disconnectAll, sendMessage, sendTyping, sendPMTyping, markAsRead, connectionStatus } = useChatConnection();
   const [editingMessage, setEditingMessage] = useState(null);
   const [editingPMMessage, setEditingPMMessage] = useState(null);
   const markAsReadTimerRef = useRef(null);
@@ -471,6 +471,7 @@ export default function ChatPage() {
         onSend={handleSendPM}
         roomName={pmState.activePM}
         isPM
+        onTyping={() => sendPMTyping(pmState.activePM)}
         editingMessage={editingPMMessage}
         onCancelEdit={() => setEditingPMMessage(null)}
       />
@@ -595,19 +596,22 @@ export default function ChatPage() {
                 </>
               )}
               {showPM && (
-                <PMView
-                  username={pmState.activePM}
-                  messages={pmMessages}
-                  onScrollToBottom={handlePMScrollBottom}
-                  isOnline={isRecipientOnline}
-                  currentUser={user?.username}
-                  onEditMessage={handlePMEditMessage}
-                  onDeleteMessage={handlePMDeleteMessage}
-                  onAddReaction={handlePMAddReaction}
-                  onRemoveReaction={handlePMRemoveReaction}
-                  onClearHistory={handleClearPMHistory}
-                  highlightMessageId={pmHighlightMessageId}
-                />
+                <>
+                  <PMView
+                    username={pmState.activePM}
+                    messages={pmMessages}
+                    onScrollToBottom={handlePMScrollBottom}
+                    isOnline={isRecipientOnline}
+                    currentUser={user?.username}
+                    onEditMessage={handlePMEditMessage}
+                    onDeleteMessage={handlePMDeleteMessage}
+                    onAddReaction={handlePMAddReaction}
+                    onRemoveReaction={handlePMRemoveReaction}
+                    onClearHistory={handleClearPMHistory}
+                    highlightMessageId={pmHighlightMessageId}
+                  />
+                  <TypingIndicator typingUsers={pmState.activePM && pmState.pmTypingUsers?.[pmState.activePM] !== undefined ? { [pmState.activePM]: pmState.pmTypingUsers[pmState.activePM] } : undefined} />
+                </>
               )}
               {!showRoom && !showPM && (
                 <div className="empty-state">

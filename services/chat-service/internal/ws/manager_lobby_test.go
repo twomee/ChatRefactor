@@ -288,3 +288,63 @@ func TestTotalConnectionsMixedRoomAndLobby(t *testing.T) {
 		t.Errorf("expected 2 total connections, got %d", m.TotalConnections())
 	}
 }
+
+// ---- GetUserIDByUsername tests ----
+
+func TestGetUserIDByUsernameFound(t *testing.T) {
+	m := newTestManager()
+	conn, cleanup := newWSConn(t)
+	defer cleanup()
+
+	m.ConnectLobby(conn, UserInfo{UserID: 42, Username: "alice"})
+
+	id, ok := m.GetUserIDByUsername("alice")
+	if !ok {
+		t.Fatal("expected to find alice in lobby connections")
+	}
+	if id != 42 {
+		t.Errorf("expected userID 42, got %d", id)
+	}
+}
+
+func TestGetUserIDByUsernameNotFound(t *testing.T) {
+	m := newTestManager()
+
+	_, ok := m.GetUserIDByUsername("nobody")
+	if ok {
+		t.Error("expected false for a user not connected to the lobby")
+	}
+}
+
+func TestGetUserIDByUsernameAfterDisconnect(t *testing.T) {
+	m := newTestManager()
+	conn, cleanup := newWSConn(t)
+	defer cleanup()
+
+	m.ConnectLobby(conn, UserInfo{UserID: 7, Username: "charlie"})
+	m.DisconnectLobby(conn)
+
+	_, ok := m.GetUserIDByUsername("charlie")
+	if ok {
+		t.Error("expected false after user disconnected from lobby")
+	}
+}
+
+func TestGetUserIDByUsernameMultipleUsers(t *testing.T) {
+	m := newTestManager()
+	conn1, c1 := newWSConn(t)
+	defer c1()
+	conn2, c2 := newWSConn(t)
+	defer c2()
+
+	m.ConnectLobby(conn1, UserInfo{UserID: 10, Username: "alice"})
+	m.ConnectLobby(conn2, UserInfo{UserID: 20, Username: "bob"})
+
+	id, ok := m.GetUserIDByUsername("bob")
+	if !ok {
+		t.Fatal("expected to find bob")
+	}
+	if id != 20 {
+		t.Errorf("expected userID 20, got %d", id)
+	}
+}

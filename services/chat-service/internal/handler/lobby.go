@@ -92,9 +92,24 @@ func (h *LobbyHandler) HandleLobbyWS(c *gin.Context) {
 		}
 		var payload struct {
 			Type string `json:"type"`
+			To   string `json:"to"`
 		}
-		if json.Unmarshal(msg, &payload) == nil && payload.Type == "logout" {
-			intentionalLogout = true
+		if json.Unmarshal(msg, &payload) == nil {
+			switch payload.Type {
+			case "logout":
+				intentionalLogout = true
+			case "typing_pm":
+				if payload.To != "" {
+					if recipientID, ok := h.manager.GetUserIDByUsername(payload.To); ok {
+						h.manager.SendPersonal(recipientID, map[string]interface{}{
+							"type": "typing_pm",
+							"from": username,
+						})
+					}
+				}
+			}
+		}
+		if intentionalLogout {
 			break
 		}
 	}

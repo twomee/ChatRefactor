@@ -142,6 +142,7 @@ const mockExitRoom = vi.fn();
 const mockDisconnectAll = vi.fn();
 const mockSendMessage = vi.fn();
 const mockSendTyping = vi.fn();
+const mockSendPMTyping = vi.fn();
 const mockMarkAsRead = vi.fn();
 const mockLogout = vi.fn();
 
@@ -208,6 +209,7 @@ function setupMocks({
     disconnectAll: mockDisconnectAll,
     sendMessage: mockSendMessage,
     sendTyping: mockSendTyping,
+    sendPMTyping: mockSendPMTyping,
     markAsRead: mockMarkAsRead,
     connectionStatus: 'connected',
   });
@@ -775,5 +777,75 @@ describe('handleSelectPM lazy history loading', () => {
 
     // MARK_THREAD_LOADED is still dispatched even on failure (so we don't retry on every click)
     expect(mockPmDispatch).toHaveBeenCalledWith({ type: 'MARK_THREAD_LOADED', username: 'bob' });
+  });
+});
+
+// ── PM typing indicator ───────────────────────────────────────────────────────
+
+describe('PM typing indicator', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('renders TypingIndicator in PM view when the active partner is typing', () => {
+    const ts = Date.now();
+    renderChatPage({
+      pmState: {
+        ...defaultPmState,
+        activePM: 'alice',
+        threads: { alice: [] },
+        pmTypingUsers: { alice: ts },
+      },
+      chatState: { ...defaultChatState, activeRoomId: null, joinedRooms: new Set() },
+    });
+
+    const indicator = screen.getByTestId('typing-indicator');
+    expect(indicator).toBeInTheDocument();
+    expect(indicator.textContent).toContain('alice');
+  });
+
+  it('renders empty TypingIndicator when active PM partner is not typing', () => {
+    renderChatPage({
+      pmState: {
+        ...defaultPmState,
+        activePM: 'alice',
+        threads: { alice: [] },
+        pmTypingUsers: {},
+      },
+      chatState: { ...defaultChatState, activeRoomId: null, joinedRooms: new Set() },
+    });
+
+    const indicator = screen.getByTestId('typing-indicator');
+    expect(indicator.textContent).toBe('');
+  });
+
+  it('calls sendPMTyping with the active PM username when typing in PM input', async () => {
+    const user = userEvent.setup();
+    renderChatPage({
+      pmState: {
+        ...defaultPmState,
+        activePM: 'alice',
+        threads: { alice: [] },
+        pmTypingUsers: {},
+      },
+      chatState: { ...defaultChatState, activeRoomId: null, joinedRooms: new Set() },
+    });
+
+    await user.click(screen.getByTestId('trigger-typing'));
+    expect(mockSendPMTyping).toHaveBeenCalledWith('alice');
+  });
+
+  it('does not show typing indicator for a different user than the active PM', () => {
+    renderChatPage({
+      pmState: {
+        ...defaultPmState,
+        activePM: 'alice',
+        threads: { alice: [] },
+        // bob is typing but alice is the active PM — indicator should be empty
+        pmTypingUsers: { bob: Date.now() },
+      },
+      chatState: { ...defaultChatState, activeRoomId: null, joinedRooms: new Set() },
+    });
+
+    const indicator = screen.getByTestId('typing-indicator');
+    expect(indicator.textContent).toBe('');
   });
 });
