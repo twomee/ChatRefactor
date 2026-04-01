@@ -111,6 +111,9 @@ EOF
     step "Setting kubectl context..."
     kubectl cluster-info --context "kind-${E2E_CLUSTER}" > /dev/null
 
+    step "Waiting for cluster DNS to be ready..."
+    kubectl wait --for=condition=ready pod -l k8s-app=kube-dns -n kube-system --timeout=120s
+
     step "Creating namespaces..."
     kubectl apply -f "$K8S_DIR/base/namespace.yaml"
     kubectl apply -f "$K8S_DIR/infra/namespace.yaml"
