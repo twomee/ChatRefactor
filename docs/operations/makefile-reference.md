@@ -91,15 +91,6 @@ ADMIN_PASSWORD=changeme             # Bootstrap admin password
 
 > If `infra/k8s/secrets.env` is missing, scripts fall back to the insecure example defaults — fine for local dev, never for staging/prod.
 
-**2. Install the WebSocket test dependency** (for `e2e-test.sh` only):
-
-```bash
-pip install websockets
-# or: pip3 install websockets
-```
-
-Without this, the WebSocket test in `e2e-test.sh` silently skips rather than fails.
-
 ---
 
 ### Script Reference
@@ -111,7 +102,6 @@ Without this, the WebSocket test in `e2e-test.sh` silently skips rather than fai
 | `build-images.sh` | Builds Docker images for all 5 services and loads them into the kind cluster | `bash infra/k8s/scripts/build-images.sh` |
 | `deploy.sh` | Applies a Kustomize overlay and waits for all 6 rollouts to complete | `bash infra/k8s/scripts/deploy.sh [overlay]` |
 | `generate-secrets.sh` | Creates or updates all K8s Secrets from `infra/k8s/secrets.env`. Reads the actual Redis password from the cluster to work around Bitnami's password-on-upgrade behavior | `bash infra/k8s/scripts/generate-secrets.sh` |
-| `e2e-test.sh` | Full end-to-end functional test — 46 tests across every service, WebSocket, and monitoring. Requires `python3` + `pip install websockets` | `bash infra/k8s/scripts/e2e-test.sh` |
 
 ### setup-local.sh
 
@@ -182,37 +172,7 @@ Creates or updates 6 K8s Secrets in the `chatbox` namespace:
 
 **Important:** Bitnami Redis v25 ignores `--set auth.password` on `helm upgrade` if the secret already exists. This script reads the actual Redis password from the cluster (`kubectl get secret redis`) so the `REDIS_URL` in the app secrets always matches the real password.
 
-### e2e-test.sh
-
-```bash
-# Run against the default local cluster
-bash infra/k8s/scripts/e2e-test.sh
-
-# Run against a custom endpoint (e.g. staging)
-bash infra/k8s/scripts/e2e-test.sh http://staging.example.com http://staging.example.com:3000 http://grafana.example.com
-```
-
-**Arguments (all optional):**
-- `$1` — Kong URL (default: `http://localhost:30080`)
-- `$2` — Frontend URL (default: `http://localhost:30000`)
-- `$3` — Grafana URL (default: `http://localhost:30030`)
-
-**Dependencies:**
-- `python3` — for JSON parsing and WebSocket test
-- `pip install websockets` — for WebSocket test (silently skipped if missing)
-- `kubectl` — to read admin credentials and check Prometheus targets
-
-**Reads admin credentials automatically** from the `auth-admin-secret` K8s Secret — no hardcoded passwords.
-
-Tests cover (8 sections, 46 tests total):
-- **Frontend** — HTML served through Kong
-- **Auth** — Register, duplicate detection, login (JWT), wrong password, token ping
-- **Chat rooms** — List rooms, admin creates room (RBAC), regular user blocked (403)
-- **WebSocket** — Connect to room, send message, receive broadcast
-- **Messages** — History endpoint, replay (`?since=`), auth enforcement
-- **Files** — Multipart upload, list, download with content verification
-- **Logout** — Token blacklisted in Redis after logout; other users unaffected
-- **Monitoring** — Grafana health + datasources, Prometheus targets + app metrics
+> **E2E Testing:** The e2e test suite has been migrated to pytest. Run `make e2e` to auto-detect the environment, or `make e2e KONG_URL=http://localhost:30080` to target K8s explicitly. See [Makefile Reference — E2E Tests](makefile-reference.md#9-end-to-end-tests) for all available targets.
 
 ---
 
@@ -265,4 +225,41 @@ Quick health check (no browser needed):
 make k8s-status                                         # all pods running?
 kubectl top pods -n chatbox                             # live CPU/memory
 kubectl get events -n chatbox --field-selector type=Warning  # any warnings?
+```
+
+## 9. End-to-End Tests
+
+Run the full e2e test suite against whichever environment is running.
+
+| Target | Description |
+|--------|-------------|
+| `make e2e-setup` | Install Python test dependencies (`pip install -r tests/e2e/requirements.txt`) |
+| `make e2e` | Auto-detect environment, run all ~85 tests |
+| `make e2e-smoke` | Quick subset (~15 core tests) |
+| `make e2e-all` | Run against Docker Compose **and** K8s sequentially |
+| `make e2e KONG_URL=http://host:port` | Override auto-detection with explicit URL |
+| `make e2e-auth` | Auth service tests only |
+| `make e2e-pm` | Private messaging tests only |
+| `make e2e-files` | File service tests only |
+| `make e2e-chat` | Chat rooms + WebSocket tests only |
+| `make e2e-messages` | Message service tests only |
+| `make e2e-admin` | Admin dashboard tests only |
+| `make e2e-monitoring` | Monitoring tests only (auto-skipped if Grafana unavailable) |
+
+### Default Behavior (No Config)
+
+When you run `make e2e` without any arguments:
+
+1. Checks if **Docker Compose** is running (`localhost:80`) → uses it
+2. Else checks if **K8s** is running (`localhost:30080`) → uses it
+3. If neither responds → exits with a message telling you to start an environment
+
+### Running Both Environments
+
+If both Docker Compose and K8s are running simultaneously:
+
+```bash
+make e2e                                    # hits Docker Compose (port 80 wins)
+make e2e KONG_URL=http://localhost:30080     # hits K8s explicitly
+make e2e-all                                # runs both sequentially
 ```
