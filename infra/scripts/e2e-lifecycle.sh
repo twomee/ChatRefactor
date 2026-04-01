@@ -125,7 +125,7 @@ EOF
     helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true
     helm repo update 2>/dev/null
 
-    echo "  Installing PostgreSQL..."
+    echo "  Installing PostgreSQL (may take a few minutes on first run — pulling images)..."
     helm upgrade --install postgres bitnami/postgresql \
         --namespace chatbox-infra \
         --values "$K8S_DIR/infra/helm-values/postgres.yaml" \
@@ -134,7 +134,7 @@ EOF
         --set metrics.enabled=false \
         --set metrics.serviceMonitor.enabled=false \
         --version 18.5.14 \
-        --wait --timeout 180s
+        --wait --timeout 600s
 
     echo "  Installing Redis..."
     helm upgrade --install redis bitnami/redis \
@@ -144,11 +144,11 @@ EOF
         --set metrics.enabled=false \
         --set metrics.serviceMonitor.enabled=false \
         --version 25.3.9 \
-        --wait --timeout 120s
+        --wait --timeout 300s
 
     echo "  Installing Kafka..."
     kubectl apply -f "$K8S_DIR/infra/kafka.yaml"
-    kubectl rollout status deployment/kafka --namespace chatbox-infra --timeout=120s
+    kubectl rollout status deployment/kafka --namespace chatbox-infra --timeout=300s
 
     step "Applying secrets..."
     bash "$K8S_DIR/scripts/generate-secrets.sh"
@@ -158,8 +158,8 @@ EOF
     kubectl delete job kafka-init --namespace chatbox --ignore-not-found
     kubectl apply -f "$K8S_DIR/jobs/db-init-job.yaml"
     kubectl apply -f "$K8S_DIR/jobs/kafka-init-job.yaml"
-    kubectl wait --for=condition=complete job/db-init --namespace chatbox --timeout=120s
-    kubectl wait --for=condition=complete job/kafka-init --namespace chatbox --timeout=120s
+    kubectl wait --for=condition=complete job/db-init --namespace chatbox --timeout=300s
+    kubectl wait --for=condition=complete job/kafka-init --namespace chatbox --timeout=300s
 
     step "Building and loading Docker images..."
     CLUSTER_NAME="$E2E_CLUSTER" bash "$K8S_DIR/scripts/build-images.sh"
