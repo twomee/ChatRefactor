@@ -131,6 +131,8 @@ EOF
         --values "$K8S_DIR/infra/helm-values/postgres.yaml" \
         --set auth.postgresPassword="$POSTGRES_PASSWORD" \
         --set auth.password="$POSTGRES_PASSWORD" \
+        --set metrics.enabled=false \
+        --set metrics.serviceMonitor.enabled=false \
         --version 18.5.14 \
         --wait --timeout 180s
 
@@ -139,6 +141,8 @@ EOF
         --namespace chatbox-infra \
         --values "$K8S_DIR/infra/helm-values/redis.yaml" \
         --set auth.password="$REDIS_PASSWORD" \
+        --set metrics.enabled=false \
+        --set metrics.serviceMonitor.enabled=false \
         --version 25.3.9 \
         --wait --timeout 120s
 
