@@ -22,3 +22,24 @@ secret:
     - "**/tests/test_*.py"
     - "**/tests/conftest.py"
     - "services/*/tests/**"
+    # Go test files (co-located with source, named *_test.go)
+    - "**/*_test.go"
+    # ── Explicit service test paths ──────────────────────────────────────
+    # auth-service (Python / pytest)
+    - "services/auth-service/tests/**"
+    # chat-service (Go)
+    - "services/chat-service/cmd/server/main_test.go"
+    - "services/chat-service/internal/client/**/*_test.go"
+    - "services/chat-service/internal/config/**/*_test.go"
+    - "services/chat-service/internal/delivery/**/*_test.go"
+    - "services/chat-service/internal/handler/**/*_test.go"
+    - "services/chat-service/internal/kafka/**/*_test.go"
+    - "services/chat-service/internal/metrics/**/*_test.go"
+    - "services/chat-service/internal/middleware/**/*_test.go"
+    - "services/chat-service/internal/store/**/*_test.go"
+    - "services/chat-service/internal/ws/**/*_test.go"
+    - "services/chat-service/tests/**"
+    # file-service (TypeScript / Jest)
+    - "services/file-service/tests/**"
+    # message-service (Python / pytest)
+    - "services/message-service/tests/**"
