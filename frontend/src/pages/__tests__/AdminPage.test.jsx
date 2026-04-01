@@ -44,12 +44,15 @@ import * as adminApi from '../../services/adminApi';
 import * as roomApi from '../../services/roomApi';
 import * as fileApi from '../../services/fileApi';
 import AdminPage from '../AdminPage';
+import { ToastProvider } from '../../context/ToastContext';
 
 function renderAdminPage() {
   return render(
-    <MemoryRouter>
-      <AdminPage />
-    </MemoryRouter>
+    <ToastProvider>
+      <MemoryRouter>
+        <AdminPage />
+      </MemoryRouter>
+    </ToastProvider>
   );
 }
 

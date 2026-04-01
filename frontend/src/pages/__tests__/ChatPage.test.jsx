@@ -194,13 +194,16 @@ function setupMocks({
 }
 
 import ChatPage from '../ChatPage';
+import { ToastProvider } from '../../context/ToastContext';
 
 function renderChatPage(options = {}) {
   setupMocks(options);
   return render(
-    <MemoryRouter>
-      <ChatPage />
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter>
+        <ChatPage />
+      </MemoryRouter>
+    </ToastProvider>,
   );
 }
 
@@ -415,9 +418,11 @@ describe('ChatPage', () => {
     try {
       setupMocks();
       render(
-        <MemoryRouter>
-          <ChatPage />
-        </MemoryRouter>,
+        <ToastProvider>
+          <MemoryRouter>
+            <ChatPage />
+          </MemoryRouter>
+        </ToastProvider>,
       );
 
       fireEvent.click(screen.getByTestId('trigger-scroll-bottom'));

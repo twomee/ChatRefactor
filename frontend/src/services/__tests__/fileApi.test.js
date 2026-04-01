@@ -110,25 +110,19 @@ describe('fileApi', () => {
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:http://localhost/fake');
     });
 
-    it('alerts with permission message on 403 error', async () => {
-      vi.spyOn(window, 'alert').mockImplementation(() => {});
+    it('throws with permission message on 403 error', async () => {
       http.get.mockRejectedValue({ response: { status: 403 } });
-      await downloadFile(1, 'secret.pdf');
-      expect(window.alert).toHaveBeenCalledWith('You do not have permission to download this file.');
+      await expect(downloadFile(1, 'secret.pdf')).rejects.toThrow('You do not have permission to download this file.');
     });
 
-    it('alerts with not-found message on 404 error', async () => {
-      vi.spyOn(window, 'alert').mockImplementation(() => {});
+    it('throws with not-found message on 404 error', async () => {
       http.get.mockRejectedValue({ response: { status: 404 } });
-      await downloadFile(2, 'missing.pdf');
-      expect(window.alert).toHaveBeenCalledWith('File not found.');
+      await expect(downloadFile(2, 'missing.pdf')).rejects.toThrow('File not found.');
     });
 
-    it('alerts with generic message on other errors', async () => {
-      vi.spyOn(window, 'alert').mockImplementation(() => {});
+    it('throws with generic message on other errors', async () => {
       http.get.mockRejectedValue({ response: { status: 500 } });
-      await downloadFile(3, 'error.pdf');
-      expect(window.alert).toHaveBeenCalledWith('Download failed. Please try again.');
+      await expect(downloadFile(3, 'error.pdf')).rejects.toThrow('Download failed. Please try again.');
     });
   });
 });

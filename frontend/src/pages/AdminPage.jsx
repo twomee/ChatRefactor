@@ -5,6 +5,7 @@ import * as adminApi from '../services/adminApi';
 import { createRoom } from '../services/roomApi';
 import { listRoomFiles, downloadFile } from '../services/fileApi';
 import { formatSize } from '../utils/formatting';
+import { useToast } from '../context/ToastContext';
 
 import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
 import { WidthProvider } from 'react-grid-layout/legacy';
@@ -44,6 +45,7 @@ export default function AdminPage() {
   const [newRoomName, setNewRoomName] = useState('');
   const [expandedRoomFiles, setExpandedRoomFiles] = useState(null);
   const [layouts, setLayouts] = useState(loadAdminLayouts);
+  const { showToast } = useToast();
   const navigate = useNavigate();
 
   // Add page-active class on mount so the one-shot aurora animation plays,
@@ -316,7 +318,7 @@ export default function AdminPage() {
                                       <td>{formatSize(f.fileSize)}</td>
                                       <td>{new Date(f.uploadedAt).toLocaleString()}</td>
                                       <td>
-                                        <a href="#" onClick={(e) => { e.preventDefault(); downloadFile(f.id, f.originalName); }}>
+                                        <a href="#" onClick={(e) => { e.preventDefault(); downloadFile(f.id, f.originalName).catch(err => showToast('danger', 'Download failed', err.message)); }}>
                                           Download
                                         </a>
                                       </td>

@@ -334,7 +334,8 @@
   padding-right: 42px;
 }
 
-.input-icon-btn {
+/* Password visibility toggle — scoped so it doesn't affect MessageInput buttons */
+.input-with-icon .input-icon-btn {
   position: absolute;
   right: 10px;
   display: flex;
@@ -354,7 +355,7 @@
   transition: color var(--transition);
 }
 
-.input-icon-btn:hover {
+.input-with-icon .input-icon-btn:hover {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;

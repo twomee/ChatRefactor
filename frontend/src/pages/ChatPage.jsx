@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { usePM } from '../context/PMContext';
+import { useToast } from '../context/ToastContext';
 import { useChatConnection } from '../layouts/ChatConnectionLayer';
 import * as pmApi from '../services/pmApi';
 import * as authApi from '../services/authApi';
@@ -70,6 +71,7 @@ export default function ChatPage() {
   const { user, logout } = useAuth();
   const { state, dispatch } = useChat();
   const { pmState, pmDispatch } = usePM();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const [layouts, setLayouts] = useState(loadLayouts);
 
@@ -205,7 +207,7 @@ export default function ChatPage() {
         pmDispatch({ type: 'EDIT_PM_MESSAGE', username: pmState.activePM, msg_id: editMsgId, text });
         setEditingPMMessage(null);
       } catch (e) {
-        globalThis.alert(e.response?.data?.detail || 'Could not edit message');
+        showToast('danger', 'Error', e.response?.data?.detail || 'Could not edit message');
       }
       return;
     }
@@ -219,7 +221,7 @@ export default function ChatPage() {
       // Ensure thread survives a refresh — don't rely solely on the WS echo
       addPMThread(user?.username, pmState.activePM);
     } catch (e) {
-      globalThis.alert(e.response?.data?.detail || 'Could not send message');
+      showToast('danger', 'Error', e.response?.data?.detail || 'Could not send message');
     }
   }
 
@@ -233,7 +235,7 @@ export default function ChatPage() {
       await pmApi.deletePM(msg.msg_id);
       pmDispatch({ type: 'DELETE_PM_MESSAGE', username: pmState.activePM, msg_id: msg.msg_id });
     } catch (e) {
-      globalThis.alert(e.response?.data?.detail || 'Could not delete message');
+      showToast('danger', 'Error', e.response?.data?.detail || 'Could not delete message');
     }
   }
 
