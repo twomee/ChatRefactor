@@ -2,7 +2,7 @@
 
 All K8s tasks have a `make` shortcut. Run `make <target>` from the project root.
 
-> **Docker Compose targets** (`make build`, `make up`, `make deploy`, `make down`) are documented in [Operations Runbook → Section 5](../operations/runbook.md#5-running-in-production-mode-docker).
+> **Docker Compose targets** (`make build`, `make up`, `make deploy`, `make down`) are documented in [Docker Compose Operations → Section 1](docker-compose.md#1-running-in-production-mode-docker).
 
 ## Variables
 
