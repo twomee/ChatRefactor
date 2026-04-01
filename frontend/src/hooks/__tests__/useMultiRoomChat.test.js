@@ -453,6 +453,25 @@ describe('createHandleMessage', () => {
     });
   });
 
+  // ── typing_pm ─────────────────────────────────────────────────────────────
+
+  describe('typing_pm event', () => {
+    it('dispatches SET_PM_TYPING with isTyping: true', () => {
+      vi.useFakeTimers();
+      handle({ type: 'typing_pm', from: 'alice' });
+      expect(refs.pmDispatch).toHaveBeenCalledWith({ type: 'SET_PM_TYPING', username: 'alice', isTyping: true });
+      vi.useRealTimers();
+    });
+
+    it('dispatches SET_PM_TYPING with isTyping: false after 3 seconds', () => {
+      vi.useFakeTimers();
+      handle({ type: 'typing_pm', from: 'alice' });
+      vi.advanceTimersByTime(3000);
+      expect(refs.pmDispatch).toHaveBeenCalledWith({ type: 'SET_PM_TYPING', username: 'alice', isTyping: false });
+      vi.useRealTimers();
+    });
+  });
+
   // ── read_position ─────────────────────────────────────────────────────────
 
   describe('read_position event', () => {
