@@ -112,7 +112,17 @@ EOF
     kubectl cluster-info --context "kind-${E2E_CLUSTER}" > /dev/null
 
     step "Waiting for cluster DNS to be ready..."
+    local dns_elapsed=0
+    while ! kubectl get pods -n kube-system -l k8s-app=kube-dns --no-headers 2>/dev/null | grep -q "Running"; do
+        if [ "$dns_elapsed" -ge 120 ]; then
+            fail "CoreDNS not ready after 120s"
+            exit 1
+        fi
+        sleep 3
+        dns_elapsed=$((dns_elapsed + 3))
+    done
     kubectl wait --for=condition=ready pod -l k8s-app=kube-dns -n kube-system --timeout=120s
+    success "CoreDNS ready"
 
     step "Creating namespaces..."
     kubectl apply -f "$K8S_DIR/base/namespace.yaml"
