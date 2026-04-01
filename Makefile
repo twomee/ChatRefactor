@@ -174,56 +174,43 @@ k8s-secrets: ## Generate K8s secrets from .env file
 
 # ── E2E Tests ────────────────────────────────────────────────────────────────
 
-.PHONY: e2e e2e-smoke e2e-all e2e-setup e2e-auth e2e-pm e2e-files e2e-chat e2e-messages e2e-admin e2e-monitoring
+.PHONY: e2e-docker e2e-k8s e2e-all e2e-smoke e2e-setup e2e-auth e2e-pm e2e-files e2e-chat e2e-messages e2e-admin e2e-monitoring
 
-E2E_DIR := tests/e2e
-KONG_URL ?=
+E2E_LIFECYCLE := infra/scripts/e2e-lifecycle.sh
 
 e2e-setup: ## Install e2e test dependencies
-	pip install -r $(E2E_DIR)/requirements.txt
+	pip install -r tests/e2e/requirements.txt
 
-e2e: ## Run all e2e tests (auto-detects Docker Compose or K8s)
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR) -v --tb=short -c $(E2E_DIR)/pytest.ini
+e2e-docker: ## Black box: spin up Docker Compose → test all → tear down
+	@bash $(E2E_LIFECYCLE) docker
 
-e2e-smoke: ## Run smoke tests (~15 core tests)
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR) -v --tb=short -m smoke -c $(E2E_DIR)/pytest.ini
+e2e-k8s: ## Black box: create Kind cluster → deploy → test all → delete cluster
+	@bash $(E2E_LIFECYCLE) k8s
 
-e2e-all: ## Run e2e against both Docker Compose and K8s
-	@echo "══════════════════════════════════════════"
-	@echo "  E2E: Docker Compose (localhost:80)"
-	@echo "══════════════════════════════════════════"
-	@if curl -sf http://localhost:80 > /dev/null 2>&1; then \
-		KONG_URL=http://localhost:80 python3 -m pytest $(E2E_DIR) -v --tb=short -c $(E2E_DIR)/pytest.ini; \
-	else \
-		echo "  ⚠  Docker Compose not running (port 80 unresponsive), skipping."; \
-	fi
-	@echo ""
-	@echo "══════════════════════════════════════════"
-	@echo "  E2E: Kubernetes (localhost:30080)"
-	@echo "══════════════════════════════════════════"
-	@if curl -sf http://localhost:30080 > /dev/null 2>&1; then \
-		KONG_URL=http://localhost:30080 python3 -m pytest $(E2E_DIR) -v --tb=short -c $(E2E_DIR)/pytest.ini; \
-	else \
-		echo "  ⚠  K8s not running (port 30080 unresponsive), skipping."; \
-	fi
+e2e-all: ## Run e2e-docker then e2e-k8s sequentially
+	@bash $(E2E_LIFECYCLE) docker
+	@bash $(E2E_LIFECYCLE) k8s
 
-e2e-auth: ## Run only auth tests
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR)/test_auth.py -v --tb=short -c $(E2E_DIR)/pytest.ini
+e2e-smoke: ## Black box Docker Compose, smoke tests only
+	@bash $(E2E_LIFECYCLE) docker -m smoke
 
-e2e-pm: ## Run only PM tests
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR)/test_pm.py -v --tb=short -c $(E2E_DIR)/pytest.ini
+e2e-auth: ## Black box Docker Compose, auth tests only
+	@bash $(E2E_LIFECYCLE) docker -k test_auth
 
-e2e-files: ## Run only file tests
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR)/test_files.py -v --tb=short -c $(E2E_DIR)/pytest.ini
+e2e-pm: ## Black box Docker Compose, PM tests only
+	@bash $(E2E_LIFECYCLE) docker -k test_pm
 
-e2e-chat: ## Run only chat room + WebSocket tests
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR)/test_chat_rooms.py $(E2E_DIR)/test_chat_websocket.py -v --tb=short -c $(E2E_DIR)/pytest.ini
+e2e-files: ## Black box Docker Compose, file tests only
+	@bash $(E2E_LIFECYCLE) docker -k test_files
 
-e2e-messages: ## Run only message service tests
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR)/test_messages.py -v --tb=short -c $(E2E_DIR)/pytest.ini
+e2e-chat: ## Black box Docker Compose, chat tests only
+	@bash $(E2E_LIFECYCLE) docker -k "test_chat_rooms or test_chat_websocket"
 
-e2e-admin: ## Run only admin tests
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR)/test_admin.py -v --tb=short -c $(E2E_DIR)/pytest.ini
+e2e-messages: ## Black box Docker Compose, message tests only
+	@bash $(E2E_LIFECYCLE) docker -k test_messages
 
-e2e-monitoring: ## Run only monitoring tests
-	$(if $(KONG_URL),KONG_URL=$(KONG_URL)) python3 -m pytest $(E2E_DIR)/test_monitoring.py -v --tb=short -c $(E2E_DIR)/pytest.ini
+e2e-admin: ## Black box Docker Compose, admin tests only
+	@bash $(E2E_LIFECYCLE) docker -k test_admin
+
+e2e-monitoring: ## Black box Docker Compose, monitoring tests only
+	@bash $(E2E_LIFECYCLE) docker -k test_monitoring
