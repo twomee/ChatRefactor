@@ -128,7 +128,7 @@ EOF
     step "Pre-pulling infrastructure images into Kind cluster..."
     # Kind can't pull large images fast enough during Helm install.
     # Pull on the host (cached) and load into Kind instead.
-    for img in bitnami/postgresql:latest bitnami/redis:latest apache/kafka:3.8.1 postgres:16-alpine; do
+    for img in bitnami/postgresql:latest bitnami/redis:latest apache/kafka:3.8.1 apache/kafka:latest postgres:16-alpine busybox:1.36; do
         docker pull "$img" 2>/dev/null || true
         kind load docker-image "$img" --name "$E2E_CLUSTER" 2>/dev/null || true
     done
