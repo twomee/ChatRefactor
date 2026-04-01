@@ -50,3 +50,6 @@ loadtests/reports/*.json
 .claude/hooks/
 .claude/skills/
 .claude/worktrees/
+
+# E2E test logs
+tests/e2e/logs/

@@ -229,7 +229,7 @@ kubectl get events -n chatbox --field-selector type=Warning  # any warnings?
 
 ## 9. End-to-End Tests
 
-A pytest-based e2e test suite that covers 82 tests across all services. It auto-detects whether Docker Compose or K8s is running and runs against whichever is available.
+A pytest-based e2e test suite that runs in a **fully isolated, disposable environment**. Every run gets a clean database, fresh containers, and zero leftover state. Your dev environment is never touched.
 
 ### Quick Start
 
@@ -237,41 +237,35 @@ A pytest-based e2e test suite that covers 82 tests across all services. It auto-
 # 1. Install test dependencies (one time)
 make e2e-setup
 
-# 2. Start an environment (pick one)
-make deploy              # Docker Compose
-# OR
-make k8s-setup-local     # Kubernetes
-
-# 3. Run all tests
-make e2e
-
-# 4. Or run just the quick smoke tests (~14 core tests)
-make e2e-smoke
+# 2. Run all tests in an isolated Docker Compose environment
+make e2e-docker
+# This does everything: build → start → wait → test → dump logs → tear down
 ```
 
-### Prerequisites
+### How It Works
 
-- **Python 3.10+** with pip
-- A running environment (Docker Compose or K8s) — the suite auto-detects which one
-- Admin credentials configured in `.env` (Docker Compose) or `infra/k8s/secrets.env` (K8s)
+Every `make e2e-*` target follows the same black-box lifecycle:
 
-Dependencies installed by `make e2e-setup`:
-- `pytest`, `pytest-asyncio` — test framework
-- `requests` — HTTP client for REST API tests
-- `websockets` — WebSocket client for real-time feature tests
-- `pyotp` — TOTP code generation for 2FA tests
+1. **Spin up** a clean, isolated environment (separate containers, volumes, network)
+2. **Wait** for all services to be healthy
+3. **Run** the pytest suite
+4. **Dump** service logs to `tests/e2e/logs/<timestamp>/` (pass or fail)
+5. **Tear down** everything (containers, volumes, network — always, even on failure)
+
+Docker Compose e2e uses port **8090** (Kong) and **3090** (frontend).
+K8s e2e uses a separate Kind cluster (`chatbox-e2e`) with NodePort **31080**.
 
 ### All Targets
 
 | Target | Description |
 |--------|-------------|
-| `make e2e-setup` | Install Python test dependencies (`pip install -r tests/e2e/requirements.txt`) |
-| `make e2e` | Auto-detect environment, run all 82 tests |
-| `make e2e-smoke` | Quick subset (~14 core tests) |
-| `make e2e-all` | Run against Docker Compose **and** K8s sequentially |
-| `make e2e KONG_URL=http://host:port` | Override auto-detection with explicit URL |
+| `make e2e-setup` | Install Python test dependencies (one time) |
+| `make e2e-docker` | Black box Docker Compose: up → test all 82 → down (~1-2 min) |
+| `make e2e-k8s` | Black box K8s: create Kind cluster → deploy → test all → delete (~10 min) |
+| `make e2e-all` | Run `e2e-docker` then `e2e-k8s` sequentially |
+| `make e2e-smoke` | Black box Docker Compose, smoke tests only (~14 tests) |
 
-**Per-service targets** (useful when working on a specific service):
+**Per-service targets** (each runs the full black-box lifecycle):
 
 | Target | Tests |
 |--------|-------|
@@ -281,50 +275,47 @@ Dependencies installed by `make e2e-setup`:
 | `make e2e-messages` | History, search, edit/delete, context, link preview (12 tests) |
 | `make e2e-files` | Upload, download, PM files, image handling (9 tests) |
 | `make e2e-admin` | Admin dashboard, close/open rooms, promote (8 tests) |
-| `make e2e-monitoring` | Grafana, Prometheus (5 tests, auto-skipped if unavailable) |
+| `make e2e-monitoring` | Monitoring tests (5 tests, auto-skipped if Grafana unavailable) |
 
-### Auto-Detection Logic
+### No Environment Conflicts
 
-When you run `make e2e` without any config:
+The e2e environment is completely isolated from your dev environment:
 
-1. Checks if **Docker Compose** is running (`localhost:80`) → uses it
-2. Else checks if **K8s** is running (`localhost:30080`) → uses it
-3. If neither responds → exits with a clear error message
+| Resource | Dev | E2E |
+|----------|-----|-----|
+| Kong port | 80 | 8090 (Docker) / 31080 (K8s) |
+| Frontend port | 3000 | 3090 (Docker) / 31000 (K8s) |
+| Containers | `chat-project-final-*` | `chatbox-e2e-*` |
+| Volumes | `chat-project-final_*` | `chatbox-e2e_*` |
+| Kind cluster | `chatbox` | `chatbox-e2e` |
 
-### Running Both Environments
+### Debugging Failed Tests
 
-If both Docker Compose and K8s are running simultaneously:
+Logs are always saved before teardown:
+
+```
+tests/e2e/logs/
+  2026-04-01_190500/
+    auth-service.log
+    chat-service.log
+    message-service.log
+    file-service.log
+    kong.log
+    frontend.log
+```
+
+For full pytest tracebacks, pass extra args via the lifecycle script directly:
 
 ```bash
-make e2e                                    # hits Docker Compose (port 80 wins)
-make e2e KONG_URL=http://localhost:30080     # hits K8s explicitly
-make e2e-all                                # runs both sequentially
+bash infra/scripts/e2e-lifecycle.sh docker --tb=long
 ```
 
 ### Credential Resolution
 
-The test suite resolves admin credentials automatically — you don't need to pass them. The resolution order:
+The test suite resolves admin credentials automatically:
 
-1. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables (for CI or custom setups)
-2. Root `.env` file (Docker Compose local dev)
-3. `infra/k8s/secrets.env` (K8s local dev)
-4. `kubectl get secret auth-admin-secret` (K8s cluster)
+1. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables
+2. Root `.env` file
+3. `infra/k8s/secrets.env`
+4. `kubectl get secret auth-admin-secret`
 5. Defaults: `admin` / `changeme`
-
-### Test Output
-
-```
-$ make e2e-smoke
-
-tests/e2e/test_frontend.py::TestFrontend::test_frontend_returns_200 PASSED
-tests/e2e/test_frontend.py::TestFrontend::test_frontend_returns_html PASSED
-tests/e2e/test_auth.py::TestRegisterLogin::test_register_new_user PASSED
-...
-==================== 14 passed in 12.34s ====================
-```
-
-Failed tests show a short traceback (`--tb=short`). For full tracebacks, run pytest directly:
-
-```bash
-python3 -m pytest tests/e2e/ -v --tb=long -c tests/e2e/pytest.ini
-```
