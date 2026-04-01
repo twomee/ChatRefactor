@@ -4,6 +4,7 @@ import asyncio
 import json
 
 import pytest
+from websockets.protocol import State
 
 from helpers import auth_header, ws_connect, recv_until, drain
 
@@ -15,7 +16,7 @@ class TestWebSocketConnection:
     @pytest.mark.asyncio
     async def test_connect_to_lobby(self, ws_url: str, user1: dict):
         ws = await ws_connect(ws_url, "/ws/lobby", user1["token"])
-        assert ws.open
+        assert ws.state == State.OPEN
         await ws.close()
 
     @pytest.mark.smoke
@@ -24,7 +25,7 @@ class TestWebSocketConnection:
         lobby = await ws_connect(ws_url, "/ws/lobby", user1["token"])
         room = await ws_connect(ws_url, f"/ws/{test_room['id']}", user1["token"])
         msg = await recv_until(room, "history", timeout=5)
-        assert room.open
+        assert room.state == State.OPEN
         await room.close()
         await lobby.close()
 
@@ -303,7 +304,7 @@ class TestRefreshBehavior:
 
         errors = [m for m in msgs if m.get("type") == "error"]
         assert len(errors) == 0, f"Got errors after reconnect: {errors}"
-        assert room_new.open
+        assert room_new.state == State.OPEN
 
         await room_new.close()
         await lobby.close()
