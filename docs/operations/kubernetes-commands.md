@@ -178,17 +178,92 @@ bash infra/k8s/scripts/deploy.sh prod
 
 ## Running via Makefile
 
-The most essential K8s-specific Make targets:
+All `make` targets run from the project root. Variables are passed inline: `make <target> VAR=value`.
+
+### Variables
+
+| Variable | Default | What it controls |
+|----------|---------|-----------------|
+| `OVERLAY` | `dev` | Which Kustomize overlay to deploy (`dev`, `staging-kind`, `prod-kind`, `staging`, `prod`) |
+| `SVC` | *(none)* | Which service to target (`auth-service`, `chat-service`, `message-service`, `file-service`, `frontend`, `kong`) |
+| `CLUSTER_NAME` | `chatbox` | The kind cluster name |
+
+---
+
+### Cluster Lifecycle
 
 ```bash
-make k8s-setup-local                  # Zero to running: create cluster + infra + secrets + init jobs + images + deploy
-make k8s-deploy                       # Apply dev overlay and wait for all rollouts
-make k8s-deploy OVERLAY=staging-kind  # Apply a different overlay
-make k8s-logs SVC=auth-service        # Tail live logs for a service
-make k8s-teardown                     # Tear down everything and delete the kind cluster
+make k8s-setup-local     # Zero to running: create cluster + infra + secrets + init jobs + images + deploy
+make k8s-teardown        # Tear down everything and delete the kind cluster
 ```
 
-> For the complete list of Make targets, see [Makefile Reference](makefile-reference.md).
+---
+
+### Infrastructure
+
+```bash
+make k8s-infra-setup     # Install PostgreSQL + Redis via Helm, Kafka via manifest (reads infra/k8s/secrets.env)
+make k8s-infra-teardown  # Uninstall Helm releases and Kafka (keeps the kind cluster and app running)
+make k8s-init-jobs       # Delete + re-run db-init and kafka-init jobs (creates databases and topics)
+make k8s-secrets         # Read infra/k8s/secrets.env and create/update all K8s Secrets
+```
+
+---
+
+### Application
+
+```bash
+make k8s-build                        # Build all 5 Docker images and load into kind
+
+make k8s-deploy                       # Apply dev overlay and wait for all rollouts
+make k8s-deploy OVERLAY=staging-kind  # Apply staging-kind overlay
+make k8s-deploy OVERLAY=prod-kind     # Apply prod-kind overlay
+
+make k8s-validate                     # Dry-run — validate YAML against the cluster without applying
+make k8s-validate OVERLAY=prod-kind   # Validate a specific overlay
+
+# Rebuild one service, reload into kind, and do a rolling restart
+make k8s-redeploy SVC=auth-service
+make k8s-redeploy SVC=chat-service
+make k8s-redeploy SVC=message-service
+make k8s-redeploy SVC=file-service
+make k8s-redeploy SVC=frontend
+```
+
+---
+
+### Operations
+
+```bash
+make k8s-status                      # Print pods, services, infra pods, and recent events — quick health check
+
+make k8s-logs SVC=auth-service       # Tail live logs for all auth-service pods
+make k8s-logs SVC=chat-service       # Tail live logs for all chat-service pods
+make k8s-logs SVC=message-service    # Tail live logs for all message-service pods
+make k8s-logs SVC=file-service       # Tail live logs for all file-service pods
+make k8s-logs SVC=frontend           # Tail live logs for the frontend pod
+make k8s-logs SVC=kong               # Tail live logs for the kong gateway pod
+
+make k8s-shell SVC=auth-service      # Open /bin/sh shell inside a running auth-service pod
+make k8s-shell SVC=chat-service      # Same for chat-service
+make k8s-shell SVC=message-service   # Same for message-service
+make k8s-shell SVC=file-service      # Same for file-service
+
+make k8s-restart SVC=auth-service    # Rolling restart auth-service (zero downtime)
+make k8s-restart SVC=chat-service
+```
+
+---
+
+### Monitoring
+
+```bash
+make k8s-monitoring-setup            # Install Prometheus + Grafana via Helm
+make k8s-monitoring-teardown         # Uninstall monitoring stack
+make k8s-monitoring-access           # Print Grafana URL + admin password
+```
+
+> For non-K8s Make targets (Docker Compose), see [Makefile Reference](makefile-reference.md).
 
 ---
 
