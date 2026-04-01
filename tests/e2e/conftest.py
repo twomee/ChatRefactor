@@ -222,11 +222,16 @@ def _register_and_login(
     email: str,
 ) -> dict:
     """Register a new user and log them in, returning user info dict."""
-    # Register
-    reg_resp = api.post(
-        f"{kong_url}/auth/register",
-        json={"username": username, "password": password, "email": email},
-    )
+    # Register (retry on rate limit — Kong allows 5 registrations/min)
+    for attempt in range(5):
+        reg_resp = api.post(
+            f"{kong_url}/auth/register",
+            json={"username": username, "password": password, "email": email},
+        )
+        if reg_resp.status_code == 429:
+            time.sleep(15)  # wait for rate limit window to reset
+            continue
+        break
     assert reg_resp.status_code in (
         200,
         201,
