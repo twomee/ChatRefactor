@@ -123,7 +123,7 @@ EOF
     source "$SECRETS_FILE"
 
     helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true
-    helm repo update --quiet
+    helm repo update 2>/dev/null
 
     echo "  Installing PostgreSQL..."
     helm upgrade --install postgres bitnami/postgresql \
