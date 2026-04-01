@@ -229,30 +229,67 @@ kubectl get events -n chatbox --field-selector type=Warning  # any warnings?
 
 ## 9. End-to-End Tests
 
-Run the full e2e test suite against whichever environment is running.
+A pytest-based e2e test suite that covers 82 tests across all services. It auto-detects whether Docker Compose or K8s is running and runs against whichever is available.
+
+### Quick Start
+
+```bash
+# 1. Install test dependencies (one time)
+make e2e-setup
+
+# 2. Start an environment (pick one)
+make deploy              # Docker Compose
+# OR
+make k8s-setup-local     # Kubernetes
+
+# 3. Run all tests
+make e2e
+
+# 4. Or run just the quick smoke tests (~14 core tests)
+make e2e-smoke
+```
+
+### Prerequisites
+
+- **Python 3.10+** with pip
+- A running environment (Docker Compose or K8s) — the suite auto-detects which one
+- Admin credentials configured in `.env` (Docker Compose) or `infra/k8s/secrets.env` (K8s)
+
+Dependencies installed by `make e2e-setup`:
+- `pytest`, `pytest-asyncio` — test framework
+- `requests` — HTTP client for REST API tests
+- `websockets` — WebSocket client for real-time feature tests
+- `pyotp` — TOTP code generation for 2FA tests
+
+### All Targets
 
 | Target | Description |
 |--------|-------------|
 | `make e2e-setup` | Install Python test dependencies (`pip install -r tests/e2e/requirements.txt`) |
-| `make e2e` | Auto-detect environment, run all ~85 tests |
-| `make e2e-smoke` | Quick subset (~15 core tests) |
+| `make e2e` | Auto-detect environment, run all 82 tests |
+| `make e2e-smoke` | Quick subset (~14 core tests) |
 | `make e2e-all` | Run against Docker Compose **and** K8s sequentially |
 | `make e2e KONG_URL=http://host:port` | Override auto-detection with explicit URL |
-| `make e2e-auth` | Auth service tests only |
-| `make e2e-pm` | Private messaging tests only |
-| `make e2e-files` | File service tests only |
-| `make e2e-chat` | Chat rooms + WebSocket tests only |
-| `make e2e-messages` | Message service tests only |
-| `make e2e-admin` | Admin dashboard tests only |
-| `make e2e-monitoring` | Monitoring tests only (auto-skipped if Grafana unavailable) |
 
-### Default Behavior (No Config)
+**Per-service targets** (useful when working on a specific service):
 
-When you run `make e2e` without any arguments:
+| Target | Tests |
+|--------|-------|
+| `make e2e-auth` | Register, login, profile, 2FA, logout (13 tests) |
+| `make e2e-chat` | Room CRUD, WebSocket messaging, typing, reactions, refresh (23 tests) |
+| `make e2e-pm` | PM send/edit/delete, reactions, typing, history (11 tests) |
+| `make e2e-messages` | History, search, edit/delete, context, link preview (12 tests) |
+| `make e2e-files` | Upload, download, PM files, image handling (9 tests) |
+| `make e2e-admin` | Admin dashboard, close/open rooms, promote (8 tests) |
+| `make e2e-monitoring` | Grafana, Prometheus (5 tests, auto-skipped if unavailable) |
+
+### Auto-Detection Logic
+
+When you run `make e2e` without any config:
 
 1. Checks if **Docker Compose** is running (`localhost:80`) → uses it
 2. Else checks if **K8s** is running (`localhost:30080`) → uses it
-3. If neither responds → exits with a message telling you to start an environment
+3. If neither responds → exits with a clear error message
 
 ### Running Both Environments
 
@@ -262,4 +299,32 @@ If both Docker Compose and K8s are running simultaneously:
 make e2e                                    # hits Docker Compose (port 80 wins)
 make e2e KONG_URL=http://localhost:30080     # hits K8s explicitly
 make e2e-all                                # runs both sequentially
+```
+
+### Credential Resolution
+
+The test suite resolves admin credentials automatically — you don't need to pass them. The resolution order:
+
+1. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables (for CI or custom setups)
+2. Root `.env` file (Docker Compose local dev)
+3. `infra/k8s/secrets.env` (K8s local dev)
+4. `kubectl get secret auth-admin-secret` (K8s cluster)
+5. Defaults: `admin` / `changeme`
+
+### Test Output
+
+```
+$ make e2e-smoke
+
+tests/e2e/test_frontend.py::TestFrontend::test_frontend_returns_200 PASSED
+tests/e2e/test_frontend.py::TestFrontend::test_frontend_returns_html PASSED
+tests/e2e/test_auth.py::TestRegisterLogin::test_register_new_user PASSED
+...
+==================== 14 passed in 12.34s ====================
+```
+
+Failed tests show a short traceback (`--tb=short`). For full tracebacks, run pytest directly:
+
+```bash
+python3 -m pytest tests/e2e/ -v --tb=long -c tests/e2e/pytest.ini
 ```
