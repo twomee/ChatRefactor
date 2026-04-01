@@ -56,15 +56,27 @@ describe('humanizeError', () => {
     expect(humanizeError(null)).toBe('Something went wrong');
   });
 
-  it('maps UNIQUE constraint to friendly message', () => {
+  it('maps UNIQUE constraint to username taken message', () => {
     expect(humanizeError('UNIQUE constraint failed: user.username')).toBe(
       'That username is already taken. Try another.',
     );
   });
 
-  it('maps already registered to friendly message (case-insensitive)', () => {
-    expect(humanizeError('User already registered')).toBe(
+  it('maps "Username already taken" to username message', () => {
+    expect(humanizeError('Username already taken')).toBe(
       'That username is already taken. Try another.',
+    );
+  });
+
+  it('maps "Email already registered" to email message', () => {
+    expect(humanizeError('Email already registered')).toBe(
+      'That email is already registered. Try another.',
+    );
+  });
+
+  it('maps "Username or email already taken" to combined message', () => {
+    expect(humanizeError('Username or email already taken')).toBe(
+      'That username or email is already in use. Try another.',
     );
   });
 

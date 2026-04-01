@@ -336,7 +336,9 @@ export default function LoginPage() {
             <input
               ref={usernameRef}
               name="username"
+              type="text"
               placeholder="Username"
+              autoComplete="username"
               value={username}
               onChange={e => setUsername(e.target.value)}
               onBlur={handleBlur}
@@ -354,6 +356,7 @@ export default function LoginPage() {
                   name="email"
                   type="email"
                   placeholder="Email"
+                  autoComplete="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   onBlur={handleBlur}
@@ -372,6 +375,7 @@ export default function LoginPage() {
                 name="password"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Password"
+                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 onBlur={handleBlur}

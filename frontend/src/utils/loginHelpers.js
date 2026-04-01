@@ -35,12 +35,13 @@ export function validateField(name, value, mode) {
 export function humanizeError(detail) {
   if (!detail) return 'Something went wrong';
   if (typeof detail === 'string') {
-    if (
-      detail.toLowerCase().includes('unique constraint') ||
-      detail.toLowerCase().includes('already registered')
-    ) {
+    const low = detail.toLowerCase();
+    if (low.includes('username or email already'))
+      return 'That username or email is already in use. Try another.';
+    if (low.includes('email already') || low.includes('email is already'))
+      return 'That email is already registered. Try another.';
+    if (low.includes('username already') || low.includes('unique constraint'))
       return 'That username is already taken. Try another.';
-    }
     return detail;
   }
   if (Array.isArray(detail)) return detail.map(e => e.msg).join(', ');
