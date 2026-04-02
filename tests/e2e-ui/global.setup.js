@@ -12,7 +12,7 @@ async function registerAndLogin(baseURL, user) {
 
   let retries = 5;
   while (retries > 0) {
-    const regRes = await fetch(`${baseURL}/register`, {
+    const regRes = await fetch(`${baseURL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(regBody),
@@ -28,7 +28,7 @@ async function registerAndLogin(baseURL, user) {
   let loginRes;
   retries = 5;
   while (retries > 0) {
-    loginRes = await fetch(`${baseURL}/login`, {
+    loginRes = await fetch(`${baseURL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: user.username, password: user.password }),
@@ -43,12 +43,13 @@ async function registerAndLogin(baseURL, user) {
 
   const data = await loginRes.json();
   return {
-    token: data.token,
+    token: data.access_token,
     user: { username: user.username, user_id: data.user_id, is_global_admin: data.is_global_admin || false },
   };
 }
 
 test('register all test users and save tokens', async () => {
+  test.setTimeout(120_000); // 2 min — rate limiting may cause retries
   const baseURL = process.env.BASE_URL || 'http://localhost:8090';
   const tokens = {};
 
