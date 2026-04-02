@@ -287,7 +287,7 @@ run_tests() {
         step "Running UI e2e tests against $kong_url..."
         cd "$PROJECT_ROOT/tests/e2e-ui"
         npm ci --silent 2>/dev/null || npm install --silent
-        npx playwright install chromium --with-deps 2>/dev/null
+        npx playwright install chromium 2>/dev/null || true
         BASE_URL="$kong_url" npx playwright test "${PYTEST_ARGS[@]}" || EXIT_CODE=$?
         cd "$PROJECT_ROOT"
     fi
