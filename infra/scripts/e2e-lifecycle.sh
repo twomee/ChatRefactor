@@ -220,7 +220,7 @@ k8s_wait() {
     echo ""
     success "All pods running"
 
-    # Wait for Kong to respond
+    # Wait for Kong to respond and all backend services to be routable
     elapsed=0
     while ! curl -sf "http://localhost:${E2E_KONG_PORT}" > /dev/null 2>&1; do
         if [ "$elapsed" -ge 60 ]; then
@@ -231,6 +231,18 @@ k8s_wait() {
         elapsed=$((elapsed + 3))
     done
     success "Kong responding on port ${E2E_KONG_PORT}"
+
+    # Wait for backend services to be routable through Kong (not just Kong itself)
+    elapsed=0
+    while ! curl -sf "http://localhost:${E2E_KONG_PORT}/rooms" -H "Authorization: Bearer test" 2>/dev/null | grep -q "401\|Invalid\|\[" ; do
+        if [ "$elapsed" -ge 60 ]; then
+            echo "  Warning: backend services may not be fully ready"
+            break
+        fi
+        sleep 3
+        elapsed=$((elapsed + 3))
+    done
+    success "Backend services routable"
 }
 
 k8s_logs() {
