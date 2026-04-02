@@ -76,9 +76,9 @@ docker_down() {
 
 # ── K8s helpers ──────────────────────────────────────────────────────────────
 E2E_CLUSTER="chatbox-e2e"
-E2E_KONG_PORT=31080
-E2E_FRONTEND_PORT=31000
-E2E_GRAFANA_PORT=31030
+E2E_KONG_PORT=30080
+E2E_FRONTEND_PORT=30000
+E2E_GRAFANA_PORT=30030
 
 DEV_CLUSTER_STOPPED=false
 
