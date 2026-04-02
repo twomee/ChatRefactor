@@ -1,0 +1,80 @@
+name: E2E — Kubernetes
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_filter:
+        description: "Pytest filter (e.g. '-m smoke' or '-k test_auth')"
+        required: false
+        default: ""
+
+concurrency:
+  group: e2e-k8s-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  KIND_CLUSTER: chatbox-e2e
+
+jobs:
+  e2e-k8s:
+    name: E2E Kubernetes (Kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install e2e dependencies
+        run: pip install -r tests/e2e/requirements.txt
+
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.17.3"
+
+      - name: Create .env and secrets.env for CI
+        run: |
+          TOTP_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+          SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+          cat > .env <<EOF
+          APP_ENV=dev
+          POSTGRES_PASSWORD=chatbox_pass
+          REDIS_PASSWORD=chatbox_redis_pass
+          SECRET_KEY=${SECRET}
+          ADMIN_USERNAME=admin
+          ADMIN_PASSWORD=changeme
+          CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+          TOTP_ENCRYPTION_KEY=${TOTP_KEY}
+          VITE_API_BASE=http://localhost:31080
+          VITE_WS_BASE=ws://localhost:31080
+          EOF
+          cp .env infra/k8s/secrets.env
+
+      - name: Run e2e-k8s lifecycle
+        env:
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: changeme
+          # Safe: workflow_dispatch input passed via env var, not interpolated in shell
+          TEST_FILTER: ${{ github.event.inputs.test_filter }}
+        run: |
+          bash infra/scripts/e2e-lifecycle.sh k8s $TEST_FILTER
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-k8s-logs
+          path: tests/e2e/logs/
+          retention-days: 7
