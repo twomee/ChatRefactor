@@ -76,22 +76,11 @@ docker_down() {
 
 # ── K8s helpers ──────────────────────────────────────────────────────────────
 E2E_CLUSTER="chatbox-e2e"
-E2E_KONG_PORT=30080
-E2E_FRONTEND_PORT=30000
-E2E_GRAFANA_PORT=30030
-
-DEV_CLUSTER_STOPPED=false
+E2E_KONG_PORT=31080
+E2E_FRONTEND_PORT=31000
+E2E_GRAFANA_PORT=31030
 
 k8s_up() {
-    # Two Kind clusters can't run reliably on the same machine (CoreDNS conflicts).
-    # Stop the dev cluster if running, restart it after tests.
-    if kind get clusters 2>/dev/null | grep -q "^chatbox$"; then
-        step "Stopping dev Kind cluster (will restart after tests)..."
-        docker stop chatbox-control-plane 2>/dev/null || true
-        DEV_CLUSTER_STOPPED=true
-        success "Dev cluster paused"
-    fi
-
     step "Creating Kind cluster '$E2E_CLUSTER'..."
 
     # Delete stale cluster if it exists
@@ -198,12 +187,12 @@ EOF
     kubectl wait --for=condition=complete job/kafka-init --namespace chatbox --timeout=300s
 
     step "Building and loading Docker images..."
-    CLUSTER_NAME="$E2E_CLUSTER" bash "$K8S_DIR/scripts/build-images.sh"
+    CLUSTER_NAME="$E2E_CLUSTER" KONG_PORT="$E2E_KONG_PORT" bash "$K8S_DIR/scripts/build-images.sh"
 
     step "Deploying application..."
+    # Use the e2e overlay (different NodePorts: 31080/31000 to avoid conflict with dev).
     # Ignore ServiceMonitor errors — e2e cluster has no Prometheus CRDs.
-    # The actual deployments/services are created successfully.
-    kubectl apply -k "$K8S_DIR/overlays/dev" 2>&1 | grep -v "ServiceMonitor" || true
+    kubectl apply -k "$K8S_DIR/overlays/e2e" 2>&1 | grep -v "ServiceMonitor" || true
     success "K8s deployment complete"
 }
 
@@ -257,13 +246,6 @@ k8s_down() {
     step "Deleting Kind cluster '$E2E_CLUSTER'..."
     kind delete cluster --name "$E2E_CLUSTER" 2>/dev/null || true
     success "Cluster deleted"
-
-    # Restart dev cluster if we stopped it
-    if [ "$DEV_CLUSTER_STOPPED" = true ]; then
-        step "Restarting dev Kind cluster..."
-        docker start chatbox-control-plane 2>/dev/null || true
-        success "Dev cluster restarted"
-    fi
 }
 
 # ── Test runner ──────────────────────────────────────────────────────────────
