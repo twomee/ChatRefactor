@@ -171,3 +171,46 @@ k8s-prometheus: ## Port-forward Prometheus to http://localhost:9090
 .PHONY: k8s-secrets
 k8s-secrets: ## Generate K8s secrets from .env file
 	@bash infra/k8s/scripts/generate-secrets.sh
+
+# ── E2E Tests ────────────────────────────────────────────────────────────────
+
+.PHONY: e2e-docker e2e-k8s e2e-all e2e-smoke e2e-setup e2e-auth e2e-pm e2e-files e2e-chat e2e-messages e2e-admin e2e-monitoring
+
+E2E_LIFECYCLE := infra/scripts/e2e-lifecycle.sh
+
+e2e-setup: ## Install e2e test dependencies
+	pip install -r tests/e2e/requirements.txt
+
+e2e-docker: ## Black box: spin up Docker Compose → test all → tear down
+	@bash $(E2E_LIFECYCLE) docker
+
+e2e-k8s: ## Black box: create Kind cluster → deploy → test all → delete cluster
+	@bash $(E2E_LIFECYCLE) k8s
+
+e2e-all: ## Run e2e-docker then e2e-k8s sequentially
+	@bash $(E2E_LIFECYCLE) docker
+	@bash $(E2E_LIFECYCLE) k8s
+
+e2e-smoke: ## Black box Docker Compose, smoke tests only
+	@bash $(E2E_LIFECYCLE) docker -m smoke
+
+e2e-auth: ## Black box Docker Compose, auth tests only
+	@bash $(E2E_LIFECYCLE) docker -k test_auth
+
+e2e-pm: ## Black box Docker Compose, PM tests only
+	@bash $(E2E_LIFECYCLE) docker -k test_pm
+
+e2e-files: ## Black box Docker Compose, file tests only
+	@bash $(E2E_LIFECYCLE) docker -k test_files
+
+e2e-chat: ## Black box Docker Compose, chat tests only
+	@bash $(E2E_LIFECYCLE) docker -k "test_chat_rooms or test_chat_websocket"
+
+e2e-messages: ## Black box Docker Compose, message tests only
+	@bash $(E2E_LIFECYCLE) docker -k test_messages
+
+e2e-admin: ## Black box Docker Compose, admin tests only
+	@bash $(E2E_LIFECYCLE) docker -k test_admin
+
+e2e-monitoring: ## Black box Docker Compose, monitoring tests only
+	@bash $(E2E_LIFECYCLE) docker -k test_monitoring

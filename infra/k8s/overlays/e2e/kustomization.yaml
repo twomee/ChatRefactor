@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: chatbox
+resources:
+  - ../../base
+patches:
+  - path: patches/kong-service-nodeport.yaml
+  - path: patches/frontend-service-nodeport.yaml
+images:
+  - name: auth-service
+    newTag: latest
+  - name: chat-service
+    newTag: latest
+  - name: message-service
+    newTag: latest
+  - name: file-service
+    newTag: latest
+  - name: frontend
+    newTag: latest

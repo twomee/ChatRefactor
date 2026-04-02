@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(64) UNIQUE NOT NULL,
     password_hash VARCHAR(256) NOT NULL,
+    email VARCHAR(256),
     is_global_admin BOOLEAN DEFAULT FALSE NOT NULL,
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
     totp_secret VARCHAR(256),
@@ -26,9 +27,19 @@ CREATE TABLE IF NOT EXISTS users (
     backup_codes TEXT
 );
 -- Idempotent column addition for existing databases.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(256);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(256);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_2fa_enabled BOOLEAN DEFAULT FALSE NOT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS backup_codes TEXT;
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    token VARCHAR(256) UNIQUE NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    used BOOLEAN DEFAULT FALSE NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 EOSQL
 
@@ -52,6 +63,15 @@ CREATE TABLE IF NOT EXISTS muted_users (
     user_id INTEGER NOT NULL,
     room_id INTEGER NOT NULL REFERENCES rooms(id),
     muted_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    UNIQUE(user_id, room_id)
+);
+CREATE TABLE IF NOT EXISTS read_positions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+    last_read_message_id VARCHAR(36),
+    last_read_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(user_id, room_id)
 );
 CREATE INDEX IF NOT EXISTS idx_room_admins_room_id ON room_admins(room_id);
@@ -108,6 +128,30 @@ CREATE TABLE IF NOT EXISTS reactions (
     UNIQUE(message_id, user_id, emoji)
 );
 CREATE INDEX IF NOT EXISTS idx_reactions_message_id ON reactions(message_id);
+
+-- Per-user conversation clear history
+CREATE TABLE IF NOT EXISTS user_message_clears (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    context_type VARCHAR(10) NOT NULL CHECK (context_type IN ('room', 'pm')),
+    context_id INTEGER NOT NULL,
+    cleared_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    UNIQUE(user_id, context_type, context_id)
+);
+CREATE INDEX IF NOT EXISTS idx_umc_lookup ON user_message_clears(user_id, context_type, context_id);
+
+-- Per-user PM conversation deletion
+CREATE TABLE IF NOT EXISTS deleted_pm_conversations (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    other_user_id INTEGER NOT NULL,
+    deleted_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    UNIQUE(user_id, other_user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_deleted_pm_user ON deleted_pm_conversations(user_id);
+
+-- PM participants index
+CREATE INDEX IF NOT EXISTS idx_messages_pm_participants ON messages(sender_id, recipient_id) WHERE is_private = true;
 EOSQL
 
 echo "  [file] chatbox_files..."

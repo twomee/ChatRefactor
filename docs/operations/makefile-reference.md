@@ -91,15 +91,6 @@ ADMIN_PASSWORD=changeme             # Bootstrap admin password
 
 > If `infra/k8s/secrets.env` is missing, scripts fall back to the insecure example defaults — fine for local dev, never for staging/prod.
 
-**2. Install the WebSocket test dependency** (for `e2e-test.sh` only):
-
-```bash
-pip install websockets
-# or: pip3 install websockets
-```
-
-Without this, the WebSocket test in `e2e-test.sh` silently skips rather than fails.
-
 ---
 
 ### Script Reference
@@ -111,7 +102,6 @@ Without this, the WebSocket test in `e2e-test.sh` silently skips rather than fai
 | `build-images.sh` | Builds Docker images for all 5 services and loads them into the kind cluster | `bash infra/k8s/scripts/build-images.sh` |
 | `deploy.sh` | Applies a Kustomize overlay and waits for all 6 rollouts to complete | `bash infra/k8s/scripts/deploy.sh [overlay]` |
 | `generate-secrets.sh` | Creates or updates all K8s Secrets from `infra/k8s/secrets.env`. Reads the actual Redis password from the cluster to work around Bitnami's password-on-upgrade behavior | `bash infra/k8s/scripts/generate-secrets.sh` |
-| `e2e-test.sh` | Full end-to-end functional test — 46 tests across every service, WebSocket, and monitoring. Requires `python3` + `pip install websockets` | `bash infra/k8s/scripts/e2e-test.sh` |
 
 ### setup-local.sh
 
@@ -182,37 +172,7 @@ Creates or updates 6 K8s Secrets in the `chatbox` namespace:
 
 **Important:** Bitnami Redis v25 ignores `--set auth.password` on `helm upgrade` if the secret already exists. This script reads the actual Redis password from the cluster (`kubectl get secret redis`) so the `REDIS_URL` in the app secrets always matches the real password.
 
-### e2e-test.sh
-
-```bash
-# Run against the default local cluster
-bash infra/k8s/scripts/e2e-test.sh
-
-# Run against a custom endpoint (e.g. staging)
-bash infra/k8s/scripts/e2e-test.sh http://staging.example.com http://staging.example.com:3000 http://grafana.example.com
-```
-
-**Arguments (all optional):**
-- `$1` — Kong URL (default: `http://localhost:30080`)
-- `$2` — Frontend URL (default: `http://localhost:30000`)
-- `$3` — Grafana URL (default: `http://localhost:30030`)
-
-**Dependencies:**
-- `python3` — for JSON parsing and WebSocket test
-- `pip install websockets` — for WebSocket test (silently skipped if missing)
-- `kubectl` — to read admin credentials and check Prometheus targets
-
-**Reads admin credentials automatically** from the `auth-admin-secret` K8s Secret — no hardcoded passwords.
-
-Tests cover (8 sections, 46 tests total):
-- **Frontend** — HTML served through Kong
-- **Auth** — Register, duplicate detection, login (JWT), wrong password, token ping
-- **Chat rooms** — List rooms, admin creates room (RBAC), regular user blocked (403)
-- **WebSocket** — Connect to room, send message, receive broadcast
-- **Messages** — History endpoint, replay (`?since=`), auth enforcement
-- **Files** — Multipart upload, list, download with content verification
-- **Logout** — Token blacklisted in Redis after logout; other users unaffected
-- **Monitoring** — Grafana health + datasources, Prometheus targets + app metrics
+> **E2E Testing:** The e2e test suite has been migrated to pytest. Run `make e2e` to auto-detect the environment, or `make e2e KONG_URL=http://localhost:30080` to target K8s explicitly. See [Makefile Reference — E2E Tests](makefile-reference.md#9-end-to-end-tests) for all available targets.
 
 ---
 
@@ -266,3 +226,96 @@ make k8s-status                                         # all pods running?
 kubectl top pods -n chatbox                             # live CPU/memory
 kubectl get events -n chatbox --field-selector type=Warning  # any warnings?
 ```
+
+## 9. End-to-End Tests
+
+A pytest-based e2e test suite that runs in a **fully isolated, disposable environment**. Every run gets a clean database, fresh containers, and zero leftover state. Your dev environment is never touched.
+
+### Quick Start
+
+```bash
+# 1. Install test dependencies (one time)
+make e2e-setup
+
+# 2. Run all tests in an isolated Docker Compose environment
+make e2e-docker
+# This does everything: build → start → wait → test → dump logs → tear down
+```
+
+### How It Works
+
+Every `make e2e-*` target follows the same black-box lifecycle:
+
+1. **Spin up** a clean, isolated environment (separate containers, volumes, network)
+2. **Wait** for all services to be healthy
+3. **Run** the pytest suite
+4. **Dump** service logs to `tests/e2e/logs/<timestamp>/` (pass or fail)
+5. **Tear down** everything (containers, volumes, network — always, even on failure)
+
+Docker Compose e2e uses port **8090** (Kong) and **3090** (frontend).
+K8s e2e uses a separate Kind cluster (`chatbox-e2e`) with NodePort **31080**.
+
+### All Targets
+
+| Target | Description |
+|--------|-------------|
+| `make e2e-setup` | Install Python test dependencies (one time) |
+| `make e2e-docker` | Black box Docker Compose: up → test all 82 → down (~1-2 min) |
+| `make e2e-k8s` | Black box K8s: create Kind cluster → deploy → test all → delete (~10 min) |
+| `make e2e-all` | Run `e2e-docker` then `e2e-k8s` sequentially |
+| `make e2e-smoke` | Black box Docker Compose, smoke tests only (~14 tests) |
+
+**Per-service targets** (each runs the full black-box lifecycle):
+
+| Target | Tests |
+|--------|-------|
+| `make e2e-auth` | Register, login, profile, 2FA, logout (13 tests) |
+| `make e2e-chat` | Room CRUD, WebSocket messaging, typing, reactions, refresh (23 tests) |
+| `make e2e-pm` | PM send/edit/delete, reactions, typing, history (11 tests) |
+| `make e2e-messages` | History, search, edit/delete, context, link preview (12 tests) |
+| `make e2e-files` | Upload, download, PM files, image handling (9 tests) |
+| `make e2e-admin` | Admin dashboard, close/open rooms, promote (8 tests) |
+| `make e2e-monitoring` | Monitoring tests (5 tests, auto-skipped if Grafana unavailable) |
+
+### No Environment Conflicts
+
+The e2e environment is completely isolated from your dev environment:
+
+| Resource | Dev | E2E |
+|----------|-----|-----|
+| Kong port | 80 | 8090 (Docker) / 31080 (K8s) |
+| Frontend port | 3000 | 3090 (Docker) / 31000 (K8s) |
+| Containers | `chat-project-final-*` | `chatbox-e2e-*` |
+| Volumes | `chat-project-final_*` | `chatbox-e2e_*` |
+| Kind cluster | `chatbox` | `chatbox-e2e` |
+
+### Debugging Failed Tests
+
+Logs are always saved before teardown:
+
+```
+tests/e2e/logs/
+  2026-04-01_190500/
+    auth-service.log
+    chat-service.log
+    message-service.log
+    file-service.log
+    kong.log
+    frontend.log
+```
+
+For full pytest tracebacks, pass extra args via the lifecycle script directly:
+
+```bash
+bash infra/scripts/e2e-lifecycle.sh docker --tb=long
+```
+
+### Credential Resolution
+
+The test suite resolves admin credentials automatically:
+
+1. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables
+2. Root `.env` file
+3. `infra/k8s/secrets.env`
+4. `kubectl get secret auth-admin-secret`
+5. Defaults: `admin` / `changeme`

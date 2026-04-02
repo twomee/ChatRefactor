@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-CLUSTER_NAME="chatbox"
+CLUSTER_NAME="${CLUSTER_NAME:-chatbox}"
 
 echo "========================================="
 echo "  Building Docker Images"
@@ -26,11 +26,13 @@ echo ""
 echo "[4/5] Building file-service..."
 docker build -t file-service:latest "$PROJECT_ROOT/services/file-service"
 
+KONG_PORT="${KONG_PORT:-30080}"
+
 echo ""
 echo "[5/5] Building frontend..."
 docker build -t frontend:latest \
-  --build-arg VITE_API_BASE=http://localhost:30080 \
-  --build-arg VITE_WS_BASE=ws://localhost:30080 \
+  --build-arg VITE_API_BASE=http://localhost:${KONG_PORT} \
+  --build-arg VITE_WS_BASE=ws://localhost:${KONG_PORT} \
   "$PROJECT_ROOT/frontend"
 
 echo ""

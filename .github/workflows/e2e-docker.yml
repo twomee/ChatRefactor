@@ -1,0 +1,123 @@
+name: E2E — Docker Compose
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/**"
+      - "frontend/**"
+      - "infra/docker/**"
+      - "infra/kong/**"
+      - "docker-compose.yml"
+      - "docker-compose.e2e.yml"
+      - "tests/e2e/**"
+      - ".github/workflows/e2e-docker.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/**"
+      - "frontend/**"
+      - "infra/docker/**"
+      - "infra/kong/**"
+      - "docker-compose.yml"
+      - "docker-compose.e2e.yml"
+      - "tests/e2e/**"
+      - ".github/workflows/e2e-docker.yml"
+
+concurrency:
+  group: e2e-docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  e2e-docker:
+    name: E2E Docker Compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install e2e dependencies
+        run: pip install -r tests/e2e/requirements.txt
+
+      - name: Create .env for CI
+        run: |
+          TOTP_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+          cat > .env <<EOF
+          APP_ENV=dev
+          POSTGRES_PASSWORD=chatbox_pass
+          REDIS_PASSWORD=chatbox_redis_pass
+          SECRET_KEY=ci-test-secret-key-not-for-production
+          ADMIN_USERNAME=admin
+          ADMIN_PASSWORD=changeme
+          CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+          TOTP_ENCRYPTION_KEY=${TOTP_KEY}
+          VITE_API_BASE=http://localhost:8090
+          VITE_WS_BASE=ws://localhost:8090
+          EOF
+
+      - name: Start e2e environment
+        run: |
+          docker compose -p chatbox-e2e \
+            -f docker-compose.yml \
+            -f docker-compose.e2e.yml \
+            up -d --build --quiet-pull
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for Kong on port 8090..."
+          timeout=120
+          elapsed=0
+          while ! curl -sf http://localhost:8090 > /dev/null 2>&1; do
+            if [ "$elapsed" -ge "$timeout" ]; then
+              echo "Timed out waiting for Kong"
+              docker compose -p chatbox-e2e -f docker-compose.yml -f docker-compose.e2e.yml logs
+              exit 1
+            fi
+            sleep 3
+            elapsed=$((elapsed + 3))
+          done
+          echo "Kong responding on port 8090"
+
+      - name: Run e2e tests
+        env:
+          KONG_URL: http://localhost:8090
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: changeme
+        run: |
+          python3 -m pytest tests/e2e/ -v --tb=short -c tests/e2e/pytest.ini
+
+      - name: Dump service logs
+        if: always()
+        run: |
+          mkdir -p tests/e2e/logs/ci
+          for svc in auth-service chat-service message-service file-service kong frontend; do
+            docker compose -p chatbox-e2e \
+              -f docker-compose.yml \
+              -f docker-compose.e2e.yml \
+              logs "$svc" > "tests/e2e/logs/ci/$svc.log" 2>&1 || true
+          done
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-docker-logs
+          path: tests/e2e/logs/ci/
+          retention-days: 7
+
+      - name: Tear down environment
+        if: always()
+        run: |
+          docker compose -p chatbox-e2e \
+            -f docker-compose.yml \
+            -f docker-compose.e2e.yml \
+            down -v --remove-orphans

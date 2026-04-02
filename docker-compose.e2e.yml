@@ -1,0 +1,14 @@
+# docker-compose.e2e.yml — Port overrides for isolated e2e environment.
+# Usage: docker compose -p chatbox-e2e -f docker-compose.yml -f docker-compose.e2e.yml up -d --build
+#
+# Note: !override replaces the ports list instead of merging with it,
+# so only the e2e ports are exposed (no conflict with dev on port 80/3000).
+
+services:
+  kong:
+    ports: !override
+      - "8090:8000"
+
+  frontend:
+    ports: !override
+      - "3090:80"
