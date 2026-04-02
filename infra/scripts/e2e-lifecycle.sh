@@ -17,6 +17,18 @@ MODE="${1:?Usage: e2e-lifecycle.sh <docker|k8s> [pytest-args...]}"
 shift
 PYTEST_ARGS=("$@")
 
+# Check for --ui or --all flags
+TEST_MODE="api"
+FILTERED_ARGS=()
+for arg in "${PYTEST_ARGS[@]}"; do
+    case "$arg" in
+        --ui)  TEST_MODE="ui" ;;
+        --all) TEST_MODE="all" ;;
+        *)     FILTERED_ARGS+=("$arg") ;;
+    esac
+done
+PYTEST_ARGS=("${FILTERED_ARGS[@]}")
+
 TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
 LOG_DIR="$PROJECT_ROOT/tests/e2e/logs/$TIMESTAMP"
 EXIT_CODE=0
@@ -263,10 +275,22 @@ k8s_down() {
 # ── Test runner ──────────────────────────────────────────────────────────────
 run_tests() {
     local kong_url="$1"
-    step "Running e2e tests against $kong_url..."
-    KONG_URL="$kong_url" python3 -m pytest "$PROJECT_ROOT/tests/e2e/" \
-        -v --tb=short -c "$PROJECT_ROOT/tests/e2e/pytest.ini" \
-        "${PYTEST_ARGS[@]}" || EXIT_CODE=$?
+
+    if [ "$TEST_MODE" = "api" ] || [ "$TEST_MODE" = "all" ]; then
+        step "Running API e2e tests against $kong_url..."
+        KONG_URL="$kong_url" python3 -m pytest "$PROJECT_ROOT/tests/e2e/" \
+            -v --tb=short -c "$PROJECT_ROOT/tests/e2e/pytest.ini" \
+            "${PYTEST_ARGS[@]}" || EXIT_CODE=$?
+    fi
+
+    if [ "$TEST_MODE" = "ui" ] || [ "$TEST_MODE" = "all" ]; then
+        step "Running UI e2e tests against $kong_url..."
+        cd "$PROJECT_ROOT/tests/e2e-ui"
+        npm ci --silent 2>/dev/null || npm install --silent
+        npx playwright install chromium --with-deps 2>/dev/null
+        BASE_URL="$kong_url" npx playwright test "${PYTEST_ARGS[@]}" || EXIT_CODE=$?
+        cd "$PROJECT_ROOT"
+    fi
 
     if [ "$EXIT_CODE" -eq 0 ]; then
         success "All tests passed!"
