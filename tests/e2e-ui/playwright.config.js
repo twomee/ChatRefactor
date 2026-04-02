@@ -19,6 +19,7 @@ module.exports = defineConfig({
   projects: [
     {
       name: 'setup',
+      testDir: '.',
       testMatch: /global\.setup\.js/,
     },
     {
