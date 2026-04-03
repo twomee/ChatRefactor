@@ -4,8 +4,26 @@ class SettingsPage {
   }
 
   async goto() {
-    await this.page.goto('/settings');
-    await this.page.waitForSelector('.settings-layout');
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await this.page.goto('/settings', { waitUntil: 'domcontentloaded', timeout: 20_000 });
+      const loaded = await this.page.waitForSelector('.settings-layout', { timeout: 10_000 }).catch(() => null);
+      if (loaded) return;
+      // Check for 404 — fall back to SPA navigation via dropdown
+      const bodyText = await this.page.locator('body').textContent().catch(() => '');
+      if (bodyText.includes('404') || bodyText.includes('not found')) {
+        await this.page.goto('/chat', { waitUntil: 'domcontentloaded', timeout: 20_000 });
+        await this.page.waitForSelector('.chat-layout', { timeout: 15_000 }).catch(() => {});
+        await this.page.locator('[data-testid="user-dropdown-trigger"]').click();
+        await this.page.locator('[data-testid="dropdown-settings"]').click();
+        const loaded2 = await this.page.waitForSelector('.settings-layout', { timeout: 15_000 }).catch(() => null);
+        if (loaded2) return;
+      }
+      if (bodyText.includes('rate limit') || bodyText.includes('429')) {
+        await this.page.waitForTimeout(5_000);
+        continue;
+      }
+    }
+    await this.page.waitForSelector('.settings-layout', { timeout: 15_000 });
   }
 
   async changePassword(current, newPass, confirm) {

@@ -3,7 +3,7 @@ const { test, expect } = require('@playwright/test');
 const path = require('path');
 const { fastLogin, twoBrowsers, refreshAndWait } = require('../fixtures/helpers');
 const { ChatPage } = require('../fixtures/chat');
-const { TEST_ROOM, USER_B } = require('../fixtures/test-data');
+const { TEST_ROOM, USER_A, USER_B } = require('../fixtures/test-data');
 
 const TEST_FILE_PATH = path.join(__dirname, '..', 'fixtures', 'test-file.txt');
 const TEST_IMAGE_PATH = path.join(__dirname, '..', 'fixtures', 'test-image.png');
@@ -49,12 +49,12 @@ test.describe('Files', () => {
     const chatA = new ChatPage(pageA);
     const chatB = new ChatPage(pageB);
 
-    // A opens PM with B
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
+    // Both join room so they can see each other in user list
+    await chatA.switchRoom(TEST_ROOM);
+    await chatB.switchRoom(TEST_ROOM);
+    await pageA.waitForTimeout(1_000);
 
+    // A opens PM with B
     await chatA.startPM(USER_B.username);
     await pageA.waitForTimeout(1_000);
 
@@ -63,7 +63,7 @@ test.describe('Files', () => {
     await pageA.waitForTimeout(2_000);
 
     // B opens PM with A — navigate to the PM
-    await chatB.startPM('alice_ui');
+    await chatB.startPM(USER_A.username);
     await pageB.waitForTimeout(1_000);
 
     // B should see the file message

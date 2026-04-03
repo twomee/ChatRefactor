@@ -11,11 +11,6 @@ test.describe('Presence - Rooms', () => {
     const chatAdmin = new ChatPage(pageA);
     const chatB = new ChatPage(pageB);
 
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
-
     await chatAdmin.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
     await pageA.waitForTimeout(1_000);
@@ -60,11 +55,6 @@ test.describe('Presence - Rooms', () => {
     const chatA = new ChatPage(pageA);
     const chatB = new ChatPage(pageB);
 
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
-
     await chatA.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
     await pageA.waitForTimeout(1_000);
@@ -91,11 +81,6 @@ test.describe('Presence - Rooms', () => {
     const { pageA, pageB, ctxA, ctxB } = await twoBrowsers(browser, 'userA', 'userB');
     const chatA = new ChatPage(pageA);
     const chatB = new ChatPage(pageB);
-
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     await chatA.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
@@ -131,11 +116,6 @@ test.describe('Presence - Rooms', () => {
     const { pageA, pageB, ctxA, ctxB } = await twoBrowsers(browser, 'userA', 'userB');
     const chatA = new ChatPage(pageA);
     const chatB = new ChatPage(pageB);
-
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     await chatA.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);

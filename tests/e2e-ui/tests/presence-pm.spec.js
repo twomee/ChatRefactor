@@ -11,10 +11,10 @@ test.describe('Presence - PM', () => {
     const chatA = new ChatPage(pageA);
     const chatB = new ChatPage(pageB);
 
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
+    // Both join room so they can see each other in user list
+    await chatA.switchRoom('ui-test-room');
+    await chatB.switchRoom('ui-test-room');
+    await pageA.waitForTimeout(1_000);
 
     // A opens PM with B
     await chatA.startPM(USER_B.username);
@@ -54,10 +54,10 @@ test.describe('Presence - PM', () => {
     const chatA = new ChatPage(pageA);
     const chatB = new ChatPage(pageB);
 
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
+    // Both join room so they can see each other in user list
+    await chatA.switchRoom('ui-test-room');
+    await chatB.switchRoom('ui-test-room');
+    await pageA.waitForTimeout(1_000);
 
     // A opens PM with B
     await chatA.startPM(USER_B.username);

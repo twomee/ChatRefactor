@@ -12,8 +12,20 @@ class AuthPage {
       await injectRuntimeConfig(this.page.context());
       this._configInjected = true;
     }
-    await this.page.goto('/login');
-    await this.page.waitForSelector('.login-card');
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await this.page.goto('/login', { waitUntil: 'domcontentloaded', timeout: 20_000 });
+      const loaded = await this.page.waitForSelector('.login-card', { timeout: 15_000 }).catch(() => null);
+      if (loaded) return;
+      const bodyText = await this.page.locator('body').textContent().catch(() => '');
+      if (bodyText.includes('rate limit') || bodyText.includes('429')) {
+        await this.page.waitForTimeout(5_000);
+        continue;
+      }
+      await this.page.reload({ waitUntil: 'domcontentloaded' });
+      const reloaded = await this.page.waitForSelector('.login-card', { timeout: 15_000 }).catch(() => null);
+      if (reloaded) return;
+    }
+    await this.page.waitForSelector('.login-card', { timeout: 15_000 });
   }
 
   async switchToRegister() {

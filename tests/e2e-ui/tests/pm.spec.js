@@ -10,10 +10,10 @@ test.describe('PM', () => {
     const chatA = new ChatPage(pageA);
     const chatB = new ChatPage(pageB);
 
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
+    // Both join the test room so they appear in each other's user list
+    await chatA.switchRoom(TEST_ROOM);
+    await chatB.switchRoom(TEST_ROOM);
+    await pageA.waitForTimeout(1_000);
 
     // A starts PM with B
     await chatA.startPM(USER_B.username);
@@ -54,10 +54,10 @@ test.describe('PM', () => {
     const { pageA, pageB, ctxA, ctxB } = await twoBrowsers(browser, 'userA', 'userB');
     const chatA = new ChatPage(pageA);
 
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
+    // Both join the test room so they appear in each other's user list
+    await chatA.switchRoom(TEST_ROOM);
+    await new ChatPage(pageB).switchRoom(TEST_ROOM);
+    await pageA.waitForTimeout(1_000);
 
     // A starts PM with B
     await chatA.startPM(USER_B.username);
@@ -70,8 +70,10 @@ test.describe('PM', () => {
     await (await chatA.getMessage(editOriginal)).first().waitFor({ timeout: 5_000 });
 
     await chatA.editMessage(editOriginal, editNew);
+    // Wait for the edit to propagate via REST API
+    await pageA.waitForTimeout(1_000);
     const editedEl = await chatA.getMessage(editNew);
-    await expect(editedEl.first()).toBeVisible({ timeout: 5_000 });
+    await expect(editedEl.first()).toBeVisible({ timeout: 10_000 });
 
     const editedBadge = pageA.locator(`.msg:has-text("${editNew}") .msg-edited-badge`);
     await expect(editedBadge.first()).toBeVisible({ timeout: 5_000 });
@@ -108,10 +110,10 @@ test.describe('PM', () => {
     const { pageA, pageB, ctxA, ctxB } = await twoBrowsers(browser, 'userA', 'userB');
     const chatA = new ChatPage(pageA);
 
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
+    // Both join the test room so they appear in each other's user list
+    await chatA.switchRoom(TEST_ROOM);
+    await new ChatPage(pageB).switchRoom(TEST_ROOM);
+    await pageA.waitForTimeout(1_000);
 
     await chatA.startPM(USER_B.username);
     await pageA.waitForTimeout(1_000);
@@ -120,7 +122,7 @@ test.describe('PM', () => {
     await chatA.sendMessage(msg);
     await (await chatA.getMessage(msg)).first().waitFor({ timeout: 5_000 });
 
-    await chatA.addReaction(msg, 'thumbs up');
+    await chatA.addReaction(msg, '👍');
 
     const reactionChip = pageA.locator(`.msg:has-text("${msg}") .reaction-chip`);
     await expect(reactionChip.first()).toBeVisible({ timeout: 5_000 });
@@ -141,10 +143,10 @@ test.describe('PM', () => {
     const { pageA, pageB, ctxA, ctxB } = await twoBrowsers(browser, 'userA', 'userB');
     const chatA = new ChatPage(pageA);
 
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
+    // Both join the test room so they appear in each other's user list
+    await chatA.switchRoom(TEST_ROOM);
+    await new ChatPage(pageB).switchRoom(TEST_ROOM);
+    await pageA.waitForTimeout(1_000);
 
     await chatA.startPM(USER_B.username);
     await pageA.waitForTimeout(1_000);
@@ -175,21 +177,16 @@ test.describe('PM', () => {
 
   test('Test 28: room closed toast', async ({ browser }) => {
     const { pageA, pageB, ctxA, ctxB } = await twoBrowsers(browser, 'admin', 'userB');
-    const chatAdmin = new ChatPage(pageA);
     const chatB = new ChatPage(pageB);
-
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     // B joins test room
     await chatB.switchRoom(TEST_ROOM);
     await pageB.waitForTimeout(500);
 
-    // Admin closes the room via admin panel
-    await pageA.goto('/admin');
-    await pageA.waitForSelector('.admin-page', { timeout: 10_000 });
+    // Admin navigates to admin panel via UI dropdown
+    await pageA.locator('[data-testid="user-dropdown-trigger"]').click();
+    await pageA.locator('[data-testid="dropdown-admin"]').click();
+    await pageA.waitForSelector('.admin-page', { timeout: 15_000 });
 
     const { AdminPage } = require('../fixtures/admin');
     const admin = new AdminPage(pageA);

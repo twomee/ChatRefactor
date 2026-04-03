@@ -42,25 +42,32 @@ test.describe('Chat Sidebar', () => {
     await chatB.switchRoom(TEST_ROOM);
     await pageA.waitForTimeout(500);
 
-    // A needs a second room to switch to
-    const secondRoom = pageA.locator('.room-item:not(:has-text("' + TEST_ROOM + '"))').first();
+    // A needs a second room to switch to — get the room name from .room-name span
+    const secondRoom = pageA.locator(`.room-item:not(:has-text("${TEST_ROOM}")) .room-name`).first();
     const hasSecondRoom = await secondRoom.isVisible().catch(() => false);
 
     if (hasSecondRoom) {
       const secondRoomName = await secondRoom.textContent();
       await chatA.switchRoom(secondRoomName.trim());
     } else {
-      // If no second room available, we still verify B can receive messages
-      // A stays but we test badge display after B sends
+      // If no second room available, join an available room first
+      const availRoom = pageA.locator('.room-item-available .room-name').first();
+      const hasAvail = await availRoom.isVisible().catch(() => false);
+      if (hasAvail) {
+        const availName = await availRoom.textContent();
+        await chatA.switchRoom(availName.trim());
+      }
     }
 
     // B sends a message in TEST_ROOM
     const uniqMsg = `badge_test_${Date.now()}`;
     await chatB.sendMessage(uniqMsg);
-    await pageB.waitForTimeout(1_000);
+    // Wait for message to propagate
+    await pageB.waitForTimeout(2_000);
 
-    if (hasSecondRoom) {
-      // A should see an unread badge on TEST_ROOM
+    if (hasSecondRoom || await pageA.locator('.room-item-available .room-name').first().isVisible().catch(() => false)) {
+      // A should see an unread badge on TEST_ROOM — wait for it
+      await pageA.waitForTimeout(1_000);
       const badge = await chatA.getUnreadBadge(TEST_ROOM);
       expect(badge).not.toBeNull();
 
@@ -89,8 +96,8 @@ test.describe('Chat Sidebar', () => {
     await chatA.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
 
-    // A switches away
-    const secondRoom = pageA.locator('.room-item:not(:has-text("' + TEST_ROOM + '"))').first();
+    // A switches away — get room name from .room-name span
+    const secondRoom = pageA.locator(`.room-item:not(:has-text("${TEST_ROOM}")) .room-name`).first();
     const hasSecondRoom = await secondRoom.isVisible().catch(() => false);
 
     if (hasSecondRoom) {

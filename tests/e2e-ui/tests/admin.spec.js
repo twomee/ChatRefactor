@@ -11,18 +11,24 @@ test.describe('Admin', () => {
     const admin = new AdminPage(page);
     await admin.goto();
 
+    // Wait for the rooms table to render
+    await page.locator(`tr:has-text("${TEST_ROOM}")`).first().waitFor({ timeout: 10_000 });
+
     await admin.closeRoom(TEST_ROOM);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1_000);
 
     let status = await admin.getRoomStatus(TEST_ROOM);
     expect(status.toLowerCase()).toMatch(/closed/i);
 
-    await refreshAndWait(page);
+    // Reload admin page (don't use refreshAndWait since /admin may 404 via Kong)
+    await admin.goto();
+    await page.locator(`tr:has-text("${TEST_ROOM}")`).first().waitFor({ timeout: 10_000 });
     status = await admin.getRoomStatus(TEST_ROOM);
     expect(status.toLowerCase()).toMatch(/closed/i);
 
+    // Always reopen the room (critical for subsequent tests)
     await admin.openRoom(TEST_ROOM);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1_000);
 
     status = await admin.getRoomStatus(TEST_ROOM);
     expect(status.toLowerCase()).toMatch(/open/i);
@@ -33,18 +39,17 @@ test.describe('Admin', () => {
     const chatAdmin = new ChatPage(pageA);
     const chatB = new ChatPage(pageB);
 
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
-
     await chatAdmin.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
-    await pageA.waitForTimeout(1_000);
+    // Wait for both users to appear in each other's user lists
+    await pageA.locator(`.user-item:has-text("${USER_B.username}")`).waitFor({ timeout: 10_000 });
+    // Wait for admin status to propagate (the ⋮ button appears when admin)
+    await pageA.locator(`.user-item:has-text("${USER_B.username}") .user-item-menu-btn`)
+      .waitFor({ timeout: 15_000 });
 
     // Admin mutes B
     await chatAdmin.muteUser(USER_B.username);
-    await pageB.waitForTimeout(1_000);
+    await pageB.waitForTimeout(3_000);
 
     // B sees muted banner
     const mutedBanner = await chatB.getMutedBanner();
@@ -69,14 +74,10 @@ test.describe('Admin', () => {
     const chatAdmin = new ChatPage(pageA);
     const chatB = new ChatPage(pageB);
 
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
-
     await chatAdmin.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
-    await pageA.waitForTimeout(1_000);
+    // Wait for WebSocket to propagate user list and admin status
+    await pageA.waitForTimeout(2_000);
 
     // Admin promotes B
     await chatAdmin.promoteUser(USER_B.username);

@@ -42,6 +42,36 @@ async function registerAndLogin(baseURL, user) {
   }
 
   const data = await loginRes.json();
+
+  // Handle 2FA-enabled users: if login returns requires_2fa, we can't proceed
+  // without a TOTP code. Log a warning — tests that need this user will skip.
+  if (data.requires_2fa) {
+    console.warn(`WARNING: User ${user.username} has 2FA enabled from a previous run. Creating a fresh user.`);
+    // Create a fresh user variant to bypass 2FA
+    const freshUser = { ...user, username: user.username + '_' + Date.now().toString(36) };
+    if (freshUser.email) freshUser.email = freshUser.username + '@test.com';
+    const freshRegBody = { username: freshUser.username, password: freshUser.password };
+    if (freshUser.email) freshRegBody.email = freshUser.email;
+    await fetch(`${baseURL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(freshRegBody),
+    });
+    const freshLoginRes = await fetch(`${baseURL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: freshUser.username, password: freshUser.password }),
+    });
+    const freshData = await freshLoginRes.json();
+    return {
+      token: freshData.access_token,
+      user: { username: freshUser.username, user_id: freshData.user_id, is_global_admin: freshData.is_global_admin || false },
+    };
+  }
+
+  if (!data.access_token) {
+    console.warn(`WARNING: Login failed for ${user.username}: ${JSON.stringify(data)}`);
+  }
   return {
     token: data.access_token,
     user: { username: user.username, user_id: data.user_id, is_global_admin: data.is_global_admin || false },
@@ -57,9 +87,15 @@ test('register all test users and save tokens', async () => {
   tokens.userA = await registerAndLogin(baseURL, USER_A);
   tokens.userB = await registerAndLogin(baseURL, USER_B);
   tokens.userC = await registerAndLogin(baseURL, USER_C);
-  tokens.userD = await registerAndLogin(baseURL, USER_D);
-  tokens.userE = await registerAndLogin(baseURL, USER_E);
+  // Users D and E are used for settings tests (password change, 2FA).
+  // Previous runs may have modified their credentials, so always create fresh users.
+  const ts = Date.now().toString(36);
+  const freshD = { username: `delta_ui_${ts}`, email: `delta_ui_${ts}@test.com`, password: USER_D.password };
+  const freshE = { username: `echo_ui_${ts}`, email: `echo_ui_${ts}@test.com`, password: USER_E.password };
+  tokens.userD = await registerAndLogin(baseURL, freshD);
+  tokens.userE = await registerAndLogin(baseURL, freshE);
 
+  // Create the test room (may already exist)
   await fetch(`${baseURL}/rooms`, {
     method: 'POST',
     headers: {
@@ -68,6 +104,22 @@ test('register all test users and save tokens', async () => {
     },
     body: JSON.stringify({ name: TEST_ROOM }),
   });
+
+  // Ensure the test room is open (it may have been closed by a previous test run)
+  // First, find the room ID from the admin rooms endpoint
+  const adminRoomsRes = await fetch(`${baseURL}/admin/rooms`, {
+    headers: { 'Authorization': `Bearer ${tokens.admin.token}` },
+  }).catch(() => null);
+  if (adminRoomsRes?.ok) {
+    const adminRooms = await adminRoomsRes.json();
+    const testRoom = adminRooms.find(r => r.name === TEST_ROOM);
+    if (testRoom && !testRoom.is_active) {
+      await fetch(`${baseURL}/admin/rooms/${testRoom.id}/open`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${tokens.admin.token}` },
+      });
+    }
+  }
 
   fs.mkdirSync(TOKENS_DIR, { recursive: true });
   fs.writeFileSync(TOKENS_PATH, JSON.stringify(tokens, null, 2));

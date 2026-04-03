@@ -1,7 +1,7 @@
 // Tests 35-38: Settings page
 const { test, expect } = require('@playwright/test');
 const { spawnSync } = require('child_process');
-const { fastLogin, refreshAndWait } = require('../fixtures/helpers');
+const { fastLogin, refreshAndWait, loadTokens } = require('../fixtures/helpers');
 const { SettingsPage } = require('../fixtures/settings');
 const { AuthPage } = require('../fixtures/auth');
 const { USER_D, USER_E } = require('../fixtures/test-data');
@@ -14,7 +14,10 @@ function generateTOTP(secret) {
 }
 
 // Track the new password between tests (Test 35 changes it)
+// Note: the password is unique per test suite run
 let echoNewPassword = `NewPass${Date.now()}!`;
+// Track whether we're using the original or changed password
+let echoCurrentPassword = null; // will be set from USER_E.password initially
 
 test.describe('Settings', () => {
   test('Test 35: change password', async ({ page, context }) => {
@@ -29,13 +32,17 @@ test.describe('Settings', () => {
     expect(msg.toLowerCase()).toMatch(/success|updated|changed/i);
 
     // Logout and login with new password
+    // Get the actual username from tokens (may be a fresh user due to 2FA state)
+    const tokens = loadTokens();
+    const actualUsername = tokens.userE.user.username;
+
     const auth = new AuthPage(page);
     await auth.logout();
     await page.waitForURL('**/login', { timeout: 10_000 });
 
     const authPage = new AuthPage(page);
     await authPage.goto();
-    await authPage.login(USER_E.username, echoNewPassword);
+    await authPage.login(actualUsername, echoNewPassword);
     await page.waitForURL('**/chat', { timeout: 15_000 });
     expect(page.url()).toContain('/chat');
   });
@@ -52,8 +59,9 @@ test.describe('Settings', () => {
     expect(msg).toBeTruthy();
     expect(msg.toLowerCase()).toMatch(/success|updated|changed/i);
 
-    await refreshAndWait(page);
+    // Navigate back to settings to verify (don't use refreshAndWait since /settings may 404 via Kong)
     await settings.goto();
+    await page.waitForTimeout(500);
 
     const currentEmail = await settings.getCurrentEmail();
     expect(currentEmail).toContain(newEmail);
@@ -85,8 +93,9 @@ test.describe('Settings', () => {
     expect(msg).toBeTruthy();
     expect(msg.toLowerCase()).toMatch(/enabled|success|verified/i);
 
-    await refreshAndWait(page);
+    // Navigate back to settings to verify
     await settings.goto();
+    await page.waitForTimeout(500);
 
     // 2FA should show as enabled
     const enabled = page.locator('.tfa-panel p:has-text("currently enabled")');
@@ -136,8 +145,9 @@ test.describe('Settings', () => {
       expect(msg).toBeTruthy();
       expect(msg.toLowerCase()).toMatch(/disabled|removed|success/i);
 
-      await refreshAndWait(page);
+      // Navigate back to settings to verify
       await settings.goto();
+      await page.waitForTimeout(500);
 
       // Enable button should be visible (indicating 2FA is disabled)
       const enableBtn = page.locator('button:has-text("Enable 2FA")');

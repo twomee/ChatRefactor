@@ -4,8 +4,33 @@ class AdminPage {
   }
 
   async goto() {
-    await this.page.goto('/admin');
-    await this.page.waitForSelector('.admin-page');
+    // Try direct URL navigation first
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await this.page.goto('/admin', { waitUntil: 'domcontentloaded', timeout: 20_000 });
+      const loaded = await this.page.waitForSelector('.admin-page', { timeout: 10_000 }).catch(() => null);
+      if (loaded) return;
+
+      // Check for 404 or rate limit — fall back to SPA navigation
+      const bodyText = await this.page.locator('body').textContent().catch(() => '');
+      if (bodyText.includes('404') || bodyText.includes('not found')) {
+        // Navigate via SPA: go to /chat first, then use dropdown
+        await this.page.goto('/chat', { waitUntil: 'domcontentloaded', timeout: 20_000 });
+        await this.page.waitForSelector('.chat-layout', { timeout: 15_000 }).catch(() => {});
+        await this.page.locator('[data-testid="user-dropdown-trigger"]').click();
+        const adminItem = this.page.locator('[data-testid="dropdown-admin"]');
+        const hasAdmin = await adminItem.isVisible().catch(() => false);
+        if (hasAdmin) {
+          await adminItem.click();
+          const loaded2 = await this.page.waitForSelector('.admin-page', { timeout: 15_000 }).catch(() => null);
+          if (loaded2) return;
+        }
+      }
+      if (bodyText.includes('rate limit') || bodyText.includes('429')) {
+        await this.page.waitForTimeout(5_000);
+        continue;
+      }
+    }
+    await this.page.waitForSelector('.admin-page', { timeout: 15_000 });
   }
 
   async createRoom(name) {

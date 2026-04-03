@@ -10,10 +10,10 @@ test.describe('PM Typing', () => {
     const chatA = new ChatPage(pageA);
     const chatB = new ChatPage(pageB);
 
-    await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
-    await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
+    // Both join room so they can see each other
+    await chatA.switchRoom('ui-test-room');
+    await chatB.switchRoom('ui-test-room');
+    await pageA.waitForTimeout(1_000);
 
     // A opens PM with B
     await chatA.startPM(USER_B.username);
@@ -27,24 +27,22 @@ test.describe('PM Typing', () => {
     await chatA.sendMessage(`pm_typing_init_${Date.now()}`);
     await pageA.waitForTimeout(500);
 
-    // A starts typing
-    await pageA.locator('.message-input').fill('I am typing...');
+    // A starts typing — use type() to trigger onChange events
+    await pageA.locator('.message-input').click();
+    await pageA.locator('.message-input').type('I am typing...', { delay: 50 });
 
-    // B should see typing indicator
+    // B should see typing indicator (the div always exists but is empty when no one types)
     const typingIndicator = await chatB.getTypingIndicator();
-    await expect(typingIndicator).toBeVisible({ timeout: 8_000 });
+    await expect(typingIndicator).toHaveText(/is typing/, { timeout: 8_000 });
 
-    const indicatorText = await typingIndicator.textContent();
-    expect(indicatorText).toBeTruthy();
-    expect(indicatorText.length).toBeGreaterThan(0);
-
-    // A stops typing (clears input)
+    // A stops typing (clear input using triple-click + backspace to trigger onChange)
     await pageA.locator('.message-input').fill('');
-    await pageA.waitForTimeout(3_000);
+    await pageA.waitForTimeout(4_000);
 
-    // Typing indicator should disappear
-    const isStillVisible = await typingIndicator.isVisible().catch(() => false);
-    expect(isStillVisible).toBe(false);
+    // Typing indicator should be empty (no one typing)
+    const text = await typingIndicator.textContent();
+    // After timeout, typing should clear — text should be empty or very short (just dots)
+    expect(text.includes('is typing')).toBe(false);
 
     await ctxA.close();
     await ctxB.close();

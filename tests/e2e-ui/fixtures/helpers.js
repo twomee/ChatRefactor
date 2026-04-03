@@ -30,7 +30,9 @@ async function injectRuntimeConfig(context) {
 
 async function fastLogin(context, page, userKey) {
   const tokens = loadTokens();
-  const { token, user } = tokens[userKey];
+  const entry = tokens[userKey];
+  if (!entry) throw new Error(`No token found for user key "${userKey}"`);
+  const { token, user } = entry;
   await injectRuntimeConfig(context);
   await context.addInitScript(({ token, user }) => {
     if (window.location.hostname !== '') {
@@ -38,16 +40,40 @@ async function fastLogin(context, page, userKey) {
       window.sessionStorage.setItem('user', JSON.stringify(user));
     }
   }, { token, user });
-  await page.goto('/chat');
+
+  // Navigate to chat page with retry for rate-limit errors
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await page.goto('/chat', { waitUntil: 'domcontentloaded', timeout: 15_000 });
+    const loaded = await page.waitForSelector('.chat-layout', { timeout: 10_000 }).catch(() => null);
+    if (loaded) break;
+
+    // Check for rate-limit error page
+    const bodyText = await page.locator('body').textContent().catch(() => '');
+    if (bodyText.includes('rate limit') || bodyText.includes('429')) {
+      await page.waitForTimeout(3_000);
+    }
+  }
   await page.waitForSelector('.chat-layout', { timeout: 10_000 });
+
+  // Wait for rooms to load — one reload attempt if they don't appear
+  const hasRooms = await page.locator('.room-item, .room-item-available').first()
+    .waitFor({ timeout: 5_000 }).then(() => true).catch(() => false);
+  if (!hasRooms) {
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.chat-layout', { timeout: 10_000 }).catch(() => {});
+    await page.locator('.room-item, .room-item-available').first()
+      .waitFor({ timeout: 5_000 }).catch(() => {});
+  }
 }
 
 async function twoBrowsers(browser, userKeyA, userKeyB) {
   const tokens = loadTokens();
-  const ctxA = await browser.newContext();
-  const ctxB = await browser.newContext();
+  const ctxA = await browser.newContext({ baseURL: BASE_URL });
+  const ctxB = await browser.newContext({ baseURL: BASE_URL });
   const tokenA = tokens[userKeyA];
   const tokenB = tokens[userKeyB];
+  if (!tokenA) throw new Error(`No token found for user key "${userKeyA}"`);
+  if (!tokenB) throw new Error(`No token found for user key "${userKeyB}"`);
 
   await injectRuntimeConfig(ctxA);
   await injectRuntimeConfig(ctxB);
@@ -68,11 +94,52 @@ async function twoBrowsers(browser, userKeyA, userKeyB) {
 
   const pageA = await ctxA.newPage();
   const pageB = await ctxB.newPage();
+
+  // Navigate browsers to the chat page sequentially to avoid rate-limit storms
+  await navigateWithRetry(pageA, '/chat');
+  // Small delay between navigations to avoid rate limiting
+  await pageA.waitForTimeout(1_000);
+  await navigateWithRetry(pageB, '/chat');
+
   return { pageA, pageB, ctxA, ctxB };
 }
 
+/**
+ * Navigate to a page with retry logic for rate-limit resilience.
+ */
+async function navigateWithRetry(page, path) {
+  await page.goto(path, { waitUntil: 'domcontentloaded', timeout: 15_000 });
+  const loaded = await page.waitForSelector(
+    '.chat-layout, .login-card, .settings-layout, .admin-page',
+    { timeout: 10_000 }
+  ).catch(() => null);
+  if (loaded) return;
+
+  // Check for rate-limit error and retry once
+  const bodyText = await page.locator('body').textContent().catch(() => '');
+  if (bodyText.includes('rate limit') || bodyText.includes('429')) {
+    await page.waitForTimeout(3_000);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+  } else {
+    await page.reload({ waitUntil: 'domcontentloaded' });
+  }
+  await page.waitForSelector('.chat-layout, .admin-page', { timeout: 10_000 });
+}
+
 async function refreshAndWait(page) {
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 15_000 });
+  const loaded = await page.waitForSelector(
+    '.chat-layout, .login-card, .settings-layout, .admin-page',
+    { timeout: 10_000 }
+  ).catch(() => null);
+  if (loaded) return;
+
+  // One retry for rate limit
+  const bodyText = await page.locator('body').textContent().catch(() => '');
+  if (bodyText.includes('rate limit') || bodyText.includes('429') || bodyText.includes('404')) {
+    await page.waitForTimeout(3_000);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+  }
   await page.waitForSelector('.chat-layout, .login-card, .settings-layout, .admin-page', { timeout: 10_000 });
 }
 

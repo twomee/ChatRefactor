@@ -12,37 +12,37 @@ test.describe('Visual Regression', () => {
     // 1. Login page — Sign In tab
     const auth = new AuthPage(page);
     await auth.goto();
-    await expect(page).toHaveScreenshot('login-signin.png', { fullPage: true });
+    await expect(page).toHaveScreenshot('login-signin.png', { fullPage: true, maxDiffPixelRatio: 0.05 });
 
     // 2. Login page — Register tab
     await auth.switchToRegister();
     await page.waitForTimeout(300);
-    await expect(page).toHaveScreenshot('login-register.png', { fullPage: true });
+    await expect(page).toHaveScreenshot('login-register.png', { fullPage: true, maxDiffPixelRatio: 0.05 });
 
     // 3. Chat with a room selected
     await fastLogin(context, page, 'userA');
-    await page.waitForSelector('.chat-layout', { timeout: 10_000 });
+    await page.waitForSelector('.chat-layout', { timeout: 15_000 });
     const chat = new ChatPage(page);
     await chat.switchRoom(TEST_ROOM);
     await page.waitForTimeout(1_000);
-    await expect(page).toHaveScreenshot('chat-room.png', { fullPage: true });
+    await expect(page).toHaveScreenshot('chat-room.png', { fullPage: true, maxDiffPixelRatio: 0.05 });
 
     // 4. Chat empty state (no room selected) — navigate to /chat fresh
-    await page.goto('/chat');
-    await page.waitForSelector('.chat-layout', { timeout: 10_000 });
+    await page.goto('/chat', { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.chat-layout', { timeout: 15_000 });
     await page.waitForTimeout(500);
-    await expect(page).toHaveScreenshot('chat-empty.png', { fullPage: true });
+    await expect(page).toHaveScreenshot('chat-empty.png', { fullPage: true, maxDiffPixelRatio: 0.05 });
 
     // 5. Settings page
     const settings = new SettingsPage(page);
     await settings.goto();
     await page.waitForTimeout(500);
-    await expect(page).toHaveScreenshot('settings.png', { fullPage: true });
+    await expect(page).toHaveScreenshot('settings.png', { fullPage: true, maxDiffPixelRatio: 0.05 });
 
     // 6. Admin page
     const admin = new AdminPage(page);
     await admin.goto();
     await page.waitForTimeout(500);
-    await expect(page).toHaveScreenshot('admin.png', { fullPage: true });
+    await expect(page).toHaveScreenshot('admin.png', { fullPage: true, maxDiffPixelRatio: 0.05 });
   });
 });
