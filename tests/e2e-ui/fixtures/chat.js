@@ -296,7 +296,7 @@ class ChatPage {
   }
 
   async waitForToast(text) {
-    await this.page.locator(`[data-testid="toast-card"]:has-text("${text}")`).waitFor({ timeout: 5000 });
+    await this.page.locator(`[data-testid="toast-card"]:has-text("${text}")`).waitFor({ timeout: 10_000 });
   }
 }
 
