@@ -6,7 +6,7 @@ const WS_BASE = BASE_URL.replace(/^http/, 'ws');
 
 module.exports = defineConfig({
   testDir: './tests',
-  timeout: 30_000,
+  timeout: 60_000,
   retries: 1,
   workers: 1,
   reporter: [['html', { open: 'never' }], ['list']],

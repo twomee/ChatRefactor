@@ -27,9 +27,11 @@ test.describe('Settings', () => {
 
     await settings.changePassword(USER_E.password, echoNewPassword, echoNewPassword);
 
-    const msg = await settings.getStatusMessage();
-    expect(msg).toBeTruthy();
-    expect(msg.toLowerCase()).toMatch(/success|updated|changed/i);
+    // Wait specifically for the password success message
+    const successEl = page.locator('.settings-success');
+    await successEl.waitFor({ timeout: 10_000 });
+    const msg = await successEl.textContent();
+    expect(msg.toLowerCase()).toContain('password updated');
 
     // Logout and login with new password
     // Get the actual username from tokens (may be a fresh user due to 2FA state)
@@ -55,9 +57,11 @@ test.describe('Settings', () => {
     const newEmail = `echo_ui_new_${Date.now()}@test.com`;
     await settings.changeEmail(newEmail, echoNewPassword);
 
-    const msg = await settings.getStatusMessage();
-    expect(msg).toBeTruthy();
-    expect(msg.toLowerCase()).toMatch(/success|updated|changed/i);
+    // Wait specifically for the email success message
+    const successEl = page.locator('.settings-success');
+    await successEl.waitFor({ timeout: 10_000 });
+    const msg = await successEl.textContent();
+    expect(msg.toLowerCase()).toContain('email updated');
 
     // Navigate back to settings to verify (don't use refreshAndWait since /settings may 404 via Kong)
     await settings.goto();
