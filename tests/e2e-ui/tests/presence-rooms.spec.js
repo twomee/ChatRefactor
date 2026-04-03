@@ -3,7 +3,7 @@ const { test, expect } = require('@playwright/test');
 const { twoBrowsers } = require('../fixtures/helpers');
 const { ChatPage } = require('../fixtures/chat');
 const { AuthPage } = require('../fixtures/auth');
-const { TEST_ROOM, USER_A, USER_B } = require('../fixtures/test-data');
+const { TEST_ROOM, USER_A, USER_B, ADMIN } = require('../fixtures/test-data');
 
 test.describe('Presence - Rooms', () => {
   test('Test 39: admin role survives logout', async ({ browser }) => {
@@ -12,16 +12,16 @@ test.describe('Presence - Rooms', () => {
     const chatB = new ChatPage(pageB);
 
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     await chatAdmin.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
     await pageA.waitForTimeout(1_000);
 
     // Check admin badge visible in B's view for admin user
-    const adminBadge = pageB.locator(`.user-item:has-text("admin") .admin-badge, .user-item:has-text("admin") :has-text("Admin")`).first();
+    const adminBadge = pageB.locator(`.user-item:has-text("${ADMIN.username}") .user-item-role`).first();
     const hasBadge = await adminBadge.isVisible().catch(() => false);
 
     // Admin logs out via UI
@@ -31,15 +31,15 @@ test.describe('Presence - Rooms', () => {
 
     // Admin logs back in via UI
     await authAdmin.goto();
-    await authAdmin.login('admin', 'changeme');
+    await authAdmin.login(ADMIN.username, ADMIN.password);
     await pageA.waitForURL('**/chat', { timeout: 15_000 });
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     await chatAdmin.switchRoom(TEST_ROOM);
     await pageA.waitForTimeout(1_000);
 
     // Admin should still have admin badge after re-login
-    const adminBadgeAfter = pageB.locator(`.user-item:has-text("admin") .admin-badge, .user-item:has-text("admin") :has-text("Admin")`).first();
+    const adminBadgeAfter = pageB.locator(`.user-item:has-text("${ADMIN.username}") .user-item-role`).first();
     const hasBadgeAfter = await adminBadgeAfter.isVisible().catch(() => false);
 
     // If admin had badge before logout, should still have it
@@ -47,7 +47,7 @@ test.describe('Presence - Rooms', () => {
       expect(hasBadgeAfter).toBe(true);
     } else {
       // Just verify the admin is in the user list
-      const adminInList = await chatB.isUserInList('admin');
+      const adminInList = await chatB.isUserInList(ADMIN.username);
       expect(adminInList).toBe(true);
     }
 
@@ -61,9 +61,9 @@ test.describe('Presence - Rooms', () => {
     const chatB = new ChatPage(pageB);
 
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     await chatA.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
@@ -93,9 +93,9 @@ test.describe('Presence - Rooms', () => {
     const chatB = new ChatPage(pageB);
 
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     await chatA.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
@@ -106,11 +106,11 @@ test.describe('Presence - Rooms', () => {
     expect(aInList).toBe(true);
 
     // Count messages before refresh
-    const msgsBefore = await pageB.locator('.msg.system-message').count();
+    const msgsBefore = await pageB.locator('.msg.msg-system').count();
 
     // A refreshes
     await pageA.reload({ waitUntil: 'networkidle' });
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await chatA.switchRoom(TEST_ROOM);
     await pageB.waitForTimeout(2_000);
 
@@ -119,7 +119,7 @@ test.describe('Presence - Rooms', () => {
     expect(aInListAfter).toBe(true);
 
     // No spurious leave/join system messages (or at most minimal)
-    const msgsAfter = await pageB.locator('.msg.system-message').count();
+    const msgsAfter = await pageB.locator('.msg.msg-system').count();
     // Tolerate at most 2 new system messages (reconnect)
     expect(msgsAfter - msgsBefore).toBeLessThanOrEqual(2);
 
@@ -133,9 +133,9 @@ test.describe('Presence - Rooms', () => {
     const chatB = new ChatPage(pageB);
 
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     await chatA.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);

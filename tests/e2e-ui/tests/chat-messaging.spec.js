@@ -17,6 +17,7 @@ test.describe('Chat Messaging', () => {
     await expect(msgEl.first()).toBeVisible();
 
     await refreshAndWait(page);
+    await chat.switchRoom(TEST_ROOM);
     const msgAfter = await chat.getMessage(msg);
     await expect(msgAfter.first()).toBeVisible();
   });
@@ -36,13 +37,14 @@ test.describe('Chat Messaging', () => {
     const editedMsg = await chat.getMessage(edited);
     await expect(editedMsg.first()).toBeVisible();
 
-    const editedBadge = page.locator(`.msg:has-text("${edited}") :is(.edited-badge, .msg-edited, text=(edited))`);
+    const editedBadge = page.locator(`.msg:has-text("${edited}") .msg-edited-badge`);
     await expect(editedBadge.first()).toBeVisible({ timeout: 5_000 });
 
     await refreshAndWait(page);
+    await chat.switchRoom(TEST_ROOM);
     const editedAfter = await chat.getMessage(edited);
     await expect(editedAfter.first()).toBeVisible();
-    const badgeAfter = page.locator(`.msg:has-text("${edited}") :is(.edited-badge, .msg-edited, text=(edited))`);
+    const badgeAfter = page.locator(`.msg:has-text("${edited}") .msg-edited-badge`);
     await expect(badgeAfter.first()).toBeVisible();
   });
 
@@ -61,6 +63,7 @@ test.describe('Chat Messaging', () => {
     await expect(deletedEl.first()).toBeVisible({ timeout: 5_000 });
 
     await refreshAndWait(page);
+    await chat.switchRoom(TEST_ROOM);
     const deletedAfter = page.locator('.msg:has-text("[deleted]")');
     await expect(deletedAfter.first()).toBeVisible();
   });
@@ -111,6 +114,7 @@ test.describe('Chat Messaging', () => {
     expect(msgCount).toBe(0);
 
     await refreshAndWait(page);
+    await chat.switchRoom(TEST_ROOM);
     const messagesAfter = page.locator('.msg');
     const msgCountAfter = await messagesAfter.count();
     expect(msgCountAfter).toBe(0);
@@ -125,7 +129,7 @@ test.describe('Chat Messaging', () => {
     await chatB.switchRoom(TEST_ROOM);
 
     // A starts typing
-    await pageA.locator('.msg-input input, .msg-input textarea').fill('typing...');
+    await pageA.locator('.message-input').fill('typing...');
 
     const indicator = await chatB.getTypingIndicator();
     await expect(indicator).toBeVisible({ timeout: 8_000 });
@@ -190,11 +194,12 @@ test.describe('Chat Messaging', () => {
     await chat.sendMessage('Check https://example.com');
     await page.waitForTimeout(2_000);
 
-    const preview = page.locator('.link-preview').first();
+    const preview = page.locator('.link-preview-card').first();
     await expect(preview).toBeVisible({ timeout: 10_000 });
 
     await refreshAndWait(page);
-    const previewAfter = page.locator('.link-preview').first();
+    await chat.switchRoom(TEST_ROOM);
+    const previewAfter = page.locator('.link-preview-card').first();
     await expect(previewAfter).toBeVisible({ timeout: 5_000 });
   });
 });

@@ -11,12 +11,21 @@ class ChatPage {
   async exitRoom(name) {
     const room = this.page.locator(`.room-item:has-text("${name}")`);
     await room.hover();
-    await room.locator('.room-exit-btn, .room-close-btn').click();
+    await room.locator('.room-exit-btn').click();
   }
 
   async switchRoom(name) {
-    await this.page.click(`.room-item:has-text("${name}")`);
-    await this.page.waitForTimeout(500);
+    // If the room has a Join button (in "Available" section), join it first
+    const joinBtn = this.page.locator(`.room-item-available:has-text("${name}") .room-join-btn`);
+    if (await joinBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await joinBtn.click();
+      // After join, the room auto-selects — wait for the message input
+      await this.page.waitForSelector('.message-input', { timeout: 10_000 });
+      return;
+    }
+    // Room is already joined — click to select it
+    await this.page.locator(`.room-item:has-text("${name}")`).first().click();
+    await this.page.waitForSelector('.message-input', { timeout: 10_000 });
   }
 
   async getUnreadBadge(roomName) {
@@ -31,7 +40,7 @@ class ChatPage {
 
   // ── Messages ──
   async sendMessage(text) {
-    await this.page.fill('.msg-input input, .msg-input textarea', text);
+    await this.page.fill('.message-input', text);
     await this.page.keyboard.press('Enter');
   }
 
@@ -42,20 +51,20 @@ class ChatPage {
   async editMessage(msgText, newText) {
     const msg = this.page.locator(`.msg:has-text("${msgText}")`);
     await msg.hover();
-    await msg.locator('.msg-action-edit, [title="Edit"]').click();
-    await this.page.fill('.msg-input input, .msg-input textarea', newText);
+    await msg.locator('.msg-action-btn[title="Edit"], [title="Edit"]').click();
+    await this.page.fill('.message-input', newText);
     await this.page.keyboard.press('Enter');
   }
 
   async deleteMessage(msgText) {
     const msg = this.page.locator(`.msg:has-text("${msgText}")`);
     await msg.hover();
-    await msg.locator('.msg-action-delete, [title="Delete"]').click();
+    await msg.locator('.msg-action-btn[title="Delete"], [title="Delete"]').click();
   }
 
   async addReaction(msgText, emoji) {
     const msg = this.page.locator(`.msg:has-text("${msgText}")`);
-    await msg.locator('.reaction-add-btn, [title="Add reaction"]').click();
+    await msg.locator('.reaction-add-btn').click();
     await this.page.locator(`[data-emoji-mart] button[aria-label*="${emoji}"]`).first().click();
   }
 
@@ -65,8 +74,8 @@ class ChatPage {
   }
 
   async clearHistory() {
-    await this.page.click('.clear-history-btn, [title*="Clear"]');
-    await this.page.click('[data-testid="clear-yes"], button:has-text("Yes")');
+    await this.page.click('[data-testid="clear-room-history"]');
+    await this.page.click('[data-testid="clear-room-yes"]');
   }
 
   // ── Files ──
@@ -86,16 +95,16 @@ class ChatPage {
   }
 
   async search(query) {
-    await this.page.fill('.search-modal input', query);
+    await this.page.fill('.search-modal-input', query);
     await this.page.waitForTimeout(500);
   }
 
   async getSearchResults() {
-    return this.page.locator('.search-result');
+    return this.page.locator('.search-result-item');
   }
 
   async clickSearchResult(index) {
-    await this.page.locator('.search-result').nth(index).click();
+    await this.page.locator('.search-result-item').nth(index).click();
   }
 
   // ── User list (admin actions) ──
@@ -156,7 +165,7 @@ class ChatPage {
   async deletePMConversation(username) {
     const pm = this.page.locator(`.pm-item:has-text("${username}")`);
     await pm.hover();
-    await pm.locator('.pm-close-btn, .pm-delete-btn').click();
+    await pm.locator('.pm-close-btn').click();
   }
 
   async clearPMHistory() {
@@ -166,11 +175,11 @@ class ChatPage {
 
   // ── Toast ──
   async getToast() {
-    return this.page.locator('.toast-card').first();
+    return this.page.locator('[data-testid="toast-card"]').first();
   }
 
   async waitForToast(text) {
-    await this.page.locator(`.toast-card:has-text("${text}")`).waitFor({ timeout: 5000 });
+    await this.page.locator(`[data-testid="toast-card"]:has-text("${text}")`).waitFor({ timeout: 5000 });
   }
 }
 

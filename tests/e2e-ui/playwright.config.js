@@ -1,6 +1,9 @@
 // @ts-check
 const { defineConfig } = require('@playwright/test');
 
+const BASE_URL = process.env.BASE_URL || 'http://localhost:8090';
+const WS_BASE = BASE_URL.replace(/^http/, 'ws');
+
 module.exports = defineConfig({
   testDir: './tests',
   timeout: 30_000,
@@ -26,7 +29,7 @@ module.exports = defineConfig({
       name: 'e2e',
       dependencies: ['setup'],
       use: {
-        baseURL: process.env.BASE_URL || 'http://localhost:8090',
+        baseURL: BASE_URL,
         browserName: 'chromium',
         headless: true,
         screenshot: 'only-on-failure',

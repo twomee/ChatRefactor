@@ -25,7 +25,7 @@ class AdminPage {
 
   async getRoomStatus(name) {
     const row = this.page.locator(`tr:has-text("${name}")`);
-    return row.locator('.admin-room-status, td:nth-child(3)').textContent();
+    return row.locator('.admin-room-status').textContent();
   }
 
   async promoteUser(username) {

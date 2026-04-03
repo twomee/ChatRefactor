@@ -11,9 +11,9 @@ test.describe('PM Typing', () => {
     const chatB = new ChatPage(pageB);
 
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     // A opens PM with B
     await chatA.startPM(USER_B.username);
@@ -28,7 +28,7 @@ test.describe('PM Typing', () => {
     await pageA.waitForTimeout(500);
 
     // A starts typing
-    await pageA.locator('.msg-input input, .msg-input textarea').fill('I am typing...');
+    await pageA.locator('.message-input').fill('I am typing...');
 
     // B should see typing indicator
     const typingIndicator = await chatB.getTypingIndicator();
@@ -39,7 +39,7 @@ test.describe('PM Typing', () => {
     expect(indicatorText.length).toBeGreaterThan(0);
 
     // A stops typing (clears input)
-    await pageA.locator('.msg-input input, .msg-input textarea').fill('');
+    await pageA.locator('.message-input').fill('');
     await pageA.waitForTimeout(3_000);
 
     // Typing indicator should disappear

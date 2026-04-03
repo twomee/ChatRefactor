@@ -6,7 +6,7 @@ const { ChatPage } = require('../fixtures/chat');
 test.describe('Connection', () => {
   test('Test 45: disconnect reconnect indicator', async ({ page, context }) => {
     await fastLogin(context, page, 'userA');
-    await page.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await page.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     // Block WebSocket connections to simulate disconnect
     await page.route('**/ws/**', route => route.abort());

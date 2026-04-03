@@ -89,7 +89,7 @@ test.describe('Settings', () => {
     await settings.goto();
 
     // 2FA should show as enabled
-    const enabled = page.locator('.twofa-status, [data-testid="2fa-status"]');
+    const enabled = page.locator('.tfa-panel p:has-text("currently enabled")');
     const isEnabled = await enabled.isVisible().catch(() => false);
     if (isEnabled) {
       const statusText = await enabled.textContent();
@@ -103,12 +103,13 @@ test.describe('Settings', () => {
 
   test('Test 38: disable 2FA', async ({ page, context }) => {
     // First get the secret from API to generate code
-    const loginRes = await fetch(`${BASE_URL}/login`, {
+    const loginRes = await fetch(`${BASE_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: USER_D.username, password: USER_D.password }),
     });
-    const { token } = await loginRes.json();
+    const loginData = await loginRes.json();
+    const token = loginData.access_token;
 
     // Get setup info (may fail if not in setup flow — use existing secret from Test 37)
     // We'll disable using the settings UI after fastLogin sets the session
@@ -117,7 +118,7 @@ test.describe('Settings', () => {
     await settings.goto();
 
     // We need the secret to generate TOTP — try to get it from setup again
-    const setupRes = await fetch(`${BASE_URL}/2fa/setup`, {
+    const setupRes = await fetch(`${BASE_URL}/auth/2fa/setup`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -125,7 +126,7 @@ test.describe('Settings', () => {
       },
     });
     const setupData = await setupRes.json();
-    const secret = setupData.secret;
+    const secret = setupData.manual_entry_key;
 
     if (secret) {
       const code = generateTOTP(secret);
@@ -143,7 +144,7 @@ test.describe('Settings', () => {
       await expect(enableBtn).toBeVisible({ timeout: 5_000 });
     } else {
       // 2FA already setup from previous test — just verify settings page loads
-      const settingsPage = page.locator('.settings-page');
+      const settingsPage = page.locator('.settings-layout');
       await expect(settingsPage).toBeVisible();
     }
   });

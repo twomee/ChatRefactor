@@ -21,7 +21,7 @@ test.describe('Visual Regression', () => {
 
     // 3. Chat with a room selected
     await fastLogin(context, page, 'userA');
-    await page.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await page.waitForSelector('.chat-layout', { timeout: 10_000 });
     const chat = new ChatPage(page);
     await chat.switchRoom(TEST_ROOM);
     await page.waitForTimeout(1_000);
@@ -29,7 +29,7 @@ test.describe('Visual Regression', () => {
 
     // 4. Chat empty state (no room selected) — navigate to /chat fresh
     await page.goto('/chat');
-    await page.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await page.waitForSelector('.chat-layout', { timeout: 10_000 });
     await page.waitForTimeout(500);
     await expect(page).toHaveScreenshot('chat-empty.png', { fullPage: true });
 

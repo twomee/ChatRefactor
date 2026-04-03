@@ -11,9 +11,9 @@ test.describe('PM', () => {
     const chatB = new ChatPage(pageB);
 
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     // A starts PM with B
     await chatA.startPM(USER_B.username);
@@ -40,7 +40,7 @@ test.describe('PM', () => {
 
     // Refresh A and verify persistence
     await pageA.reload({ waitUntil: 'networkidle' });
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await chatA.startPM(USER_B.username);
     await pageA.waitForTimeout(1_000);
     const msgAfterRefresh = await chatA.getMessage(msgA);
@@ -55,9 +55,9 @@ test.describe('PM', () => {
     const chatA = new ChatPage(pageA);
 
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     // A starts PM with B
     await chatA.startPM(USER_B.username);
@@ -73,12 +73,12 @@ test.describe('PM', () => {
     const editedEl = await chatA.getMessage(editNew);
     await expect(editedEl.first()).toBeVisible({ timeout: 5_000 });
 
-    const editedBadge = pageA.locator(`.msg:has-text("${editNew}") :is(.edited-badge, .msg-edited, text=(edited))`);
+    const editedBadge = pageA.locator(`.msg:has-text("${editNew}") .msg-edited-badge`);
     await expect(editedBadge.first()).toBeVisible({ timeout: 5_000 });
 
     // Refresh and verify edit persists
     await pageA.reload({ waitUntil: 'networkidle' });
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await chatA.startPM(USER_B.username);
     await pageA.waitForTimeout(1_000);
     const editedAfterRefresh = await chatA.getMessage(editNew);
@@ -94,7 +94,7 @@ test.describe('PM', () => {
     await expect(deletedEl.first()).toBeVisible({ timeout: 5_000 });
 
     await pageA.reload({ waitUntil: 'networkidle' });
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await chatA.startPM(USER_B.username);
     await pageA.waitForTimeout(1_000);
     const deletedAfterRefresh = pageA.locator('.msg:has-text("[deleted]")');
@@ -109,9 +109,9 @@ test.describe('PM', () => {
     const chatA = new ChatPage(pageA);
 
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     await chatA.startPM(USER_B.username);
     await pageA.waitForTimeout(1_000);
@@ -127,7 +127,7 @@ test.describe('PM', () => {
 
     // Refresh and verify reaction persists
     await pageA.reload({ waitUntil: 'networkidle' });
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await chatA.startPM(USER_B.username);
     await pageA.waitForTimeout(1_000);
     const reactionAfterRefresh = pageA.locator(`.msg:has-text("${msg}") .reaction-chip`);
@@ -142,9 +142,9 @@ test.describe('PM', () => {
     const chatA = new ChatPage(pageA);
 
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     await chatA.startPM(USER_B.username);
     await pageA.waitForTimeout(1_000);
@@ -164,7 +164,7 @@ test.describe('PM', () => {
 
     // Refresh — still removed
     await pageA.reload({ waitUntil: 'networkidle' });
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     const pmItemAfter = pageA.locator(`.pm-item:has-text("${USER_B.username}")`);
     const isVisibleAfter = await pmItemAfter.isVisible().catch(() => false);
     expect(isVisibleAfter).toBe(false);
@@ -179,9 +179,9 @@ test.describe('PM', () => {
     const chatB = new ChatPage(pageB);
 
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     // B joins test room
     await chatB.switchRoom(TEST_ROOM);

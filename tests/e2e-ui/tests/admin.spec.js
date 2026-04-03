@@ -34,9 +34,9 @@ test.describe('Admin', () => {
     const chatB = new ChatPage(pageB);
 
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     await chatAdmin.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
@@ -70,9 +70,9 @@ test.describe('Admin', () => {
     const chatB = new ChatPage(pageB);
 
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     await chatAdmin.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
@@ -83,15 +83,15 @@ test.describe('Admin', () => {
     await pageB.waitForTimeout(1_000);
 
     // B should see Admin badge in user list
-    const adminBadge = pageB.locator(`.user-item:has-text("${USER_B.username}") .admin-badge, .user-item:has-text("${USER_B.username}") :has-text("Admin")`).first();
+    const adminBadge = pageB.locator(`.user-item:has-text("${USER_B.username}") .user-item-role`).first();
     await expect(adminBadge).toBeVisible({ timeout: 8_000 });
 
     // Refresh B and verify badge persists
     await pageB.reload({ waitUntil: 'networkidle' });
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
     await chatB.switchRoom(TEST_ROOM);
     await pageB.waitForTimeout(1_000);
-    const adminBadgeAfter = pageB.locator(`.user-item:has-text("${USER_B.username}") .admin-badge, .user-item:has-text("${USER_B.username}") :has-text("Admin")`).first();
+    const adminBadgeAfter = pageB.locator(`.user-item:has-text("${USER_B.username}") .user-item-role`).first();
     await expect(adminBadgeAfter).toBeVisible({ timeout: 8_000 });
 
     await ctxA.close();
@@ -138,7 +138,7 @@ test.describe('Admin', () => {
     await page.waitForTimeout(1_000);
 
     // Files section or table should now be visible
-    const filesSection = page.locator('.files-table, .file-list, table.files, [data-testid="files-list"]').first();
+    const filesSection = page.locator('.admin-files-table, .admin-no-files').first();
     // It may or may not have files — just verify the section expands without error
     const adminPage = page.locator('.admin-page');
     await expect(adminPage).toBeVisible();

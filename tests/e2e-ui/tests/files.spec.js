@@ -21,6 +21,7 @@ test.describe('Files', () => {
     await expect(fileMsg.first()).toBeVisible({ timeout: 10_000 });
 
     await refreshAndWait(page);
+    await chat.switchRoom(TEST_ROOM);
     const fileMsgAfter = await chat.getFileMessage('test-file.txt');
     await expect(fileMsgAfter.first()).toBeVisible();
   });
@@ -38,6 +39,7 @@ test.describe('Files', () => {
     await expect(imgEl).toBeVisible({ timeout: 10_000 });
 
     await refreshAndWait(page);
+    await chat.switchRoom(TEST_ROOM);
     const imgAfter = page.locator('.msg img').last();
     await expect(imgAfter).toBeVisible();
   });
@@ -49,9 +51,9 @@ test.describe('Files', () => {
 
     // A opens PM with B
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     await chatA.startPM(USER_B.username);
     await pageA.waitForTimeout(1_000);

@@ -12,9 +12,9 @@ test.describe('Presence - PM', () => {
     const chatB = new ChatPage(pageB);
 
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     // A opens PM with B
     await chatA.startPM(USER_B.username);
@@ -36,7 +36,7 @@ test.describe('Presence - PM', () => {
 
     // A refreshes
     await pageA.reload({ waitUntil: 'networkidle' });
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await chatA.startPM(USER_B.username);
     await pageB.waitForTimeout(2_000);
 
@@ -55,9 +55,9 @@ test.describe('Presence - PM', () => {
     const chatB = new ChatPage(pageB);
 
     await pageA.goto('/chat');
-    await pageA.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
     await pageB.goto('/chat');
-    await pageB.waitForSelector('.chat-page, .room-list-panel', { timeout: 10_000 });
+    await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     // A opens PM with B
     await chatA.startPM(USER_B.username);
