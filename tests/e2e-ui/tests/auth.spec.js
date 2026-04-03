@@ -164,7 +164,10 @@ test.describe('Auth', () => {
   });
 
   test('Test 6: logout redirects to login', async ({ page, context }) => {
-    await fastLogin(context, page, 'userA');
+    // Use a dedicated logoutUser so that other users' tokens remain valid.
+    // Logout blacklists the JWT in Redis — any test using the same token after
+    // this would fail with an auth error.
+    await fastLogin(context, page, 'logoutUser');
     await page.waitForSelector('.chat-layout', { timeout: 10_000 });
 
     const auth = new AuthPage(page);

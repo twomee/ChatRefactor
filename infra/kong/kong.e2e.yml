@@ -1,0 +1,269 @@
+_format_version: "3.0"
+_transform: true
+
+# ---------------------------------------------------------------------------
+# Global plugins
+# ---------------------------------------------------------------------------
+plugins:
+  - name: cors
+    config:
+      origins:
+        - "http://localhost:3000"
+        - "http://localhost:3090"
+        - "http://localhost:5173"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      headers:
+        - Authorization
+        - Content-Type
+        - X-Request-ID
+      credentials: true
+      preflight_continue: false
+
+  - name: request-transformer
+    config:
+      add:
+        headers:
+          - "X-Request-ID:$(uuid)"
+
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-Content-Type-Options: nosniff"
+          - "X-Frame-Options: DENY"
+          - "Referrer-Policy: strict-origin-when-cross-origin"
+          - "X-XSS-Protection: 1; mode=block"
+          - "Permissions-Policy: camera=(), microphone=(), geolocation=()"
+
+  - name: rate-limiting
+    config:
+      minute: 10000
+      policy: local
+      fault_tolerant: true
+      hide_client_headers: false
+
+  - name: prometheus
+    config:
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
+
+# ---------------------------------------------------------------------------
+# Services & Routes
+#
+# All service URLs point to base host:port only — no path component.
+# All routes use strip_path: false so the upstream receives the full path.
+# ---------------------------------------------------------------------------
+services:
+  # -- Auth Service ----------------------------------------------------------
+  # SECURITY: Only public endpoints are exposed through Kong (allow-list).
+  # Internal endpoints (/auth/users/*) have NO Kong route, so they're
+  # unreachable from outside. Services call them directly over the Docker
+  # network (http://auth-service:8001), bypassing Kong.
+  #
+  # Public endpoints: /auth/register, /auth/login, /auth/logout, /auth/ping
+
+  # Auth register (stricter rate limit: 5/min)
+  - name: auth-register
+    url: http://auth-service:8001
+    routes:
+      - name: auth-register-route
+        paths:
+          - /auth/register
+        strip_path: false
+        methods:
+          - POST
+          - OPTIONS
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 500
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
+  # Auth login (stricter rate limit: 10/min)
+  - name: auth-login
+    url: http://auth-service:8001
+    routes:
+      - name: auth-login-route
+        paths:
+          - /auth/login
+        strip_path: false
+        methods:
+          - POST
+          - OPTIONS
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 1000
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
+  # Auth logout + ping (standard rate limit)
+  - name: auth-logout
+    url: http://auth-service:8001
+    routes:
+      - name: auth-logout-route
+        paths:
+          - /auth/logout
+        strip_path: false
+        methods:
+          - POST
+          - OPTIONS
+
+  - name: auth-ping
+    url: http://auth-service:8001
+    routes:
+      - name: auth-ping-route
+        paths:
+          - /auth/ping
+        strip_path: false
+        methods:
+          - POST
+          - OPTIONS
+
+  # Auth profile (get profile, change email, change password)
+  - name: auth-profile
+    url: http://auth-service:8001
+    routes:
+      - name: auth-profile-route
+        paths:
+          - /auth/profile
+        strip_path: false
+        methods:
+          - GET
+          - PATCH
+          - OPTIONS
+
+  # Auth 2FA (rate limited: 10/min to prevent TOTP brute-force)
+  - name: auth-2fa
+    url: http://auth-service:8001
+    routes:
+      - name: auth-2fa-route
+        paths:
+          - /auth/2fa
+        strip_path: false
+        methods:
+          - POST
+          - GET
+          - OPTIONS
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 1000
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
+  # -- Chat Service (REST) --------------------------------------------------
+  - name: chat-service-rooms
+    url: http://chat-service:8003
+    routes:
+      - name: chat-rooms-routes
+        paths:
+          - /rooms
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 3000
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
+  - name: chat-service-pm
+    url: http://chat-service:8003
+    routes:
+      - name: chat-pm-routes
+        paths:
+          - /pm
+        strip_path: false
+
+  - name: chat-service-admin
+    url: http://chat-service:8003
+    routes:
+      - name: chat-admin-routes
+        paths:
+          - /admin
+        strip_path: false
+
+  # -- Chat Service (WebSocket) ---------------------------------------------
+  - name: chat-service-ws
+    url: http://chat-service:8003
+    routes:
+      - name: chat-ws-routes
+        paths:
+          - /ws
+        strip_path: false
+        protocols:
+          - http
+          - https
+
+  # -- Message Service (stricter rate limit: 30/min for history scraping) ----
+  - name: message-service
+    url: http://message-service:8004
+    routes:
+      - name: message-routes
+        paths:
+          - /messages
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 3000
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
+  # -- Message Edit/Delete (stricter rate limit: 30/min) -------------------
+  - name: message-edit-delete
+    url: http://message-service:8004
+    routes:
+      - name: message-edit-delete-route
+        paths:
+          - /messages/edit
+          - /messages/delete
+        methods:
+          - PATCH
+          - DELETE
+          - OPTIONS
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 3000
+          policy: local
+
+  # -- File Service (stricter rate limit: 20/min) --------------------------
+  - name: file-service
+    url: http://file-service:8005
+    routes:
+      - name: file-routes
+        paths:
+          - /files
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 2000
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
+  # -- Frontend (catch-all: all paths not matched above go to the React SPA) --
+  - name: frontend
+    url: http://frontend:80
+    routes:
+      - name: frontend-route
+        paths:
+          - /
+        strip_path: false

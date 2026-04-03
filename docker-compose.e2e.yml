@@ -8,6 +8,8 @@ services:
   kong:
     ports: !override
       - "8090:8000"
+    volumes: !override
+      - ./infra/kong/kong.e2e.yml:/etc/kong/kong.yml:ro
 
   frontend:
     ports: !override

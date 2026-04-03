@@ -1,5 +1,9 @@
 // @ts-check
 const { defineConfig } = require('@playwright/test');
+const path = require('path');
+
+// Load local .env for developer convenience (e.g. ADMIN_USERNAME, ADMIN_PASSWORD)
+try { require('dotenv').config({ path: path.join(__dirname, '.env') }); } catch (_) {}
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:8090';
 const WS_BASE = BASE_URL.replace(/^http/, 'ws');

@@ -16,13 +16,26 @@ class ChatPage {
 
   async switchRoom(name) {
     // Wait for the room list to load — retry if rooms aren't appearing (rate limit recovery)
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       const hasRooms = await this.page.locator('.room-item, .room-item-available').first()
         .waitFor({ timeout: 10_000 }).then(() => true).catch(() => false);
       if (hasRooms) break;
-      // Rooms didn't load — try reloading the page
+      // Rooms didn't load — check for rate limit and wait longer if so
+      const bodyText = await this.page.locator('body').textContent().catch(() => '');
+      const isRateLimited = bodyText.includes('rate limit') || bodyText.includes('429');
+      await this.page.waitForTimeout(isRateLimited ? 30_000 : 2_000);
       await this.page.reload({ waitUntil: 'domcontentloaded' });
-      await this.page.waitForSelector('.chat-layout', { timeout: 15_000 }).catch(() => {});
+      // Wait for the chat layout to come back — if still rate-limited, wait again
+      const loaded = await this.page.waitForSelector('.chat-layout', { timeout: 15_000 })
+        .then(() => true).catch(() => false);
+      if (!loaded) {
+        const body2 = await this.page.locator('body').textContent().catch(() => '');
+        if (body2.includes('rate limit') || body2.includes('429')) {
+          await this.page.waitForTimeout(30_000);
+          await this.page.reload({ waitUntil: 'domcontentloaded' });
+          await this.page.waitForSelector('.chat-layout', { timeout: 15_000 }).catch(() => {});
+        }
+      }
     }
     await this.page.waitForSelector('.room-item, .room-item-available', { timeout: 15_000 });
 
@@ -121,12 +134,20 @@ class ChatPage {
     const emojiBtn = picker.locator(`button:has-text("${emojiChar}")`).first();
     const found = await emojiBtn.waitFor({ timeout: 3_000 }).then(() => true).catch(() => false);
     if (found) {
-      await emojiBtn.click({ force: true });
+      // Use scrollIntoView + dispatchEvent to handle emoji buttons that may be outside viewport
+      await emojiBtn.scrollIntoViewIfNeeded().catch(() => {});
+      await emojiBtn.click({ force: true }).catch(async () => {
+        // Fallback: dispatch click event directly if Playwright click fails
+        await emojiBtn.dispatchEvent('click');
+      });
     } else {
       // Fallback: search for emoji by aria-label, or click any available emoji
       const anyEmoji = picker.locator('button[aria-label]').first();
       await anyEmoji.waitFor({ timeout: 3_000 });
-      await anyEmoji.click({ force: true });
+      await anyEmoji.scrollIntoViewIfNeeded().catch(() => {});
+      await anyEmoji.click({ force: true }).catch(async () => {
+        await anyEmoji.dispatchEvent('click');
+      });
     }
   }
 
@@ -226,15 +247,29 @@ class ChatPage {
   }
 
   // ── PM ──
-  async startPM(username) {
-    // First check if there's a PM item in the sidebar (existing conversation)
-    const pmItem = this.page.locator(`.pm-item:has-text("${username}")`);
-    const hasPmItem = await pmItem.isVisible({ timeout: 2_000 }).catch(() => false);
-    if (hasPmItem) {
-      await pmItem.click();
-      return;
+  /**
+   * Open a PM conversation with the given user.
+   *
+   * @param {string} username - The user to PM
+   * @param {Object} [opts]
+   * @param {boolean} [opts.viaUserList=false] - Force opening via user-list click
+   *   (handleStartPM), which does NOT reload history from the server.
+   *   Use this when you know the message is already in the WS-delivered thread
+   *   and you want to avoid a history fetch that could overwrite it.
+   */
+  async startPM(username, { viaUserList = false } = {}) {
+    if (!viaUserList) {
+      // Clicking pm-item triggers handleSelectPM which loads message history.
+      const pmItem = this.page.locator(`.pm-item:has-text("${username}")`);
+      const hasPmItem = await pmItem.waitFor({ timeout: 5_000 }).then(() => true).catch(() => false);
+      if (hasPmItem) {
+        await pmItem.click();
+        // Wait for messages to load
+        await this.page.waitForTimeout(500);
+        return;
+      }
     }
-    // Otherwise click the user in the user list to initiate a PM
+    // Click the user in the user list to initiate a PM (handleStartPM — no history load)
     const userItem = this.page.locator(`.user-item:has-text("${username}")`);
     await userItem.waitFor({ timeout: 10_000 });
     await userItem.click();

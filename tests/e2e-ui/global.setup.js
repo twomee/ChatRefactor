@@ -87,9 +87,22 @@ test('register all test users and save tokens', async () => {
   tokens.userA = await registerAndLogin(baseURL, USER_A);
   tokens.userB = await registerAndLogin(baseURL, USER_B);
   tokens.userC = await registerAndLogin(baseURL, USER_C);
+
+  // Timestamp suffix for fresh user variants
+  const ts = Date.now().toString(36);
+
+  // Dedicated users for logout tests — tokens get blacklisted on logout,
+  // which would break any subsequent test reusing the same token.
+  const logoutUser = { username: `logout_ui_${ts}`, email: `logout_ui_${ts}@test.com`, password: 'Test1234!' };
+  tokens.logoutUser = await registerAndLogin(baseURL, logoutUser);
+  // Separate user for presence Test 40 (logout disappearance)
+  const logoutPresence = { username: `logpres_${ts}`, email: `logpres_${ts}@test.com`, password: 'Test1234!' };
+  tokens.logoutPresence = await registerAndLogin(baseURL, logoutPresence);
+  // Separate user for PM Test 44 (PM logout shows offline) — token blacklisted on logout
+  const logoutPM = { username: `logpm_${ts}`, email: `logpm_${ts}@test.com`, password: 'Test1234!' };
+  tokens.logoutPM = await registerAndLogin(baseURL, logoutPM);
   // Users D and E are used for settings tests (password change, 2FA).
   // Previous runs may have modified their credentials, so always create fresh users.
-  const ts = Date.now().toString(36);
   const freshD = { username: `delta_ui_${ts}`, email: `delta_ui_${ts}@test.com`, password: USER_D.password };
   const freshE = { username: `echo_ui_${ts}`, email: `echo_ui_${ts}@test.com`, password: USER_E.password };
   tokens.userD = await registerAndLogin(baseURL, freshD);

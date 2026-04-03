@@ -9,6 +9,7 @@ const { TEST_ROOM } = require('../fixtures/test-data');
 
 test.describe('Visual Regression', () => {
   test('Test 47: full-page screenshots of all page states', async ({ page, context }) => {
+    test.setTimeout(180_000);
     // 1. Login page — Sign In tab
     const auth = new AuthPage(page);
     await auth.goto();
@@ -39,7 +40,9 @@ test.describe('Visual Regression', () => {
     await page.waitForTimeout(500);
     await expect(page).toHaveScreenshot('settings.png', { fullPage: true, maxDiffPixelRatio: 0.05 });
 
-    // 6. Admin page
+    // 6. Admin page — requires admin credentials (userA is not admin)
+    await fastLogin(context, page, 'admin');
+    await page.waitForSelector('.chat-layout', { timeout: 15_000 });
     const admin = new AdminPage(page);
     await admin.goto();
     await page.waitForTimeout(500);

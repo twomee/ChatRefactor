@@ -50,7 +50,8 @@ test.describe('Presence - PM', () => {
   });
 
   test('Test 44: PM logout shows offline', async ({ browser }) => {
-    const { pageA, pageB, ctxA, ctxB } = await twoBrowsers(browser, 'userA', 'userB');
+    // Use logoutPM — a throwaway user whose token can be blacklisted safely
+    const { pageA, pageB, ctxA, ctxB } = await twoBrowsers(browser, 'logoutPM', 'userB');
     const chatA = new ChatPage(pageA);
     const chatB = new ChatPage(pageB);
 
@@ -63,8 +64,11 @@ test.describe('Presence - PM', () => {
     await chatA.startPM(USER_B.username);
     await pageA.waitForTimeout(1_000);
 
-    // B opens PM with A
-    await chatB.startPM(USER_A.username);
+    // B opens PM with A (logoutPM user)
+    const { loadTokens } = require('../fixtures/helpers');
+    const tokens = loadTokens();
+    const logoutPMUsername = tokens.logoutPM.user.username;
+    await chatB.startPM(logoutPMUsername);
     await pageB.waitForTimeout(1_000);
 
     // Establish PM by sending a message

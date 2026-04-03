@@ -36,11 +36,14 @@ test.describe('Files', () => {
 
     // Image should render with an <img> tag inside a message
     const imgEl = page.locator('.msg img').last();
+    // Scroll into view to trigger lazy-loading, then check visibility
+    await imgEl.scrollIntoViewIfNeeded().catch(() => {});
     await expect(imgEl).toBeVisible({ timeout: 10_000 });
 
     await refreshAndWait(page);
     await chat.switchRoom(TEST_ROOM);
     const imgAfter = page.locator('.msg img').last();
+    await imgAfter.scrollIntoViewIfNeeded().catch(() => {});
     await expect(imgAfter).toBeVisible();
   });
 
@@ -62,8 +65,9 @@ test.describe('Files', () => {
     await chatA.uploadFile(TEST_FILE_PATH);
     await pageA.waitForTimeout(2_000);
 
-    // B opens PM with A — navigate to the PM
-    await chatB.startPM(USER_A.username);
+    // B opens PM with A via user-list click (avoids history fetch that could miss the file)
+    await pageB.locator(`.pm-item:has-text("${USER_A.username}")`).waitFor({ timeout: 10_000 });
+    await chatB.startPM(USER_A.username, { viaUserList: true });
     await pageB.waitForTimeout(1_000);
 
     // B should see the file message

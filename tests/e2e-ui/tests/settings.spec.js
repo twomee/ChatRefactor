@@ -33,8 +33,11 @@ test.describe('Settings', () => {
     const msg = await successEl.textContent();
     expect(msg.toLowerCase()).toContain('password updated');
 
+    // Navigate back to chat before logout (settings page has no user dropdown)
+    await page.locator('[data-testid="back-to-chat"]').click();
+    await page.waitForSelector('.chat-layout', { timeout: 10_000 });
+
     // Logout and login with new password
-    // Get the actual username from tokens (may be a fresh user due to 2FA state)
     const tokens = loadTokens();
     const actualUsername = tokens.userE.user.username;
 
@@ -50,7 +53,20 @@ test.describe('Settings', () => {
   });
 
   test('Test 36: change email', async ({ page, context }) => {
-    await fastLogin(context, page, 'userE');
+    // Test 35 blacklisted the stored token on logout, so fastLogin would fail.
+    // Log in via the UI with the new password instead.
+    const tokens = loadTokens();
+    const actualUsername = tokens.userE.user.username;
+
+    const { injectRuntimeConfig } = require('../fixtures/helpers');
+    await injectRuntimeConfig(context);
+
+    const auth = new AuthPage(page);
+    await auth.goto();
+    await auth.login(actualUsername, echoNewPassword);
+    await page.waitForURL('**/chat', { timeout: 15_000 });
+    await page.waitForSelector('.chat-layout', { timeout: 10_000 });
+
     const settings = new SettingsPage(page);
     await settings.goto();
 
@@ -63,7 +79,7 @@ test.describe('Settings', () => {
     const msg = await successEl.textContent();
     expect(msg.toLowerCase()).toContain('email updated');
 
-    // Navigate back to settings to verify (don't use refreshAndWait since /settings may 404 via Kong)
+    // Navigate back to settings to verify
     await settings.goto();
     await page.waitForTimeout(500);
 
