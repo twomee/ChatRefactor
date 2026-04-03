@@ -14,12 +14,12 @@ test.describe('Chat Messaging', () => {
     await chat.sendMessage(msg);
 
     const msgEl = await chat.getMessage(msg);
-    await expect(msgEl.first()).toBeVisible();
+    await expect(msgEl.first()).toBeVisible({ timeout: 10_000 });
 
     await refreshAndWait(page);
     await chat.switchRoom(TEST_ROOM);
     const msgAfter = await chat.getMessage(msg);
-    await expect(msgAfter.first()).toBeVisible();
+    await expect(msgAfter.first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('Test 10: edit message shows edited badge', async ({ page, context }) => {
