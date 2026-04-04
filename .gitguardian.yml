@@ -33,3 +33,6 @@ secret:
     # All files under tests/e2e-ui contain intentionally fake credentials
     # (throwaway test users registered against a local CI environment).
     - "tests/e2e-ui/**"
+    # ── Documentation ────────────────────────────────────────────────────
+    # Docs may include code snippets that show example/placeholder values.
+    - "docs/**"
