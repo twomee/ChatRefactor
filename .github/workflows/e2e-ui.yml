@@ -48,22 +48,10 @@ jobs:
           node-version: "20"
 
       - name: Create .env for CI
-        env:
-          SECRET_KEY: ${{ secrets.CI_SECRET_KEY || 'ci-test-secret-key-not-for-production' }}
         run: |
           TOTP_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-          cat > .env <<EOF
-          APP_ENV=dev
-          POSTGRES_PASSWORD=chatbox_pass
-          REDIS_PASSWORD=chatbox_redis_pass
-          SECRET_KEY=${SECRET_KEY}
-          ADMIN_USERNAME=admin
-          ADMIN_PASSWORD=changeme
-          CORS_ORIGINS=http://localhost:3000,http://localhost:5173
-          TOTP_ENCRYPTION_KEY=${TOTP_KEY}
-          VITE_API_BASE=http://localhost:8090
-          VITE_WS_BASE=ws://localhost:8090
-          EOF
+          cp tests/e2e-ui/.env.ci .env
+          printf "TOTP_ENCRYPTION_KEY=%s\n" "$TOTP_KEY" >> .env
 
       - name: Start e2e environment
         run: |
@@ -115,11 +103,9 @@ jobs:
           npx playwright install chromium --with-deps
 
       - name: Run Playwright tests
-        env:
-          BASE_URL: http://localhost:8090
-          ADMIN_USERNAME: admin
-          ADMIN_PASSWORD: changeme
         run: |
+          set -a && source .env && set +a
+          export BASE_URL=http://localhost:8090
           cd tests/e2e-ui && npx playwright test
 
       - name: Upload test artifacts
