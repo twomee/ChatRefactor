@@ -110,17 +110,20 @@ test.describe('Chat Sidebar', () => {
       await chatA.switchRoom(secondRoomName.trim());
       await pageA.waitForTimeout(500);
 
-      // B sends messages
-      await chatB.sendMessage(`divider_msg_${Date.now()}`);
-      await pageB.waitForTimeout(500);
+      // B sends a message that A hasn't seen yet (A is on secondRoom)
+      const dividerMsg = `divider_msg_${Date.now()}`;
+      await chatB.sendMessage(dividerMsg);
+      // Wait for B's message to be visible on B's side (confirms server received it)
+      await expect((await chatB.getMessage(dividerMsg)).first()).toBeVisible({ timeout: 8_000 });
 
       // A returns to TEST_ROOM
       await chatA.switchRoom(TEST_ROOM);
-      await pageA.waitForTimeout(1_000);
+      // Wait for B's message to appear in A's view (confirms WS delivered it)
+      await expect((await chatA.getMessage(dividerMsg)).first()).toBeVisible({ timeout: 8_000 });
 
-      // New-messages divider must appear when returning to a room with unread messages
+      // New-messages divider must appear between A's last-read message and B's new one
       const divider = await chatA.getNewMessagesDivider();
-      await expect(divider).toBeVisible({ timeout: 5_000 });
+      await expect(divider).toBeVisible({ timeout: 8_000 });
     } else {
       // No second room available — skip the divider assertion (can't create unread state)
       test.skip(true, 'No second room available to create unread state');
