@@ -3,6 +3,7 @@ const { test, expect } = require('@playwright/test');
 const { fastLogin, twoBrowsers, refreshAndWait } = require('../fixtures/helpers');
 const { AdminPage } = require('../fixtures/admin');
 const { ChatPage } = require('../fixtures/chat');
+const { loadTokens } = require('../fixtures/helpers');
 const { TEST_ROOM, USER_B } = require('../fixtures/test-data');
 
 test.describe('Admin', () => {
@@ -70,7 +71,12 @@ test.describe('Admin', () => {
   });
 
   test('Test 31: promote user to room admin', async ({ browser }) => {
-    const { pageA, pageB, ctxA, ctxB } = await twoBrowsers(browser, 'admin', 'userB');
+    // Use a fresh throwaway user so promotion doesn't pollute userB across runs.
+    // There is no demote API endpoint, so we can't clean up after promoting a shared user.
+    const tokens = loadTokens();
+    const promoteUsername = tokens.promoteTarget.user.username;
+
+    const { pageA, pageB, ctxA, ctxB } = await twoBrowsers(browser, 'admin', 'promoteTarget');
     const chatAdmin = new ChatPage(pageA);
     const chatB = new ChatPage(pageB);
 
@@ -79,20 +85,20 @@ test.describe('Admin', () => {
     // Wait for WebSocket to propagate user list and admin status
     await pageA.waitForTimeout(2_000);
 
-    // Admin promotes B
-    await chatAdmin.promoteUser(USER_B.username);
+    // Admin promotes the throwaway user
+    await chatAdmin.promoteUser(promoteUsername);
     await pageB.waitForTimeout(1_000);
 
-    // B should see Admin badge in user list
-    const adminBadge = pageB.locator(`.user-item:has-text("${USER_B.username}") .user-item-role`).first();
+    // Promoted user should see Admin badge in user list
+    const adminBadge = pageB.locator(`.user-item:has-text("${promoteUsername}") .user-item-role`).first();
     await expect(adminBadge).toBeVisible({ timeout: 8_000 });
 
-    // Refresh B and verify badge persists
+    // Refresh and verify badge persists
     await pageB.reload({ waitUntil: 'networkidle' });
     await pageB.waitForSelector('.chat-layout', { timeout: 10_000 });
     await chatB.switchRoom(TEST_ROOM);
     await pageB.waitForTimeout(1_000);
-    const adminBadgeAfter = pageB.locator(`.user-item:has-text("${USER_B.username}") .user-item-role`).first();
+    const adminBadgeAfter = pageB.locator(`.user-item:has-text("${promoteUsername}") .user-item-role`).first();
     await expect(adminBadgeAfter).toBeVisible({ timeout: 8_000 });
 
     await ctxA.close();

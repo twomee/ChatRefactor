@@ -177,16 +177,18 @@ test.describe('PM', () => {
     await admin.closeRoom(TEST_ROOM);
     await pageA.waitForTimeout(1_000);
 
-    // B should see a toast about room being closed
-    const toast = await chatB.getToast();
-    await expect(toast).toBeVisible({ timeout: 10_000 });
-    const toastText = await toast.textContent();
-    expect(toastText.toLowerCase()).toMatch(/closed|room/i);
+    try {
+      // B should see a toast about room being closed
+      const toast = await chatB.getToast();
+      await expect(toast).toBeVisible({ timeout: 10_000 });
+      const toastText = await toast.textContent();
+      expect(toastText.toLowerCase()).toMatch(/closed|room/i);
+    } finally {
+      // Always reopen so subsequent tests aren't blocked
+      await admin.openRoom(TEST_ROOM);
 
-    // Reopen room for other tests
-    await admin.openRoom(TEST_ROOM);
-
-    await ctxA.close();
-    await ctxB.close();
+      await ctxA.close();
+      await ctxB.close();
+    }
   });
 });

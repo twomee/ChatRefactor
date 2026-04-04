@@ -41,6 +41,10 @@ async function registerAndLogin(baseURL, user) {
     break;
   }
 
+  if (!loginRes) {
+    throw new Error(`Login failed for ${user.username}: all retries exhausted (rate limited)`);
+  }
+
   const data = await loginRes.json();
 
   // Handle 2FA-enabled users: if login returns requires_2fa, we can't proceed
@@ -70,7 +74,7 @@ async function registerAndLogin(baseURL, user) {
   }
 
   if (!data.access_token) {
-    console.warn(`WARNING: Login failed for ${user.username}: ${JSON.stringify(data)}`);
+    throw new Error(`Login failed for ${user.username}: ${JSON.stringify(data)}`);
   }
   return {
     token: data.access_token,
@@ -107,6 +111,11 @@ test('register all test users and save tokens', async () => {
   const freshE = { username: `echo_ui_${ts}`, email: `echo_ui_${ts}@test.com`, password: USER_E.password };
   tokens.userD = await registerAndLogin(baseURL, freshD);
   tokens.userE = await registerAndLogin(baseURL, freshE);
+  // Dedicated user for Test 31 (promote to room admin).
+  // Using a fresh user prevents state pollution of userB across runs since
+  // there is no demote API endpoint to clean up after the test.
+  const promoteTarget = { username: `promote_${ts}`, email: `promote_${ts}@test.com`, password: 'Test1234!' };
+  tokens.promoteTarget = await registerAndLogin(baseURL, promoteTarget);
 
   // Create the test room (may already exist)
   await fetch(`${baseURL}/rooms`, {
