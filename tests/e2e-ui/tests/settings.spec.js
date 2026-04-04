@@ -131,11 +131,15 @@ test.describe('Settings', () => {
   });
 
   test('Test 38: disable 2FA', async ({ page, context }) => {
-    // First get the secret from API to generate code
+    // Use the fresh timestamped userD created in global.setup (not the static USER_D.username)
+    const tokens = loadTokens();
+    const userDUsername = tokens.userD.user.username;
+
+    // Get a fresh token to call the 2FA setup API
     const loginRes = await fetch(`${BASE_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: USER_D.username, password: USER_D.password }),
+      body: JSON.stringify({ username: userDUsername, password: USER_D.password }),
     });
     const loginData = await loginRes.json();
     const token = loginData.access_token;

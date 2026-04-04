@@ -22,33 +22,22 @@ test.describe('Connection', () => {
       }
     });
 
-    // Trigger a reconnect by waiting — the app should detect the disconnection
-    await page.waitForTimeout(5_000);
-
     const chat = new ChatPage(page);
     const connectionStatus = await chat.getConnectionStatus();
 
-    // Should show reconnecting/disconnected indicator
-    const isVisible = await connectionStatus.isVisible().catch(() => false);
-    if (isVisible) {
-      const statusText = await connectionStatus.textContent();
-      expect(statusText.toLowerCase()).toMatch(/reconnect|disconnect|offline|connecting/i);
-    }
+    // The disconnect indicator MUST appear — fail the test if it never does
+    await expect(connectionStatus).toBeVisible({ timeout: 15_000 });
+    const statusText = await connectionStatus.textContent();
+    expect(statusText.toLowerCase()).toMatch(/reconnect|disconnect|offline|connecting/i);
 
     // Unblock WebSocket
     await page.unroute('**/ws/**');
     await page.unroute('**');
 
-    await page.waitForTimeout(5_000);
-
-    // Connection status indicator should disappear or show connected
-    const statusAfter = await connectionStatus.isVisible().catch(() => false);
-    // Either hidden (connected) or showing "connected"
-    if (statusAfter) {
-      const statusTextAfter = await connectionStatus.textContent();
-      expect(statusTextAfter.toLowerCase()).toMatch(/connect|online/i);
-    } else {
-      expect(statusAfter).toBe(false);
-    }
+    // Indicator MUST disappear (reconnected) or show a connected state
+    await connectionStatus.waitFor({ state: 'hidden', timeout: 15_000 }).catch(async () => {
+      const textAfter = await connectionStatus.textContent().catch(() => '');
+      expect(textAfter.toLowerCase()).toMatch(/connect|online/i);
+    });
   });
 });

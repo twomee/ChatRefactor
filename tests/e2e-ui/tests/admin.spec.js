@@ -136,12 +136,9 @@ test.describe('Admin', () => {
     await admin.goto();
 
     await admin.expandFiles(TEST_ROOM);
-    await page.waitForTimeout(1_000);
 
-    // Files section or table should now be visible
+    // Files table or empty-state message must become visible after expanding
     const filesSection = page.locator('.admin-files-table, .admin-no-files').first();
-    // It may or may not have files — just verify the section expands without error
-    const adminPage = page.locator('.admin-page');
-    await expect(adminPage).toBeVisible();
+    await expect(filesSection).toBeVisible({ timeout: 8_000 });
   });
 });

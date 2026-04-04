@@ -16,12 +16,9 @@ test.describe('Chat Sidebar', () => {
     await chat.exitRoom(TEST_ROOM);
     await page.waitForTimeout(1_000);
 
-    // Room should no longer be in the joined list (no active join button visible)
-    const joinBtn = page.locator(`.room-item:has-text("${TEST_ROOM}") button:has-text("Join")`);
-    // Either the room shows a Join button or is in available rooms
-    const joinVisible = await joinBtn.isVisible().catch(() => false);
-    // The room item should be gone from joined or show join option
-    expect(true).toBe(true); // Just ensure exit didn't crash
+    // After exiting, the room must move to the available section (can rejoin)
+    const availableRoom = page.locator(`.room-item-available:has-text("${TEST_ROOM}")`);
+    await expect(availableRoom).toBeVisible({ timeout: 5_000 });
 
     // Rejoin
     await chat.joinRoom(TEST_ROOM);
@@ -113,16 +110,12 @@ test.describe('Chat Sidebar', () => {
       await chatA.switchRoom(TEST_ROOM);
       await pageA.waitForTimeout(1_000);
 
-      // Check for new messages divider
+      // New-messages divider must appear when returning to a room with unread messages
       const divider = await chatA.getNewMessagesDivider();
-      // Divider may or may not be visible depending on implementation
-      const isVisible = await divider.isVisible().catch(() => false);
-      // Just verify the page is functional
-      expect(page => true).toBeTruthy();
+      await expect(divider).toBeVisible({ timeout: 5_000 });
     } else {
-      // Minimal smoke test
-      const divider = await chatA.getNewMessagesDivider();
-      expect(divider).toBeTruthy();
+      // No second room available — skip the divider assertion (can't create unread state)
+      test.skip(true, 'No second room available to create unread state');
     }
 
     await ctxA.close();

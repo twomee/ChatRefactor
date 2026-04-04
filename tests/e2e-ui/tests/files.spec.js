@@ -15,11 +15,23 @@ test.describe('Files', () => {
     await chat.switchRoom(TEST_ROOM);
 
     await chat.uploadFile(TEST_FILE_PATH);
-    await page.waitForTimeout(2_000);
 
+    // Wait for the file message to appear (no fixed sleep)
     const fileMsg = await chat.getFileMessage('test-file.txt');
     await expect(fileMsg.first()).toBeVisible({ timeout: 10_000 });
 
+    // Download link must be present in the file message
+    const downloadLink = fileMsg.first().locator('.msg-file-link');
+    await expect(downloadLink).toBeVisible({ timeout: 5_000 });
+
+    // Trigger download and assert the file is delivered
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 10_000 }),
+      downloadLink.click(),
+    ]);
+    expect(download.suggestedFilename()).toContain('test-file');
+
+    // Verify persistence across refresh
     await refreshAndWait(page);
     await chat.switchRoom(TEST_ROOM);
     const fileMsgAfter = await chat.getFileMessage('test-file.txt');
@@ -32,7 +44,6 @@ test.describe('Files', () => {
     await chat.switchRoom(TEST_ROOM);
 
     await chat.uploadFile(TEST_IMAGE_PATH);
-    await page.waitForTimeout(2_000);
 
     // Image should render with an <img> tag inside a message
     const imgEl = page.locator('.msg img').last();
@@ -63,7 +74,9 @@ test.describe('Files', () => {
 
     // A uploads file in PM
     await chatA.uploadFile(TEST_FILE_PATH);
-    await pageA.waitForTimeout(2_000);
+    // Wait for the upload to appear in A's PM before checking B's view
+    const fileMsgA = await chatA.getFileMessage('test-file.txt');
+    await expect(fileMsgA.first()).toBeVisible({ timeout: 10_000 });
 
     // B opens PM with A via user-list click (avoids history fetch that could miss the file)
     await pageB.locator(`.pm-item:has-text("${USER_A.username}")`).waitFor({ timeout: 10_000 });

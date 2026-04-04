@@ -82,6 +82,26 @@ jobs:
           done
           echo "Kong responding on port 8090"
 
+          echo "Waiting for auth service to accept logins..."
+          timeout=60
+          elapsed=0
+          while true; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8090/auth/login \
+              -H "Content-Type: application/json" \
+              -d '{"username":"__probe__","password":"__probe__"}')
+            # 401 or 422 means the service is up and processing (just rejecting bad creds)
+            if [ "$status" = "401" ] || [ "$status" = "422" ] || [ "$status" = "400" ]; then
+              echo "Auth service ready (HTTP $status)"
+              break
+            fi
+            if [ "$elapsed" -ge "$timeout" ]; then
+              echo "Timed out waiting for auth service (last HTTP $status)"
+              exit 1
+            fi
+            sleep 3
+            elapsed=$((elapsed + 3))
+          done
+
       - name: Install Playwright
         run: |
           cd tests/e2e-ui
@@ -116,6 +136,14 @@ jobs:
               -f docker-compose.e2e.yml \
               logs "$svc" > "tests/e2e-ui/logs/$svc.log" 2>&1 || true
           done
+
+      - name: Upload service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-logs
+          path: tests/e2e-ui/logs/
+          retention-days: 7
 
       - name: Tear down environment
         if: always()
