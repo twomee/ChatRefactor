@@ -87,10 +87,9 @@ test.describe('Chat Messaging', () => {
 
     await chat.removeReaction(msg, chipText.trim().split(/\s/)[0]);
 
-    // The single reaction we added should be gone
+    // The single reaction we added should be gone (retries until server confirms)
     const remaining = page.locator(`.msg:has-text("${msg}") .reaction-chip`);
-    const count = await remaining.count();
-    expect(count).toBe(0);
+    await expect(remaining).toHaveCount(0, { timeout: 5_000 });
   });
 
   test('Test 13: clear message history', async ({ page, context }) => {
