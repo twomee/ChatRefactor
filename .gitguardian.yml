@@ -56,10 +56,6 @@ secret:
     # message-service (Python / pytest)
     - "services/message-service/tests/**"
     # ── Playwright e2e UI tests ──────────────────────────────────────────
-    # Test fixtures, page objects, and global setup contain intentionally
-    # fake credentials used to register throwaway test users.
-    - "tests/e2e-ui/fixtures/**"
-    - "tests/e2e-ui/tests/**"
-    - "tests/e2e-ui/global.setup.js"
-    # CI credential file — values are test-only, not used in production.
-    - "tests/e2e-ui/.env.ci"
+    # All files under tests/e2e-ui contain intentionally fake credentials
+    # (throwaway test users registered against a local CI environment).
+    - "tests/e2e-ui/**"
