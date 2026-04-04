@@ -92,6 +92,9 @@ test.describe('Chat Sidebar', () => {
     // Both in TEST_ROOM
     await chatA.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
+    // Wait for A's mark-as-read debounce (1 s) to fire — this sets readPositions[roomId]
+    // which is required for the new-messages divider to appear when A returns.
+    await pageA.waitForTimeout(1_500);
 
     // A switches away — get room name from .room-name span
     const secondRoom = pageA.locator(`.room-item:not(:has-text("${TEST_ROOM}")) .room-name`).first();
