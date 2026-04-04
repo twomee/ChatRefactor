@@ -92,8 +92,13 @@ test.describe('Chat Sidebar', () => {
     // Both in TEST_ROOM
     await chatA.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
-    // Wait for A's mark-as-read debounce (1 s) to fire — this sets readPositions[roomId]
-    // which is required for the new-messages divider to appear when A returns.
+
+    // Send a user message so the room has a real msg_id for markAsRead to reference.
+    // System messages (join/leave) don't carry msg_id, so markAsRead skips them.
+    // Without a user message, readPositions[roomId] stays null and no divider renders.
+    const anchorMsg = `divider_anchor_${Date.now()}`;
+    await chatA.sendMessage(anchorMsg);
+    // Wait for the 1 s markAsRead debounce to fire — sets readPositions[roomId]
     await pageA.waitForTimeout(1_500);
 
     // A switches away — get room name from .room-name span
