@@ -209,28 +209,35 @@ EOF
 }
 
 k8s_wait() {
-    step "Waiting for pods to be ready..."
-    local timeout=300
-    local elapsed=0
-    while true; do
-        local not_ready
-        not_ready=$(kubectl get pods -n chatbox --no-headers 2>/dev/null \
-            | grep -v Completed \
-            | grep -v Running || true)
-        if [ -z "$not_ready" ] && kubectl get pods -n chatbox --no-headers 2>/dev/null | grep -q Running; then
-            break
-        fi
-        if [ "$elapsed" -ge "$timeout" ]; then
-            fail "Timed out waiting for pods after ${timeout}s"
-            kubectl get pods -n chatbox
-            exit 1
-        fi
-        sleep 5
-        elapsed=$((elapsed + 5))
-        echo -n "."
+    step "Waiting for deployments to roll out..."
+    # Use kubectl rollout status per deployment — more reliable than grep-polling pod
+    # phases because it understands init containers and the Ready condition.
+    # Run all waits in parallel (deployments started simultaneously) and collect
+    # failures so every timed-out deployment is reported before we exit.
+    local rollout_timeout=480s
+    local pids=() names=()
+    for deploy in auth-service chat-service message-service file-service frontend kong; do
+        kubectl rollout status deployment/"$deploy" \
+            --namespace chatbox \
+            --timeout="$rollout_timeout" &
+        pids+=($!)
+        names+=("$deploy")
     done
-    echo ""
-    success "All pods running"
+
+    local fail=0
+    for i in "${!pids[@]}"; do
+        if ! wait "${pids[$i]}"; then
+            fail "Deployment ${names[$i]} did not become ready within $rollout_timeout"
+            fail=1
+        fi
+    done
+
+    if [ "$fail" -ne 0 ]; then
+        echo ""
+        kubectl get pods -n chatbox
+        exit 1
+    fi
+    success "All deployments ready"
 
     # Wait for Kong to respond and all backend services to be routable
     elapsed=0
