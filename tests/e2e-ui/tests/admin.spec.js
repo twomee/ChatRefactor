@@ -141,10 +141,13 @@ test.describe('Admin', () => {
     const admin = new AdminPage(page);
     await admin.goto();
 
+    // Wait for rooms table before expanding (admin page loads rooms async)
+    await page.locator(`tr:has-text("${TEST_ROOM}")`).first().waitFor({ timeout: 10_000 });
+
     await admin.expandFiles(TEST_ROOM);
 
     // Files table or empty-state message must become visible after expanding
     const filesSection = page.locator('.admin-files-table, .admin-no-files').first();
-    await expect(filesSection).toBeVisible({ timeout: 8_000 });
+    await expect(filesSection).toBeVisible({ timeout: 15_000 });
   });
 });

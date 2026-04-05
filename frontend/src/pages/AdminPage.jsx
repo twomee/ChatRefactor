@@ -95,10 +95,10 @@ export default function AdminPage() {
       setExpandedRoomFiles(null);
       return;
     }
+    setExpandedRoomFiles(roomId);
     try {
       const res = await listRoomFiles(roomId);
       setRoomFiles(prev => ({ ...prev, [roomId]: res.data }));
-      setExpandedRoomFiles(roomId);
     } catch {
       setStatus('Failed to load files');
     }
