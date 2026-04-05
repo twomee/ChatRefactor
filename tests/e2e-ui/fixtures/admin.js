@@ -39,17 +39,21 @@ class AdminPage {
   }
 
   async closeRoom(name) {
-    const row = this.page.locator(`tr:has-text("${name}")`);
+    const row = this.page.locator(`tr:has-text("${name}")`).first();
     await row.locator('button:has-text("Close")').click();
+    // Wait for the UI to confirm the close propagated (button flips to "Open")
+    await row.locator('button:has-text("Open")').waitFor({ timeout: 10_000 });
   }
 
   async openRoom(name) {
-    const row = this.page.locator(`tr:has-text("${name}")`);
+    const row = this.page.locator(`tr:has-text("${name}")`).first();
     await row.locator('button:has-text("Open")').click();
+    // Wait for the UI to confirm the open propagated (button flips to "Close")
+    await row.locator('button:has-text("Close")').waitFor({ timeout: 10_000 });
   }
 
   async getRoomStatus(name) {
-    const row = this.page.locator(`tr:has-text("${name}")`);
+    const row = this.page.locator(`tr:has-text("${name}")`).first();
     return row.locator('.admin-room-status').textContent();
   }
 
@@ -59,7 +63,7 @@ class AdminPage {
   }
 
   async expandFiles(roomName) {
-    const row = this.page.locator(`tr:has-text("${roomName}")`);
+    const row = this.page.locator(`tr:has-text("${roomName}")`).first();
     await row.locator('button:has-text("Files")').click();
   }
 

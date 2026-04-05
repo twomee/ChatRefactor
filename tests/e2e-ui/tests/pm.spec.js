@@ -187,7 +187,13 @@ test.describe('PM', () => {
       // Always reopen so subsequent tests aren't blocked.
       // Re-navigate to admin in case the page moved away after closing the room.
       await admin.goto();
-      await pageA.locator(`tr:has-text("${TEST_ROOM}")`).first().waitFor({ timeout: 10_000 });
+      // Wait for the "Open" button specifically — this confirms the close has
+      // propagated through the API and the fresh page reflects the closed state.
+      await pageA
+        .locator(`tr:has-text("${TEST_ROOM}")`)
+        .locator('button:has-text("Open")')
+        .first()
+        .waitFor({ timeout: 15_000 });
       await admin.openRoom(TEST_ROOM);
 
       await ctxA.close();
