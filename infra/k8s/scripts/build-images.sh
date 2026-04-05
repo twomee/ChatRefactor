@@ -4,6 +4,11 @@
 # Images are built in parallel to cut CI time from ~20 min → ~5 min.
 # Each background job writes to its own log; failures are collected and
 # reported after all jobs finish so nothing is silently swallowed.
+#
+# IMPORTANT: PIDs must be captured with $! immediately after & in the
+# *parent* shell.  $(jobs -p) runs in a subshell where the parent job
+# table is invisible, so that pattern returns nothing and wait is never
+# called — builds would appear to succeed before they finish.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,10 +18,6 @@ KONG_PORT="${KONG_PORT:-30080}"
 
 LOG_DIR=$(mktemp -d)
 trap 'rm -rf "$LOG_DIR"' EXIT
-
-echo "========================================="
-echo "  Building Docker Images (parallel)"
-echo "========================================="
 
 build() {
   local name="$1"; shift
@@ -29,28 +30,6 @@ build() {
     return 1
   fi
 }
-
-# ── Parallel builds ────────────────────────────────────────────────────────────
-build auth-service    "$PROJECT_ROOT/services/auth-service"    &
-build chat-service    "$PROJECT_ROOT/services/chat-service"    &
-build message-service "$PROJECT_ROOT/services/message-service" &
-build file-service    "$PROJECT_ROOT/services/file-service"    &
-build frontend        \
-  --build-arg VITE_API_BASE="http://localhost:${KONG_PORT}" \
-  --build-arg VITE_WS_BASE="ws://localhost:${KONG_PORT}"   \
-  "$PROJECT_ROOT/frontend" &
-
-# Collect results — if any build job failed, exit non-zero
-FAIL=0
-for job in $(jobs -p); do
-  wait "$job" || FAIL=1
-done
-[ "$FAIL" -eq 0 ] || { echo "One or more image builds failed"; exit 1; }
-
-echo ""
-echo "========================================="
-echo "  Loading images into Kind (parallel)"
-echo "========================================="
 
 load() {
   local name="$1"
@@ -65,15 +44,43 @@ load() {
   fi
 }
 
-load auth-service    &
-load chat-service    &
-load message-service &
-load file-service    &
-load frontend        &
+# ── Parallel builds ────────────────────────────────────────────────────────────
+echo "========================================="
+echo "  Building Docker Images (parallel)"
+echo "========================================="
+
+# Capture each PID immediately after & (in the parent shell, not a subshell).
+build auth-service    "$PROJECT_ROOT/services/auth-service"    & BUILD_PIDS=($!)
+build chat-service    "$PROJECT_ROOT/services/chat-service"    & BUILD_PIDS+=($!)
+build message-service "$PROJECT_ROOT/services/message-service" & BUILD_PIDS+=($!)
+build file-service    "$PROJECT_ROOT/services/file-service"    & BUILD_PIDS+=($!)
+build frontend \
+  --build-arg VITE_API_BASE="http://localhost:${KONG_PORT}" \
+  --build-arg VITE_WS_BASE="ws://localhost:${KONG_PORT}"   \
+  "$PROJECT_ROOT/frontend"                                     & BUILD_PIDS+=($!)
 
 FAIL=0
-for job in $(jobs -p); do
-  wait "$job" || FAIL=1
+for pid in "${BUILD_PIDS[@]}"; do
+  wait "$pid" || FAIL=1
+done
+[ "$FAIL" -eq 0 ] || { echo "One or more image builds failed"; exit 1; }
+
+# ── Parallel Kind loads ────────────────────────────────────────────────────────
+# Only runs after ALL builds have completed successfully above.
+echo ""
+echo "========================================="
+echo "  Loading images into Kind (parallel)"
+echo "========================================="
+
+load auth-service    & LOAD_PIDS=($!)
+load chat-service    & LOAD_PIDS+=($!)
+load message-service & LOAD_PIDS+=($!)
+load file-service    & LOAD_PIDS+=($!)
+load frontend        & LOAD_PIDS+=($!)
+
+FAIL=0
+for pid in "${LOAD_PIDS[@]}"; do
+  wait "$pid" || FAIL=1
 done
 [ "$FAIL" -eq 0 ] || { echo "One or more Kind loads failed"; exit 1; }
 
