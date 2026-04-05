@@ -271,7 +271,8 @@ class ChatPage {
     }
     // Click the user in the user list to initiate a PM (handleStartPM — no history load)
     const userItem = this.page.locator(`.user-item:has-text("${username}")`);
-    await userItem.waitFor({ timeout: 10_000 });
+    // 20s: presence events can lag in rate-limited (K8s) environments
+    await userItem.waitFor({ timeout: 20_000 });
     await userItem.click();
   }
 

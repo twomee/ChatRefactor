@@ -4,7 +4,7 @@ class SettingsPage {
   }
 
   async goto() {
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       await this.page.goto('/settings', { waitUntil: 'domcontentloaded', timeout: 20_000 });
       const loaded = await this.page.waitForSelector('.settings-layout', { timeout: 10_000 }).catch(() => null);
       if (loaded) return;
@@ -18,8 +18,9 @@ class SettingsPage {
         const loaded2 = await this.page.waitForSelector('.settings-layout', { timeout: 15_000 }).catch(() => null);
         if (loaded2) return;
       }
+      // Rate limit — wait 30s to clear the window before retrying
       if (bodyText.includes('rate limit') || bodyText.includes('429')) {
-        await this.page.waitForTimeout(5_000);
+        await this.page.waitForTimeout(30_000);
         continue;
       }
     }

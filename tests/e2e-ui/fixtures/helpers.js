@@ -152,13 +152,13 @@ async function refreshAndWait(page) {
   ).catch(() => null);
   if (loaded) return;
 
-  // One retry for rate limit
+  // Retry on rate limit — wait 30s to clear the rate-limit window before reloading
   const bodyText = await page.locator('body').textContent().catch(() => '');
   if (bodyText.includes('rate limit') || bodyText.includes('429') || bodyText.includes('404')) {
-    await page.waitForTimeout(3_000);
+    await page.waitForTimeout(30_000);
     await page.reload({ waitUntil: 'domcontentloaded' });
   }
-  await page.waitForSelector('.chat-layout, .login-card, .settings-layout, .admin-page', { timeout: 10_000 });
+  await page.waitForSelector('.chat-layout, .login-card, .settings-layout, .admin-page', { timeout: 15_000 });
 }
 
 module.exports = { loadTokens, injectRuntimeConfig, fastLogin, twoBrowsers, refreshAndWait };

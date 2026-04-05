@@ -1,6 +1,6 @@
 // Tests 43-44: Presence in PM
 const { test, expect } = require('@playwright/test');
-const { twoBrowsers } = require('../fixtures/helpers');
+const { twoBrowsers, refreshAndWait } = require('../fixtures/helpers');
 const { ChatPage } = require('../fixtures/chat');
 const { AuthPage } = require('../fixtures/auth');
 const { USER_A, USER_B } = require('../fixtures/test-data');
@@ -14,7 +14,8 @@ test.describe('Presence - PM', () => {
     // Both join room so they can see each other in user list
     await chatA.switchRoom('ui-test-room');
     await chatB.switchRoom('ui-test-room');
-    await pageA.waitForTimeout(1_000);
+    // 3s: presence WebSocket events can lag in rate-limited (K8s) environments
+    await pageA.waitForTimeout(3_000);
 
     // A opens PM with B
     await chatA.startPM(USER_B.username);
@@ -34,9 +35,8 @@ test.describe('Presence - PM', () => {
     const isOfflineBefore = await offlineBannerBefore.isVisible().catch(() => false);
     expect(isOfflineBefore).toBe(false);
 
-    // A refreshes
-    await pageA.reload({ waitUntil: 'networkidle' });
-    await pageA.waitForSelector('.chat-layout', { timeout: 10_000 });
+    // A refreshes — use refreshAndWait so a rate-limit response triggers a backoff + retry
+    await refreshAndWait(pageA);
     await chatA.startPM(USER_B.username);
     await pageB.waitForTimeout(2_000);
 
@@ -58,7 +58,8 @@ test.describe('Presence - PM', () => {
     // Both join room so they can see each other in user list
     await chatA.switchRoom('ui-test-room');
     await chatB.switchRoom('ui-test-room');
-    await pageA.waitForTimeout(1_000);
+    // 3s: presence WebSocket events can lag in rate-limited (K8s) environments
+    await pageA.waitForTimeout(3_000);
 
     // A opens PM with B
     await chatA.startPM(USER_B.username);

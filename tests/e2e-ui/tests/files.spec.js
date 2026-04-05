@@ -66,7 +66,8 @@ test.describe('Files', () => {
     // Both join room so they can see each other in user list
     await chatA.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
-    await pageA.waitForTimeout(1_000);
+    // 3s: presence WebSocket events can lag in rate-limited (K8s) environments
+    await pageA.waitForTimeout(3_000);
 
     // A opens PM with B
     await chatA.startPM(USER_B.username);

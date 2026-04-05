@@ -198,6 +198,8 @@ test.describe('Chat Messaging', () => {
     await refreshAndWait(page);
     await chat.switchRoom(TEST_ROOM);
     const msgAfter = page.locator(`.msg-text-content:has-text("https://example.com")`).first();
-    await expect(msgAfter).toBeVisible({ timeout: 5_000 });
+    // Use a longer timeout: after a rate-limit backoff the message history
+    // load can lag significantly in constrained (K8s) environments.
+    await expect(msgAfter).toBeVisible({ timeout: 20_000 });
   });
 });
