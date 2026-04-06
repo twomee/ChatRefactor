@@ -2,12 +2,10 @@ package handler
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -112,23 +110,9 @@ type WSHandler struct {
 	limiter           *rateLimiter
 	messageSvcURL     string
 
-	// kickedUsers tracks users that were kicked (by "room:user" key).
-	// When a kicked user's readLoop exits, handleDisconnect checks this
-	// set and skips the "user_left" broadcast to avoid duplicates.
-	kickedMu    sync.Mutex
-	kickedUsers map[string]bool
-
-	// leftUsers tracks users that sent an intentional "leave" command.
-	// When readLoop exits after handleLeave, handleDisconnect checks this
-	// and skips the grace period (leave was already broadcast).
-	leftMu    sync.Mutex
-	leftUsers map[string]bool
-
-	// pendingLeaves tracks delayed leave broadcasts for reconnect grace period.
-	// Key: "room:user" → cancel function. If the user reconnects within the
-	// grace period, the pending leave is cancelled silently.
-	pendingLeaveMu sync.Mutex
-	pendingLeaves  map[string]context.CancelFunc
+	// lifecycleState manages mutex-guarded maps for connection lifecycle
+	// tracking (kicked users, intentional leaves, pending leave timers).
+	lifecycleState
 }
 
 // NewWSHandler creates a WebSocket handler.
@@ -152,9 +136,7 @@ func NewWSHandler(
 		logger:            logger,
 		limiter:           newRateLimiter(),
 		messageSvcURL:     messageServiceURL,
-		kickedUsers:       make(map[string]bool),
-		leftUsers:         make(map[string]bool),
-		pendingLeaves:     make(map[string]context.CancelFunc),
+		lifecycleState:    newLifecycleState(),
 	}
 
 	// When a user fully logs out (last lobby closes), cancel any pending
@@ -307,25 +289,6 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 
 	// Cleanup on disconnect.
 	h.handleDisconnect(ctx, conn, roomID, userID, username)
-}
-
-// markKicked records that a user was kicked from a room.
-func (h *WSHandler) markKicked(roomID, userID int) {
-	h.kickedMu.Lock()
-	h.kickedUsers[fmt.Sprintf("%d:%d", roomID, userID)] = true
-	h.kickedMu.Unlock()
-}
-
-// wasKicked checks and clears the kicked flag for a user.
-func (h *WSHandler) wasKicked(roomID, userID int) bool {
-	key := fmt.Sprintf("%d:%d", roomID, userID)
-	h.kickedMu.Lock()
-	defer h.kickedMu.Unlock()
-	if h.kickedUsers[key] {
-		delete(h.kickedUsers, key)
-		return true
-	}
-	return false
 }
 
 // configurePingPong sets up ping/pong heartbeat on a WebSocket connection.
