@@ -22,10 +22,9 @@ import pyotp
 import pytest
 from fastapi import HTTPException
 
-from app.services.auth_service import (
-    _check_and_mark_totp_replay,
-    _consume_2fa_temp_token,
-    _get_redis,
+from app.utils.totp import check_and_mark_totp_replay
+from app.services.two_factor_service import (
+    consume_2fa_temp_token,
     disable_2fa,
     get_2fa_status,
     setup_2fa,
@@ -85,13 +84,14 @@ class TestEncryptionKeyValidation:
 
 
 class TestGetRedisHelper:
-    """Ensure the _get_redis() lazy-import path (lines 183-185) is exercised."""
+    """Ensure the get_redis() import path is exercised via totp module."""
 
     def test_get_redis_returns_redis_instance(self):
-        """_get_redis() should return whatever get_redis() returns via lazy import."""
+        """get_redis() should return a Redis instance from the infrastructure module."""
         mock_redis = MagicMock()
         with patch("app.infrastructure.redis.get_redis", return_value=mock_redis):
-            result = _get_redis()
+            from app.infrastructure.redis import get_redis
+            result = get_redis()
         assert result is mock_redis
 
 
@@ -107,8 +107,8 @@ class TestConsume2FATempToken:
         mock_redis.get.return_value = stored_payload
         mock_redis.delete.return_value = 1
 
-        with patch("app.services.auth_service._get_redis", return_value=mock_redis):
-            result = _consume_2fa_temp_token("some-token")
+        with patch("app.services.two_factor_service.get_redis", return_value=mock_redis):
+            result = consume_2fa_temp_token("some-token")
 
         assert result == {"user_id": 42, "username": "alice"}
         mock_redis.delete.assert_called_once_with("2fa_temp:some-token")
@@ -118,8 +118,8 @@ class TestConsume2FATempToken:
         mock_redis = MagicMock()
         mock_redis.get.return_value = None
 
-        with patch("app.services.auth_service._get_redis", return_value=mock_redis):
-            result = _consume_2fa_temp_token("ghost-token")
+        with patch("app.services.two_factor_service.get_redis", return_value=mock_redis):
+            result = consume_2fa_temp_token("ghost-token")
 
         assert result is None
         mock_redis.delete.assert_not_called()
@@ -133,8 +133,8 @@ class TestCheckAndMarkTOTPReplay:
         mock_redis = MagicMock()
         mock_redis.get.return_value = None  # code not yet seen
 
-        with patch("app.services.auth_service._get_redis", return_value=mock_redis):
-            result = _check_and_mark_totp_replay(user_id=7, code="123456")
+        with patch("app.utils.totp.get_redis", return_value=mock_redis):
+            result = check_and_mark_totp_replay(user_id=7, code="123456")
 
         assert result is False
         mock_redis.setex.assert_called_once_with("totp_used:7:123456", 90, "1")
@@ -144,8 +144,8 @@ class TestCheckAndMarkTOTPReplay:
         mock_redis = MagicMock()
         mock_redis.get.return_value = "1"  # code was already marked
 
-        with patch("app.services.auth_service._get_redis", return_value=mock_redis):
-            result = _check_and_mark_totp_replay(user_id=7, code="123456")
+        with patch("app.utils.totp.get_redis", return_value=mock_redis):
+            result = check_and_mark_totp_replay(user_id=7, code="123456")
 
         assert result is True
         mock_redis.setex.assert_not_called()
@@ -164,7 +164,7 @@ class TestSetup2FAEdgeCases:
         mock_db = MagicMock()
         user_info = {"user_id": 9999}
 
-        with patch("app.services.auth_service.user_dal") as mock_dal:
+        with patch("app.services.two_factor_service.user_dal") as mock_dal:
             mock_dal.get_by_id.return_value = None
             with pytest.raises(HTTPException) as exc_info:
                 setup_2fa(mock_db, user_info)
@@ -184,7 +184,7 @@ class TestVerify2FASetupEdgeCases:
         mock_db = MagicMock()
         user_info = {"user_id": 9999}
 
-        with patch("app.services.auth_service.user_dal") as mock_dal:
+        with patch("app.services.two_factor_service.user_dal") as mock_dal:
             mock_dal.get_by_id.return_value = None
             with pytest.raises(HTTPException) as exc_info:
                 verify_2fa_setup(mock_db, user_info, "123456")
@@ -197,7 +197,7 @@ class TestVerify2FASetupEdgeCases:
         mock_user = MagicMock()
         mock_user.is_2fa_enabled = True
 
-        with patch("app.services.auth_service.user_dal") as mock_dal:
+        with patch("app.services.two_factor_service.user_dal") as mock_dal:
             mock_dal.get_by_id.return_value = mock_user
             with pytest.raises(HTTPException) as exc_info:
                 verify_2fa_setup(mock_db, user_info, "123456")
@@ -219,7 +219,7 @@ class TestDisable2FAEdgeCases:
         mock_db = MagicMock()
         user_info = {"user_id": 9999}
 
-        with patch("app.services.auth_service.user_dal") as mock_dal:
+        with patch("app.services.two_factor_service.user_dal") as mock_dal:
             mock_dal.get_by_id.return_value = None
             with pytest.raises(HTTPException) as exc_info:
                 disable_2fa(mock_db, user_info, "123456")
@@ -228,7 +228,7 @@ class TestDisable2FAEdgeCases:
     def test_disable_2fa_corrupted_state_raises_500(self):
         """disable_2fa() must raise 500 when 2FA is enabled but totp_secret is missing.
 
-        This is the 'corrupted authentication state' guard on line 353.
+        This is the 'corrupted authentication state' guard.
         """
         mock_db = MagicMock()
         user_info = {"user_id": 1}
@@ -236,7 +236,7 @@ class TestDisable2FAEdgeCases:
         mock_user.is_2fa_enabled = True
         mock_user.totp_secret = None  # corrupted: flag set but no secret stored
 
-        with patch("app.services.auth_service.user_dal") as mock_dal:
+        with patch("app.services.two_factor_service.user_dal") as mock_dal:
             mock_dal.get_by_id.return_value = mock_user
             with pytest.raises(HTTPException) as exc_info:
                 disable_2fa(mock_db, user_info, "123456")
@@ -244,23 +244,23 @@ class TestDisable2FAEdgeCases:
         assert "corrupted" in exc_info.value.detail.lower()
 
     def test_disable_2fa_replay_detected_raises_400(self):
-        """disable_2fa() must raise 400 when a replay attack is detected (lines 369-375)."""
+        """disable_2fa() must raise 400 when a replay attack is detected."""
         mock_db = MagicMock()
         user_info = {"user_id": 1}
         mock_user = MagicMock()
         mock_user.id = 1
         mock_user.username = "alice"
         mock_user.is_2fa_enabled = True
-        # totp_secret must be truthy to pass the corrupted-state guard (line 352)
+        # totp_secret must be truthy to pass the corrupted-state guard
         mock_user.totp_secret = "encrypted-secret-placeholder"
 
         # Build a real TOTP secret so verify_totp returns True
         secret = pyotp.random_base32()
         code = pyotp.TOTP(secret).now()
 
-        with patch("app.services.auth_service.user_dal") as mock_dal, \
-             patch("app.services.auth_service.decrypt_totp_secret", return_value=secret), \
-             patch("app.services.auth_service._check_and_mark_totp_replay", return_value=True):
+        with patch("app.services.two_factor_service.user_dal") as mock_dal, \
+             patch("app.services.two_factor_service.decrypt_totp_secret", return_value=secret), \
+             patch("app.services.two_factor_service.check_and_mark_totp_replay", return_value=True):
             mock_dal.get_by_id.return_value = mock_user
             with pytest.raises(HTTPException) as exc_info:
                 disable_2fa(mock_db, user_info, code)
@@ -281,9 +281,9 @@ class TestVerifyLogin2FAEdgeCases:
         """verify_login_2fa() must raise 401 when the user_id in the temp token is missing."""
         mock_db = MagicMock()
 
-        with patch("app.services.auth_service._peek_2fa_temp_token",
+        with patch("app.services.two_factor_service.peek_2fa_temp_token",
                    return_value={"user_id": 9999, "username": "ghost"}), \
-             patch("app.services.auth_service.user_dal") as mock_dal:
+             patch("app.services.two_factor_service.user_dal") as mock_dal:
             mock_dal.get_by_id.return_value = None
             with pytest.raises(HTTPException) as exc_info:
                 await verify_login_2fa(mock_db, "some-temp-token", "123456")
@@ -300,9 +300,9 @@ class TestVerifyLogin2FAEdgeCases:
         mock_user.is_2fa_enabled = False  # 2FA disabled on this user
         mock_user.totp_secret = None
 
-        with patch("app.services.auth_service._peek_2fa_temp_token",
+        with patch("app.services.two_factor_service.peek_2fa_temp_token",
                    return_value={"user_id": 1, "username": "alice"}), \
-             patch("app.services.auth_service.user_dal") as mock_dal:
+             patch("app.services.two_factor_service.user_dal") as mock_dal:
             mock_dal.get_by_id.return_value = mock_user
             with pytest.raises(HTTPException) as exc_info:
                 await verify_login_2fa(mock_db, "some-temp-token", "123456")
@@ -310,7 +310,7 @@ class TestVerifyLogin2FAEdgeCases:
 
     @pytest.mark.asyncio
     async def test_verify_login_replay_detected_raises_401(self):
-        """verify_login_2fa() must raise 401 when a TOTP replay attack is detected (lines 426-432)."""
+        """verify_login_2fa() must raise 401 when a TOTP replay attack is detected."""
         mock_db = MagicMock()
         mock_user = MagicMock()
         mock_user.id = 1
@@ -321,11 +321,11 @@ class TestVerifyLogin2FAEdgeCases:
         secret = pyotp.random_base32()
         code = pyotp.TOTP(secret).now()
 
-        with patch("app.services.auth_service._peek_2fa_temp_token",
+        with patch("app.services.two_factor_service.peek_2fa_temp_token",
                    return_value={"user_id": 1, "username": "alice"}), \
-             patch("app.services.auth_service.user_dal") as mock_dal, \
-             patch("app.services.auth_service.decrypt_totp_secret", return_value=secret), \
-             patch("app.services.auth_service._check_and_mark_totp_replay", return_value=True):
+             patch("app.services.two_factor_service.user_dal") as mock_dal, \
+             patch("app.services.two_factor_service.decrypt_totp_secret", return_value=secret), \
+             patch("app.services.two_factor_service.check_and_mark_totp_replay", return_value=True):
             mock_dal.get_by_id.return_value = mock_user
             with pytest.raises(HTTPException) as exc_info:
                 await verify_login_2fa(mock_db, "some-temp-token", code)
@@ -345,7 +345,7 @@ class TestGet2FAStatusEdgeCases:
         mock_db = MagicMock()
         user_info = {"user_id": 9999}
 
-        with patch("app.services.auth_service.user_dal") as mock_dal:
+        with patch("app.services.two_factor_service.user_dal") as mock_dal:
             mock_dal.get_by_id.return_value = None
             with pytest.raises(HTTPException) as exc_info:
                 get_2fa_status(mock_db, user_info)

@@ -108,7 +108,8 @@ def setup_test_environment():
     # Patch Redis
     with patch("app.infrastructure.redis.get_redis", mock_get_redis), \
          patch("app.core.security.get_redis", mock_get_redis, create=True), \
-         patch("app.services.auth_service._get_redis", mock_get_redis), \
+         patch("app.services.two_factor_service.get_redis", mock_get_redis), \
+         patch("app.utils.totp.get_redis", mock_get_redis), \
          patch("app.infrastructure.kafka_producer.produce_event", return_value=True) as _mock_kafka:
 
         # Also patch the import inside security.py's decode_token
