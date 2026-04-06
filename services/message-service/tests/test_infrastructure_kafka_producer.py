@@ -6,7 +6,6 @@
 #   - produce_to_dlq: success, failure, Kafka unavailable
 #   - create_consumer: factory returns configured consumer
 #   - is_kafka_available: reflects producer state
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

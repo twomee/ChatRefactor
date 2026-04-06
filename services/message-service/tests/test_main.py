@@ -32,7 +32,6 @@ class TestLifespanSecurityWarnings:
             patch("app.main.APP_ENV", "dev"),
             patch("app.main.SECRET_KEY", "change-this-in-production"),
         ):
-            from app.core.database import get_db
             from app.main import app
 
             with TestClient(app, raise_server_exceptions=False) as client:

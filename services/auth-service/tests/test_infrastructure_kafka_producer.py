@@ -3,6 +3,7 @@
 Tests for init_producer, close_producer, produce_event, and is_kafka_available.
 Uses mocking to avoid requiring a real Kafka cluster.
 """
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -69,7 +70,9 @@ class TestInitProducer:
     async def test_init_producer_failure_degrades_gracefully(self):
         """When Kafka connection fails, producer should be None and kafka_available False."""
         mock_aiokafka = MagicMock()
-        mock_aiokafka.AIOKafkaProducer = MagicMock(side_effect=Exception("Connection refused"))
+        mock_aiokafka.AIOKafkaProducer = MagicMock(
+            side_effect=Exception("Connection refused")
+        )
 
         with patch.dict("sys.modules", {"aiokafka": mock_aiokafka}):
             await kafka_producer.init_producer()
@@ -188,9 +191,7 @@ class TestProduceEvent:
         kafka_producer._producer = mock_producer
         kafka_producer._kafka_available = True
 
-        await _real_produce_event(
-            "user_registered", {"user_id": 1, "username": "dave"}
-        )
+        await _real_produce_event("user_registered", {"user_id": 1, "username": "dave"})
 
         call_args = mock_producer.send.call_args
         event_value = call_args.kwargs["value"]

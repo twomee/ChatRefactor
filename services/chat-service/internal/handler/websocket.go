@@ -108,7 +108,7 @@ type WSHandler struct {
 	secretKey         string
 	logger            *zap.Logger
 	limiter           *rateLimiter
-	messageSvcURL     string
+	messageClient     client.HistoryFetcher
 
 	// lifecycleState manages mutex-guarded maps for connection lifecycle
 	// tracking (kicked users, intentional leaves, pending leave timers).
@@ -123,7 +123,7 @@ func NewWSHandler(
 	delivery delivery.Strategy,
 	authClient *client.AuthClient,
 	secretKey string,
-	messageServiceURL string,
+	messageClient client.HistoryFetcher,
 	logger *zap.Logger,
 ) *WSHandler {
 	h := &WSHandler{
@@ -135,7 +135,7 @@ func NewWSHandler(
 		secretKey:         secretKey,
 		logger:            logger,
 		limiter:           newRateLimiter(),
-		messageSvcURL:     messageServiceURL,
+		messageClient:     messageClient,
 		lifecycleState:    newLifecycleState(),
 	}
 

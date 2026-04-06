@@ -29,6 +29,7 @@ const { mockWriteFile, mockMkdir, mockUnlink } = vi.hoisted(() => ({
 }));
 
 const mockProduceEvent = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockGetUserByUsername = vi.hoisted(() => vi.fn());
 
 vi.mock("@prisma/client", () => ({
   PrismaClient: vi.fn().mockImplementation(() => ({
@@ -54,6 +55,10 @@ vi.mock("node:fs/promises", () => ({
 
 vi.mock("../../src/kafka/events.js", () => ({
   produceFileUploadedEvent: (...args: unknown[]) => mockProduceEvent(...args),
+}));
+
+vi.mock("../../src/clients/auth.client.js", () => ({
+  getUserByUsername: (...args: unknown[]) => mockGetUserByUsername(...args),
 }));
 
 vi.mock("../../src/kafka/logger.js", () => ({
@@ -211,6 +216,134 @@ describe("services/file.service", () => {
       mockExistsSync.mockReturnValue(false);
 
       await expect(getFile(1)).rejects.toThrow("File not found on disk");
+    });
+  });
+
+  describe("uploadFile — recipient resolution", () => {
+    it("should resolve recipientUsername to recipientId via auth client", async () => {
+      const { uploadFile } = await import("../../src/services/file.service.js");
+
+      mockGetUserByUsername.mockResolvedValue({ id: 7, username: "bob" });
+      mockPrismaFile.create.mockResolvedValue({
+        id: 10,
+        originalName: "pm.txt",
+        storedPath: "/tmp/file-service-test-uploads/abc_pm.txt",
+        fileSize: 5,
+        senderId: 1,
+        senderName: "alice",
+        roomId: null,
+        recipientId: 7,
+        isPrivate: true,
+        uploadedAt: new Date(),
+      });
+
+      const result = await uploadFile({
+        file: { buffer: Buffer.from("hello"), originalname: "pm.txt" } as Express.Multer.File,
+        senderId: 1,
+        senderName: "alice",
+        recipientUsername: "bob",
+        isPrivate: true,
+      });
+
+      expect(mockGetUserByUsername).toHaveBeenCalledWith("bob");
+      expect(result.recipientId).toBe(7);
+      expect(result.isPrivate).toBe(true);
+    });
+
+    it("should throw 404 if recipientUsername does not exist", async () => {
+      const { uploadFile } = await import("../../src/services/file.service.js");
+
+      mockGetUserByUsername.mockResolvedValue(null);
+
+      await expect(
+        uploadFile({
+          file: { buffer: Buffer.from("hello"), originalname: "pm.txt" } as Express.Multer.File,
+          senderId: 1,
+          senderName: "alice",
+          recipientUsername: "ghost",
+          isPrivate: true,
+        })
+      ).rejects.toThrow("Recipient not found");
+    });
+  });
+
+  describe("getFileForDownload", () => {
+    it("should return file record for non-private file regardless of user", async () => {
+      const { getFileForDownload } = await import("../../src/services/file.service.js");
+
+      mockPrismaFile.findUnique.mockResolvedValue({
+        id: 1,
+        originalName: "public.txt",
+        storedPath: "/tmp/file-service-test-uploads/abc_public.txt",
+        fileSize: 11,
+        senderId: 2,
+        roomId: 1,
+        isPrivate: false,
+        uploadedAt: new Date(),
+      });
+      mockExistsSync.mockReturnValue(true);
+
+      const result = await getFileForDownload(1, 999);
+      expect(result.id).toBe(1);
+    });
+
+    it("should allow sender to download private file", async () => {
+      const { getFileForDownload } = await import("../../src/services/file.service.js");
+
+      mockPrismaFile.findUnique.mockResolvedValue({
+        id: 2,
+        originalName: "secret.txt",
+        storedPath: "/tmp/file-service-test-uploads/abc_secret.txt",
+        fileSize: 11,
+        senderId: 1,
+        recipientId: 7,
+        roomId: null,
+        isPrivate: true,
+        uploadedAt: new Date(),
+      });
+      mockExistsSync.mockReturnValue(true);
+
+      const result = await getFileForDownload(2, 1);
+      expect(result.id).toBe(2);
+    });
+
+    it("should allow recipient to download private file", async () => {
+      const { getFileForDownload } = await import("../../src/services/file.service.js");
+
+      mockPrismaFile.findUnique.mockResolvedValue({
+        id: 2,
+        originalName: "secret.txt",
+        storedPath: "/tmp/file-service-test-uploads/abc_secret.txt",
+        fileSize: 11,
+        senderId: 1,
+        recipientId: 7,
+        roomId: null,
+        isPrivate: true,
+        uploadedAt: new Date(),
+      });
+      mockExistsSync.mockReturnValue(true);
+
+      const result = await getFileForDownload(2, 7);
+      expect(result.id).toBe(2);
+    });
+
+    it("should throw 403 for unauthorized user on private file", async () => {
+      const { getFileForDownload } = await import("../../src/services/file.service.js");
+
+      mockPrismaFile.findUnique.mockResolvedValue({
+        id: 2,
+        originalName: "secret.txt",
+        storedPath: "/tmp/file-service-test-uploads/abc_secret.txt",
+        fileSize: 11,
+        senderId: 1,
+        recipientId: 7,
+        roomId: null,
+        isPrivate: true,
+        uploadedAt: new Date(),
+      });
+      mockExistsSync.mockReturnValue(true);
+
+      await expect(getFileForDownload(2, 999)).rejects.toThrow("Forbidden");
     });
   });
 

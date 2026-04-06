@@ -5,9 +5,7 @@
 #   - Uses the provided X-Request-ID header if present
 #   - Adds X-Request-ID to the response headers
 #   - Binds correlation ID to structlog context
-from unittest.mock import AsyncMock, patch
 
-import structlog
 
 
 class TestCorrelationIdMiddleware:

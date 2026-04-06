@@ -10,7 +10,6 @@
 #   - API input validation (negative room_id, limit exceeding max, limit zero)
 from datetime import datetime, timedelta
 
-import pytest
 
 from app.models import Message, Reaction
 

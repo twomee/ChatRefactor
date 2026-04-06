@@ -1,5 +1,4 @@
 # tests/test_dal_reaction_dal.py — Tests for reaction Data Access Layer
-import pytest
 
 from app.dal import reaction_dal
 

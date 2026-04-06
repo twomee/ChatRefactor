@@ -133,7 +133,7 @@ func TestWSAddReactionMutedUser(t *testing.T) {
 	// Override muteSet so alice (user 1) is muted.
 	store.muteSet[adminKey(1, 1)] = true
 
-	wsH := NewWSHandler(manager, store, nil, del, nil, testSecret, "http://localhost:8004", logger)
+	wsH := NewWSHandler(manager, store, nil, del, nil, testSecret, nil, logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)

@@ -48,6 +48,8 @@ func (h *WSHandler) handlePrivateMessage(ctx context.Context, conn *websocket.Co
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
+	msgID := fmt.Sprintf("pm-%d-%d-%d", userID, targetID, time.Now().UnixNano())
+
 	// WebSocket payload uses "from"/"to" for frontend rendering.
 	wsPM := map[string]interface{}{
 		"type":      "private_message",
@@ -56,6 +58,7 @@ func (h *WSHandler) handlePrivateMessage(ctx context.Context, conn *websocket.Co
 		"text":      text,
 		"room_id":   roomID,
 		"timestamp": now,
+		"msg_id":    msgID,
 	}
 
 	// Send to target.
@@ -70,6 +73,7 @@ func (h *WSHandler) handlePrivateMessage(ctx context.Context, conn *websocket.Co
 		"room_id":   roomID,
 		"timestamp": now,
 		"self":      true,
+		"msg_id":    msgID,
 	}
 	h.manager.SendToUserInRoom(roomID, userID, selfPM)
 
@@ -77,7 +81,7 @@ func (h *WSHandler) handlePrivateMessage(ctx context.Context, conn *websocket.Co
 	// message-service persistence consumer expects.
 	kafkaPayload := map[string]interface{}{
 		"type":      "private_message",
-		"msg_id":    fmt.Sprintf("pm-%d-%d-%d", roomID, userID, time.Now().UnixNano()),
+		"msg_id":    msgID,
 		"sender":    username,
 		"sender_id": userID,
 		"recipient": to,

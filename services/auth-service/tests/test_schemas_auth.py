@@ -4,6 +4,7 @@ Tests for:
 - UserRegister: username too long, password too long
 - UserLogin: empty username, empty password, username too long, password too long
 """
+
 import pytest
 from pydantic import ValidationError
 
@@ -14,7 +15,9 @@ class TestUserRegisterValidation:
     """Tests for UserRegister schema validation."""
 
     def test_valid_registration(self):
-        user = UserRegister(username="alice", password="x-pw-val", email="alice@test.com")
+        user = UserRegister(
+            username="alice", password="x-pw-val", email="alice@test.com"
+        )
         assert user.username == "alice"
         assert user.email == "alice@test.com"
 
@@ -34,7 +37,9 @@ class TestUserRegisterValidation:
 
     def test_username_special_chars_rejected(self):
         with pytest.raises(ValidationError):
-            UserRegister(username="user@name", password="x-pw-val", email="user@test.com")
+            UserRegister(
+                username="user@name", password="x-pw-val", email="user@test.com"
+            )
 
     def test_missing_email_rejected(self):
         with pytest.raises(ValidationError):

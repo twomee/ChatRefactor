@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 from urllib.parse import quote
 
-import pytest
 
 from app.dal import message_dal
 from app.models import UserMessageClear, DeletedPMConversation

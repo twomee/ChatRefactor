@@ -39,6 +39,7 @@ func (h *WSHandler) handleAddReaction(ctx context.Context, conn *websocket.Conn,
 	// Rate limiting.
 	key := fmt.Sprintf("reaction:%d:user:%d", roomID, userID)
 	if !h.limiter.allow(key) {
+		h.sendError(conn, "Rate limit exceeded — try again shortly")
 		return
 	}
 
@@ -90,6 +91,7 @@ func (h *WSHandler) handleRemoveReaction(ctx context.Context, conn *websocket.Co
 	// Rate limiting.
 	key := fmt.Sprintf("reaction:%d:user:%d", roomID, userID)
 	if !h.limiter.allow(key) {
+		h.sendError(conn, "Rate limit exceeded — try again shortly")
 		return
 	}
 

@@ -11,12 +11,10 @@
 #   - GET /messages/pm/deleted-conversations
 #   - DAL unit tests for clear_dal and pm_deletion_dal
 #   - Edge cases: idempotent clears, non-existent contexts, auth required
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
-import pytest
 
 from app.dal import clear_dal, pm_deletion_dal
-from app.models import Message
 
 
 # ══════════════════════════════════════════════════════════════════════

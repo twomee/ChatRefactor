@@ -5,9 +5,6 @@ Tests for:
 - CorrelationIdMiddleware propagates the X-Request-ID header from the request
 - Response includes the X-Request-ID header
 """
-from fastapi.testclient import TestClient
-
-from app.main import app
 
 
 class TestCorrelationIdMiddleware:

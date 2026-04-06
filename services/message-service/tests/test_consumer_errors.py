@@ -11,7 +11,6 @@
 #   - _process dispatches room and private messages correctly
 #   - _process_with_retry: DLQ on persistent failure, no DLQ on success, retry then success
 #   - Content truncation (DoS prevention)
-import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 

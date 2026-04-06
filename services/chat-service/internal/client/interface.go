@@ -12,3 +12,11 @@ type UserLookup interface {
 
 // Compile-time check that AuthClient implements UserLookup.
 var _ UserLookup = (*AuthClient)(nil)
+
+// HistoryFetcher defines the interface for fetching message history.
+type HistoryFetcher interface {
+	GetRoomHistory(ctx context.Context, roomID int, token string, limit int) []MessageHistory
+}
+
+// Compile-time check that MessageClient implements HistoryFetcher.
+var _ HistoryFetcher = (*MessageClient)(nil)

@@ -6,6 +6,7 @@ Tests for:
 - create: creates and returns a user
 - delete_all: removes all users
 """
+
 from app.core.security import hash_password
 from app.dal import user_dal
 

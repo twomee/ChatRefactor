@@ -3,6 +3,7 @@
 Tests for:
 - get_redis returns a Redis client from the pool
 """
+
 from unittest.mock import MagicMock, patch
 
 

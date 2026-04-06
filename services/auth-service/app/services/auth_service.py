@@ -8,11 +8,16 @@ Key differences from monolith:
 4. 2FA (TOTP) support has been extracted to two_factor_service.py and utils/totp.py.
 """
 
-from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import ACCESS_TOKEN_EXPIRE_HOURS, APP_ENV
+from app.services.exceptions import (
+    AuthenticationError,
+    ConflictError,
+    NotFoundError,
+    ServerError,
+)
 from app.core.logging import get_logger
 from app.core.security import create_access_token, hash_password, verify_password
 from app.dal import user_dal
@@ -31,6 +36,22 @@ logger = get_logger("services.auth")
 _USER_NOT_FOUND = "User not found"
 
 
+def get_user_by_username(db: Session, username: str):
+    """Look up a user by username. Raises NotFoundError if not found."""
+    user = user_dal.get_by_username(db, username)
+    if not user:
+        raise NotFoundError(_USER_NOT_FOUND)
+    return user
+
+
+def get_user_by_id(db: Session, user_id: int):
+    """Look up a user by ID. Raises NotFoundError if not found."""
+    user = user_dal.get_by_id(db, user_id)
+    if not user:
+        raise NotFoundError(_USER_NOT_FOUND)
+    return user
+
+
 async def register(db: Session, body: UserRegister) -> dict:
     """Register a new user.
 
@@ -41,11 +62,11 @@ async def register(db: Session, body: UserRegister) -> dict:
     """
     if user_dal.get_by_username(db, body.username):
         auth_registrations_total.labels(status="duplicate").inc()
-        raise HTTPException(status_code=409, detail="Username already taken")
+        raise ConflictError("Username already taken")
 
     if user_dal.get_by_email(db, body.email):
         auth_registrations_total.labels(status="duplicate").inc()
-        raise HTTPException(status_code=409, detail="Email already registered")
+        raise ConflictError("Email already registered")
 
     try:
         user = user_dal.create(
@@ -57,7 +78,7 @@ async def register(db: Session, body: UserRegister) -> dict:
     except IntegrityError:
         db.rollback()
         auth_registrations_total.labels(status="duplicate").inc()
-        raise HTTPException(status_code=409, detail="Username or email already taken")
+        raise ConflictError("Username or email already taken")
 
     logger.info("user_registered", username=user.username, user_id=user.id)
     auth_registrations_total.labels(status="success").inc()
@@ -79,7 +100,7 @@ def get_profile(db: Session, user_id: int) -> dict:
     """Return the authenticated user's profile (username + email)."""
     user = user_dal.get_by_id(db, user_id)
     if not user:
-        raise HTTPException(status_code=404, detail=_USER_NOT_FOUND)
+        raise NotFoundError(_USER_NOT_FOUND)
     return {"username": user.username, "email": user.email}
 
 
@@ -92,14 +113,14 @@ def update_email(
     """
     user = user_dal.get_by_id(db, user_id)
     if not user:
-        raise HTTPException(status_code=404, detail=_USER_NOT_FOUND)
+        raise NotFoundError(_USER_NOT_FOUND)
 
     if not verify_password(current_password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Current password is incorrect")
+        raise AuthenticationError("Current password is incorrect")
 
     existing = user_dal.get_by_email(db, new_email)
     if existing and existing.id != user_id:
-        raise HTTPException(status_code=409, detail="Email already registered")
+        raise ConflictError("Email already registered")
 
     user_dal.update_email(db, user_id, new_email)
     logger.info("email_updated", user_id=user_id)
@@ -112,10 +133,10 @@ def update_password(
     """Change the user's password after verifying their current password."""
     user = user_dal.get_by_id(db, user_id)
     if not user:
-        raise HTTPException(status_code=404, detail=_USER_NOT_FOUND)
+        raise NotFoundError(_USER_NOT_FOUND)
 
     if not verify_password(current_password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Current password is incorrect")
+        raise AuthenticationError("Current password is incorrect")
 
     user_dal.update_password(db, user_id, hash_password(new_password))
     logger.info("password_updated", user_id=user_id)
@@ -143,12 +164,12 @@ async def login(db: Session, body: UserLogin) -> TokenResponse | dict:
         verify_password(body.password, _DUMMY_HASH)
         logger.warning("login_failed", username=body.username)
         auth_logins_total.labels(status="invalid_credentials").inc()
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise AuthenticationError("Invalid username or password")
 
     if not verify_password(body.password, user.password_hash):
         logger.warning("login_failed", username=body.username)
         auth_logins_total.labels(status="invalid_credentials").inc()
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise AuthenticationError("Invalid username or password")
 
     # ── 2FA gate: if enabled, issue a short-lived temp_token instead of a JWT ──
     if user.is_2fa_enabled:
@@ -203,9 +224,8 @@ async def logout(user_info: dict, token: str) -> dict:
             msg="Redis unavailable — token cannot be revoked until expiry",
         )
         if APP_ENV in ("prod", "staging"):
-            raise HTTPException(
-                status_code=503,
-                detail="Logout partially failed — please try again or change your password",
+            raise ServerError(
+                "Logout partially failed — please try again or change your password"
             ) from exc
 
     logger.info("user_logged_out", username=username, user_id=user_id)

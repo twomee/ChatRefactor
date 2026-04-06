@@ -8,6 +8,7 @@ Tests for:
 Note: load_dotenv is patched out in reload tests so the .env file
 doesn't override the test environment variables.
 """
+
 import importlib
 import os
 from unittest.mock import patch
@@ -24,10 +25,10 @@ class TestRequireEnv:
         env["APP_ENV"] = "prod"
         env.pop("SECRET_KEY", None)
 
-        with patch.dict(os.environ, env, clear=True), \
-             patch("dotenv.load_dotenv"):
+        with patch.dict(os.environ, env, clear=True), patch("dotenv.load_dotenv"):
             with pytest.raises(SystemExit):
                 import app.core.config as config_mod
+
                 importlib.reload(config_mod)
 
     def test_require_env_returns_empty_in_dev_when_missing(self):
@@ -38,9 +39,9 @@ class TestRequireEnv:
         env.pop("ADMIN_USERNAME", None)
         env.pop("ADMIN_PASSWORD", None)
 
-        with patch.dict(os.environ, env, clear=True), \
-             patch("dotenv.load_dotenv"):
+        with patch.dict(os.environ, env, clear=True), patch("dotenv.load_dotenv"):
             import app.core.config as config_mod
+
             importlib.reload(config_mod)
             assert config_mod.ADMIN_USERNAME == ""
 
@@ -53,8 +54,8 @@ class TestRequireEnv:
         env["ADMIN_USERNAME"] = "admin"
         env["ADMIN_PASSWORD"] = "password"
 
-        with patch.dict(os.environ, env, clear=True), \
-             patch("dotenv.load_dotenv"):
+        with patch.dict(os.environ, env, clear=True), patch("dotenv.load_dotenv"):
             with pytest.raises(SystemExit):
                 import app.core.config as config_mod
+
                 importlib.reload(config_mod)

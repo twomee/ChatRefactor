@@ -30,17 +30,17 @@ import { produceFileUploadedEvent } from "../kafka/events.js";
 import { logger } from "../kafka/logger.js";
 import { filesUploadedTotal, fileUploadSizeBytes, filesDownloadedTotal } from "../middleware/metrics.middleware.js";
 import type { FileUploadResult, FileRecord, FileMetadataResponse } from "../types/file.types.js";
+import { getUserByUsername } from "../clients/auth.client.js";
 
 const prisma = new PrismaClient();
 
-/** Parameters for uploadFile — exactly one of roomId or recipientId must be set. */
+/** Parameters for uploadFile — exactly one of roomId or recipientUsername must be set. */
 export interface UploadFileParams {
   file: Express.Multer.File;
   senderId: number;
   senderName: string;
   roomId?: number;
-  recipientId?: number;
-  recipientName?: string;
+  recipientUsername?: string;
   isPrivate?: boolean;
 }
 
@@ -57,10 +57,22 @@ export async function uploadFile(params: UploadFileParams): Promise<FileUploadRe
     senderId,
     senderName,
     roomId,
-    recipientId,
-    recipientName,
+    recipientUsername,
     isPrivate = false,
   } = params;
+
+  // Resolve recipient username to numeric ID via auth service
+  let recipientId: number | undefined;
+  let recipientName: string | undefined;
+
+  if (recipientUsername) {
+    const recipient = await getUserByUsername(recipientUsername);
+    if (!recipient) {
+      throw new FileValidationError("Recipient not found", 404);
+    }
+    recipientId = recipient.id;
+    recipientName = recipient.username;
+  }
 
   const fileBuffer = file.buffer;
   const originalFilename = file.originalname;
@@ -232,6 +244,24 @@ export async function getFile(fileId: number): Promise<FileRecord> {
     filesDownloadedTotal.inc({ status: "error" });
     throw error;
   }
+}
+
+/**
+ * Get a file record for download, with private-file authorization.
+ *
+ * Delegates to getFile for retrieval and path-traversal checks, then enforces
+ * that only the sender or recipient may access private (PM) files.
+ */
+export async function getFileForDownload(fileId: number, currentUserId: number): Promise<FileRecord> {
+  const record = await getFile(fileId);
+
+  if (record.isPrivate) {
+    if (record.senderId !== currentUserId && record.recipientId !== currentUserId) {
+      throw new FileValidationError("Forbidden", 403);
+    }
+  }
+
+  return record;
 }
 
 /**

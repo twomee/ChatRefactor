@@ -9,10 +9,8 @@ Tests cover:
 - Invalid code handling
 - Backwards compatibility (login without 2FA still returns JWT directly)
 """
-from unittest.mock import MagicMock, patch
 
 import pyotp
-import pytest
 
 from app.utils.totp import (
     generate_totp_secret,
@@ -73,12 +71,26 @@ class TestSetup2FA:
 
     def test_setup_returns_secret_and_uri(self, client):
         """Setup should return a TOTP secret and otpauth URI."""
-        client.post("/auth/register", json={"username": "alice2fa", "password": "password123", "email": "alice2fa@test.com"})
+        client.post(
+            "/auth/register",
+            json={
+                "username": "alice2fa",
+                "password": "password123",
+                "email": "alice2fa@test.com",
+            },
+        )
         token = client.post(
-            "/auth/login", json={"username": "alice2fa", "password": "password123", "email": "alice2fa@test.com"}
+            "/auth/login",
+            json={
+                "username": "alice2fa",
+                "password": "password123",
+                "email": "alice2fa@test.com",
+            },
         ).json()["access_token"]
 
-        resp = client.post("/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"})
+        resp = client.post(
+            "/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"}
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "manual_entry_key" in data
@@ -95,13 +107,27 @@ class TestSetup2FA:
 
     def test_setup_when_already_enabled_returns_400(self, client):
         """Setting up 2FA when already enabled should fail."""
-        client.post("/auth/register", json={"username": "bob2fa", "password": "password123", "email": "bob2fa@test.com"})
+        client.post(
+            "/auth/register",
+            json={
+                "username": "bob2fa",
+                "password": "password123",
+                "email": "bob2fa@test.com",
+            },
+        )
         token = client.post(
-            "/auth/login", json={"username": "bob2fa", "password": "password123", "email": "bob2fa@test.com"}
+            "/auth/login",
+            json={
+                "username": "bob2fa",
+                "password": "password123",
+                "email": "bob2fa@test.com",
+            },
         ).json()["access_token"]
 
         # Setup and verify
-        setup_resp = client.post("/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"})
+        setup_resp = client.post(
+            "/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"}
+        )
         secret = setup_resp.json()["manual_entry_key"]
         code = pyotp.TOTP(secret).now()
         client.post(
@@ -111,7 +137,9 @@ class TestSetup2FA:
         )
 
         # Try to setup again — should fail
-        resp = client.post("/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"})
+        resp = client.post(
+            "/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"}
+        )
         assert resp.status_code == 400
         assert "already enabled" in resp.json()["detail"]
 
@@ -121,12 +149,26 @@ class TestVerifySetup2FA:
 
     def test_verify_setup_enables_2fa(self, client):
         """Verifying with a correct code should enable 2FA."""
-        client.post("/auth/register", json={"username": "carol2fa", "password": "password123", "email": "carol2fa@test.com"})
+        client.post(
+            "/auth/register",
+            json={
+                "username": "carol2fa",
+                "password": "password123",
+                "email": "carol2fa@test.com",
+            },
+        )
         token = client.post(
-            "/auth/login", json={"username": "carol2fa", "password": "password123", "email": "carol2fa@test.com"}
+            "/auth/login",
+            json={
+                "username": "carol2fa",
+                "password": "password123",
+                "email": "carol2fa@test.com",
+            },
         ).json()["access_token"]
 
-        setup_resp = client.post("/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"})
+        setup_resp = client.post(
+            "/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"}
+        )
         secret = setup_resp.json()["manual_entry_key"]
         code = pyotp.TOTP(secret).now()
 
@@ -139,14 +181,28 @@ class TestVerifySetup2FA:
         assert "enabled" in resp.json()["message"].lower()
 
         # Verify status endpoint reports enabled
-        status = client.get("/auth/2fa/status", headers={"Authorization": f"Bearer {token}"})
+        status = client.get(
+            "/auth/2fa/status", headers={"Authorization": f"Bearer {token}"}
+        )
         assert status.json()["is_2fa_enabled"] is True
 
     def test_verify_setup_with_invalid_code_returns_400(self, client):
         """Verifying with an invalid code should fail."""
-        client.post("/auth/register", json={"username": "dave2fa", "password": "password123", "email": "dave2fa@test.com"})
+        client.post(
+            "/auth/register",
+            json={
+                "username": "dave2fa",
+                "password": "password123",
+                "email": "dave2fa@test.com",
+            },
+        )
         token = client.post(
-            "/auth/login", json={"username": "dave2fa", "password": "password123", "email": "dave2fa@test.com"}
+            "/auth/login",
+            json={
+                "username": "dave2fa",
+                "password": "password123",
+                "email": "dave2fa@test.com",
+            },
         ).json()["access_token"]
 
         client.post("/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"})
@@ -161,9 +217,21 @@ class TestVerifySetup2FA:
 
     def test_verify_setup_without_setup_first_returns_400(self, client):
         """Verifying without calling setup first should fail."""
-        client.post("/auth/register", json={"username": "eve2fa", "password": "password123", "email": "eve2fa@test.com"})
+        client.post(
+            "/auth/register",
+            json={
+                "username": "eve2fa",
+                "password": "password123",
+                "email": "eve2fa@test.com",
+            },
+        )
         token = client.post(
-            "/auth/login", json={"username": "eve2fa", "password": "password123", "email": "eve2fa@test.com"}
+            "/auth/login",
+            json={
+                "username": "eve2fa",
+                "password": "password123",
+                "email": "eve2fa@test.com",
+            },
         ).json()["access_token"]
 
         resp = client.post(
@@ -179,12 +247,26 @@ class TestDisable2FA:
 
     def _enable_2fa(self, client, username, password):
         """Helper: register, login, setup, and enable 2FA. Returns (token, secret)."""
-        client.post("/auth/register", json={"username": username, "password": password, "email": f"{username}@test.com"})
+        client.post(
+            "/auth/register",
+            json={
+                "username": username,
+                "password": password,
+                "email": f"{username}@test.com",
+            },
+        )
         token = client.post(
-            "/auth/login", json={"username": username, "password": password, "email": f"{username}@test.com"}
+            "/auth/login",
+            json={
+                "username": username,
+                "password": password,
+                "email": f"{username}@test.com",
+            },
         ).json()["access_token"]
 
-        setup_resp = client.post("/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"})
+        setup_resp = client.post(
+            "/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"}
+        )
         secret = setup_resp.json()["manual_entry_key"]
         code = pyotp.TOTP(secret).now()
         client.post(
@@ -208,7 +290,9 @@ class TestDisable2FA:
         assert "disabled" in resp.json()["message"].lower()
 
         # Verify status is now disabled
-        status = client.get("/auth/2fa/status", headers={"Authorization": f"Bearer {token}"})
+        status = client.get(
+            "/auth/2fa/status", headers={"Authorization": f"Bearer {token}"}
+        )
         assert status.json()["is_2fa_enabled"] is False
 
     def test_disable_with_invalid_code_returns_400(self, client):
@@ -224,9 +308,21 @@ class TestDisable2FA:
 
     def test_disable_when_not_enabled_returns_400(self, client):
         """Trying to disable 2FA when it's not enabled should fail."""
-        client.post("/auth/register", json={"username": "heidi2fa", "password": "password123", "email": "heidi2fa@test.com"})
+        client.post(
+            "/auth/register",
+            json={
+                "username": "heidi2fa",
+                "password": "password123",
+                "email": "heidi2fa@test.com",
+            },
+        )
         token = client.post(
-            "/auth/login", json={"username": "heidi2fa", "password": "password123", "email": "heidi2fa@test.com"}
+            "/auth/login",
+            json={
+                "username": "heidi2fa",
+                "password": "password123",
+                "email": "heidi2fa@test.com",
+            },
         ).json()["access_token"]
 
         resp = client.post(
@@ -242,12 +338,26 @@ class TestLoginWith2FA:
 
     def _enable_2fa(self, client, username, password):
         """Helper: register, login, setup, and enable 2FA. Returns secret."""
-        client.post("/auth/register", json={"username": username, "password": password, "email": f"{username}@test.com"})
+        client.post(
+            "/auth/register",
+            json={
+                "username": username,
+                "password": password,
+                "email": f"{username}@test.com",
+            },
+        )
         token = client.post(
-            "/auth/login", json={"username": username, "password": password, "email": f"{username}@test.com"}
+            "/auth/login",
+            json={
+                "username": username,
+                "password": password,
+                "email": f"{username}@test.com",
+            },
         ).json()["access_token"]
 
-        setup_resp = client.post("/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"})
+        setup_resp = client.post(
+            "/auth/2fa/setup", headers={"Authorization": f"Bearer {token}"}
+        )
         secret = setup_resp.json()["manual_entry_key"]
         code = pyotp.TOTP(secret).now()
         client.post(
@@ -314,7 +424,10 @@ class TestLoginWith2FA:
             json={"temp_token": "nonexistent-token", "code": "123456"},
         )
         assert resp.status_code == 401
-        assert "expired" in resp.json()["detail"].lower() or "invalid" in resp.json()["detail"].lower()
+        assert (
+            "expired" in resp.json()["detail"].lower()
+            or "invalid" in resp.json()["detail"].lower()
+        )
 
     def test_temp_token_is_single_use(self, client):
         """A temp_token should only work once."""
@@ -346,9 +459,21 @@ class TestLoginBackwardsCompatibility:
 
     def test_login_without_2fa_returns_jwt_directly(self, client):
         """Users without 2FA enabled should get a JWT directly on login."""
-        client.post("/auth/register", json={"username": "mara2fa", "password": "password123", "email": "mara2fa@test.com"})
+        client.post(
+            "/auth/register",
+            json={
+                "username": "mara2fa",
+                "password": "password123",
+                "email": "mara2fa@test.com",
+            },
+        )
         resp = client.post(
-            "/auth/login", json={"username": "mara2fa", "password": "password123", "email": "mara2fa@test.com"}
+            "/auth/login",
+            json={
+                "username": "mara2fa",
+                "password": "password123",
+                "email": "mara2fa@test.com",
+            },
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -361,12 +486,26 @@ class Test2FAStatus:
 
     def test_status_returns_false_by_default(self, client):
         """New users should have 2FA disabled."""
-        client.post("/auth/register", json={"username": "nora2fa", "password": "password123", "email": "nora2fa@test.com"})
+        client.post(
+            "/auth/register",
+            json={
+                "username": "nora2fa",
+                "password": "password123",
+                "email": "nora2fa@test.com",
+            },
+        )
         token = client.post(
-            "/auth/login", json={"username": "nora2fa", "password": "password123", "email": "nora2fa@test.com"}
+            "/auth/login",
+            json={
+                "username": "nora2fa",
+                "password": "password123",
+                "email": "nora2fa@test.com",
+            },
         ).json()["access_token"]
 
-        resp = client.get("/auth/2fa/status", headers={"Authorization": f"Bearer {token}"})
+        resp = client.get(
+            "/auth/2fa/status", headers={"Authorization": f"Bearer {token}"}
+        )
         assert resp.status_code == 200
         assert resp.json()["is_2fa_enabled"] is False
 

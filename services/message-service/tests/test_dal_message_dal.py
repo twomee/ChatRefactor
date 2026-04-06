@@ -7,7 +7,7 @@
 #   - delete_all: removes all messages
 from datetime import datetime, timedelta
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from app.dal.message_dal import (
     create_idempotent,

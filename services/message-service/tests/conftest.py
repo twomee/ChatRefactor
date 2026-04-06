@@ -21,13 +21,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 import jwt
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import ALGORITHM, SECRET_KEY
 from app.core.database import Base, get_db
-from app.models import DeletedPMConversation, Message, Reaction, UserMessageClear
+from app.models import Message
 
 # ── In-memory SQLite test database ──────────────────────────────────
 
