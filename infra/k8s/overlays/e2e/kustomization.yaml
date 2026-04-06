@@ -6,6 +6,7 @@ resources:
 patches:
   - path: patches/kong-service-nodeport.yaml
   - path: patches/frontend-service-nodeport.yaml
+  - path: patches/kong-configmap-ratelimits.yaml
 images:
   - name: auth-service
     newTag: latest
