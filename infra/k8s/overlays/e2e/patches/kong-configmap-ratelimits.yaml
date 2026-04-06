@@ -1,0 +1,183 @@
+# Kong ConfigMap patch for the e2e overlay.
+# Replaces production rate limits with test-friendly values that match
+# infra/kong/kong.e2e.yml (used by the Docker Compose e2e environment).
+# Without this patch the tests hit the base (prod) limits of 100 req/min
+# globally and 5-10 req/min on auth routes, causing "API rate limit exceeded"
+# errors and flaky Playwright test failures.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kong-config
+  namespace: chatbox
+data:
+  kong.yml: |
+    _format_version: "3.0"
+    _transform: true
+
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "http://localhost:3000"
+            - "http://localhost:5173"
+            - "http://localhost:30000"
+            - "http://localhost:31000"
+          methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+          headers: [Authorization, Content-Type, X-Request-ID]
+          credentials: true
+          preflight_continue: false
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - "X-Request-ID:$(uuid)"
+      - name: response-transformer
+        config:
+          add:
+            headers:
+              - "X-Content-Type-Options: nosniff"
+              - "X-Frame-Options: DENY"
+              - "Referrer-Policy: strict-origin-when-cross-origin"
+              - "X-XSS-Protection: 1; mode=block"
+              - "Permissions-Policy: camera=(), microphone=(), geolocation=()"
+      - name: rate-limiting
+        config:
+          minute: 10000
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
+    services:
+      - name: auth-register
+        url: http://auth-service:8001
+        routes:
+          - name: auth-register-route
+            paths: [/auth/register]
+            strip_path: false
+            methods: [POST, OPTIONS]
+        plugins:
+          - name: rate-limiting
+            config: { minute: 1000, policy: local, fault_tolerant: true, hide_client_headers: false }
+      - name: auth-login
+        url: http://auth-service:8001
+        routes:
+          - name: auth-login-route
+            paths: [/auth/login]
+            strip_path: false
+            methods: [POST, OPTIONS]
+        plugins:
+          - name: rate-limiting
+            config: { minute: 1000, policy: local, fault_tolerant: true, hide_client_headers: false }
+      - name: auth-logout
+        url: http://auth-service:8001
+        routes:
+          - name: auth-logout-route
+            paths: [/auth/logout]
+            strip_path: false
+            methods: [POST, OPTIONS]
+      - name: auth-ping
+        url: http://auth-service:8001
+        routes:
+          - name: auth-ping-route
+            paths: [/auth/ping]
+            strip_path: false
+            methods: [POST, OPTIONS]
+      - name: auth-users
+        url: http://auth-service:8001
+        routes:
+          - name: auth-users-route
+            paths: [/auth/users]
+            strip_path: false
+            methods: [GET, OPTIONS]
+      - name: auth-forgot-password
+        url: http://auth-service:8001
+        routes:
+          - name: auth-forgot-password-route
+            paths: [/auth/forgot-password]
+            strip_path: false
+            methods: [POST, OPTIONS]
+        plugins:
+          - name: rate-limiting
+            config: { minute: 1000, policy: local, fault_tolerant: true, hide_client_headers: false }
+      - name: auth-reset-password
+        url: http://auth-service:8001
+        routes:
+          - name: auth-reset-password-route
+            paths: [/auth/reset-password]
+            strip_path: false
+            methods: [POST, OPTIONS]
+        plugins:
+          - name: rate-limiting
+            config: { minute: 1000, policy: local, fault_tolerant: true, hide_client_headers: false }
+      - name: auth-profile
+        url: http://auth-service:8001
+        routes:
+          - name: auth-profile-route
+            paths: [/auth/profile]
+            strip_path: false
+            methods: [GET, PATCH, OPTIONS]
+      - name: auth-2fa
+        url: http://auth-service:8001
+        routes:
+          - name: auth-2fa-route
+            paths: [/auth/2fa]
+            strip_path: false
+            methods: [GET, POST, OPTIONS]
+        plugins:
+          - name: rate-limiting
+            config: { minute: 3000, policy: local, fault_tolerant: true, hide_client_headers: false }
+      - name: chat-service-rooms
+        url: http://chat-service:8003
+        routes:
+          - name: chat-rooms-routes
+            paths: [/rooms]
+            strip_path: false
+        plugins:
+          - name: rate-limiting
+            config: { minute: 3000, policy: local, fault_tolerant: true, hide_client_headers: false }
+      - name: chat-service-pm
+        url: http://chat-service:8003
+        routes:
+          - name: chat-pm-routes
+            paths: [/pm]
+            strip_path: false
+      - name: chat-service-admin
+        url: http://chat-service:8003
+        routes:
+          - name: chat-admin-routes
+            paths: [/admin]
+            strip_path: false
+      - name: chat-service-ws
+        url: http://chat-service:8003
+        read_timeout: 86400000
+        write_timeout: 86400000
+        connect_timeout: 60000
+        routes:
+          - name: chat-ws-routes
+            paths: [/ws]
+            strip_path: false
+            protocols: [http, https]
+      - name: message-service
+        url: http://message-service:8004
+        routes:
+          - name: message-routes
+            paths: [/messages]
+            strip_path: false
+        plugins:
+          - name: rate-limiting
+            config: { minute: 3000, policy: local, fault_tolerant: true, hide_client_headers: false }
+      - name: file-service
+        url: http://file-service:8005
+        routes:
+          - name: file-routes
+            paths: [/files]
+            strip_path: false
+        plugins:
+          - name: rate-limiting
+            config: { minute: 3000, policy: local, fault_tolerant: true, hide_client_headers: false }
+      - name: frontend
+        url: http://frontend:80
+        routes:
+          - name: frontend-route
+            paths: [/]
+            strip_path: false

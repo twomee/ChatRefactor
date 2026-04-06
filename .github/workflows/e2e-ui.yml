@@ -1,0 +1,146 @@
+name: E2E — UI (Playwright)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "tests/e2e-ui/**"
+      - ".github/workflows/e2e-ui.yml"
+      - "docker-compose*.yml"
+      - "v1/backend/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "tests/e2e-ui/**"
+      - ".github/workflows/e2e-ui.yml"
+      - "docker-compose*.yml"
+      - "v1/backend/**"
+
+concurrency:
+  group: e2e-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  e2e-ui:
+    name: E2E UI (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install pyotp
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Create .env for CI
+        run: |
+          TOTP_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+          cp tests/e2e-ui/.env.ci .env
+          printf "TOTP_ENCRYPTION_KEY=%s\n" "$TOTP_KEY" >> .env
+
+      - name: Start e2e environment
+        run: |
+          docker compose -p chatbox-e2e \
+            -f docker-compose.yml \
+            -f docker-compose.e2e.yml \
+            up -d --build --quiet-pull
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for Kong on port 8090..."
+          timeout=120
+          elapsed=0
+          while ! curl -sf http://localhost:8090 > /dev/null 2>&1; do
+            if [ "$elapsed" -ge "$timeout" ]; then
+              echo "Timed out waiting for Kong"
+              docker compose -p chatbox-e2e -f docker-compose.yml -f docker-compose.e2e.yml logs
+              exit 1
+            fi
+            sleep 3
+            elapsed=$((elapsed + 3))
+          done
+          echo "Kong responding on port 8090"
+
+          echo "Waiting for auth service to accept logins..."
+          timeout=60
+          elapsed=0
+          while true; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8090/auth/login \
+              -H "Content-Type: application/json" \
+              -d '{"username":"__probe__","password":"__probe__"}')
+            # 401 or 422 means the service is up and processing (just rejecting bad creds)
+            if [ "$status" = "401" ] || [ "$status" = "422" ] || [ "$status" = "400" ]; then
+              echo "Auth service ready (HTTP $status)"
+              break
+            fi
+            if [ "$elapsed" -ge "$timeout" ]; then
+              echo "Timed out waiting for auth service (last HTTP $status)"
+              exit 1
+            fi
+            sleep 3
+            elapsed=$((elapsed + 3))
+          done
+
+      - name: Install Playwright
+        run: |
+          cd tests/e2e-ui
+          npm ci
+          npx playwright install chromium --with-deps
+
+      - name: Run Playwright tests
+        run: |
+          set -a && source .env && set +a
+          export BASE_URL=http://localhost:8090
+          cd tests/e2e-ui && npx playwright test
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            tests/e2e-ui/test-results/
+            tests/e2e-ui/playwright-report/
+          retention-days: 7
+
+      - name: Dump service logs
+        if: always()
+        run: |
+          mkdir -p tests/e2e-ui/logs
+          for svc in auth-service chat-service message-service file-service kong frontend; do
+            docker compose -p chatbox-e2e \
+              -f docker-compose.yml \
+              -f docker-compose.e2e.yml \
+              logs "$svc" > "tests/e2e-ui/logs/$svc.log" 2>&1 || true
+          done
+
+      - name: Upload service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-logs
+          path: tests/e2e-ui/logs/
+          retention-days: 7
+
+      - name: Tear down environment
+        if: always()
+        run: |
+          docker compose -p chatbox-e2e \
+            -f docker-compose.yml \
+            -f docker-compose.e2e.yml \
+            down -v --remove-orphans

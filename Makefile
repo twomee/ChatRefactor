@@ -174,7 +174,7 @@ k8s-secrets: ## Generate K8s secrets from .env file
 
 # ── E2E Tests ────────────────────────────────────────────────────────────────
 
-.PHONY: e2e-docker e2e-k8s e2e-all e2e-smoke e2e-setup e2e-auth e2e-pm e2e-files e2e-chat e2e-messages e2e-admin e2e-monitoring
+.PHONY: e2e-docker e2e-k8s e2e-all e2e-smoke e2e-setup e2e-auth e2e-pm e2e-files e2e-chat e2e-messages e2e-admin e2e-monitoring e2e-ui-setup e2e-ui-docker e2e-ui-k8s e2e-ui-run e2e-ui-update-snapshots
 
 E2E_LIFECYCLE := infra/scripts/e2e-lifecycle.sh
 
@@ -214,3 +214,18 @@ e2e-admin: ## Black box Docker Compose, admin tests only
 
 e2e-monitoring: ## Black box Docker Compose, monitoring tests only
 	@bash $(E2E_LIFECYCLE) docker -k test_monitoring
+
+e2e-ui-setup: ## Install Playwright e2e dependencies
+	cd tests/e2e-ui && npm install && npx playwright install chromium
+
+e2e-ui-docker: ## Black box Docker Compose: up → run Playwright → down
+	@bash $(E2E_LIFECYCLE) docker --ui
+
+e2e-ui-k8s: ## Black box K8s: Kind cluster → deploy → Playwright → delete
+	@bash $(E2E_LIFECYCLE) k8s --ui
+
+e2e-ui-run: ## Run Playwright tests against already-running environment
+	cd tests/e2e-ui && npx playwright test
+
+e2e-ui-update-snapshots: ## Regenerate visual regression baselines
+	cd tests/e2e-ui && npx playwright test tests/visual-regression.spec.js --update-snapshots

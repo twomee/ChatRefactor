@@ -74,8 +74,20 @@ func TestLobbyWSUpgrade(t *testing.T) {
 		t.Errorf("expected 101, got %d", resp.StatusCode)
 	}
 
-	if manager.TotalConnections() != 1 {
-		t.Errorf("expected 1 connection, got %d", manager.TotalConnections())
+	// The server registers the connection in a goroutine after the upgrade.
+	// Poll briefly to avoid a race between the client dial completing and
+	// the server-side ConnectLobby call updating the manager.
+	var conns int
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		conns = manager.TotalConnections()
+		if conns == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if conns != 1 {
+		t.Errorf("expected 1 connection, got %d", conns)
 	}
 }
 

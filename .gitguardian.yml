@@ -2,12 +2,12 @@ version: 2
 
 # Suppress false positives from test fixtures.
 # Test directories contain intentionally fake/mock credentials used in unit
-# tests — they are never real secrets.  Using paths-ignore avoids embedding
-# the mock secret strings in this config file (which would itself be flagged).
+# tests — they are never real secrets.
 #
 # In ggshield v2 config the scan settings live under the `secret` key.
+# The correct field name is `ignored_paths` (not `paths-ignore`).
 secret:
-  paths-ignore:
+  ignored_paths:
     # JavaScript / TypeScript test directories (Vitest / Jest)
     - "**/__tests__/**"
     - "**/*.test.js"
@@ -18,18 +18,6 @@ secret:
     - "**/*.spec.jsx"
     - "**/*.spec.ts"
     - "**/*.spec.tsx"
-    # ── Explicit frontend test paths ─────────────────────────────────────
-    - "frontend/src/components/chat/__tests__/**"
-    - "frontend/src/components/common/__tests__/**"
-    - "frontend/src/components/pm/__tests__/**"
-    - "frontend/src/components/room/__tests__/**"
-    - "frontend/src/components/settings/__tests__/**"
-    - "frontend/src/context/__tests__/**"
-    - "frontend/src/hooks/__tests__/**"
-    - "frontend/src/layouts/__tests__/**"
-    - "frontend/src/pages/__tests__/**"
-    - "frontend/src/services/__tests__/**"
-    - "frontend/src/utils/__tests__/**"
     # Python test files (pytest convention: test_*.py in tests/ dirs)
     - "**/tests/test_*.py"
     - "**/tests/conftest.py"
@@ -37,21 +25,14 @@ secret:
     # Go test files (co-located with source, named *_test.go)
     - "**/*_test.go"
     # ── Explicit service test paths ──────────────────────────────────────
-    # auth-service (Python / pytest)
     - "services/auth-service/tests/**"
-    # chat-service (Go)
-    - "services/chat-service/cmd/server/main_test.go"
-    - "services/chat-service/internal/client/**/*_test.go"
-    - "services/chat-service/internal/config/**/*_test.go"
-    - "services/chat-service/internal/delivery/**/*_test.go"
-    - "services/chat-service/internal/handler/**/*_test.go"
-    - "services/chat-service/internal/kafka/**/*_test.go"
-    - "services/chat-service/internal/metrics/**/*_test.go"
-    - "services/chat-service/internal/middleware/**/*_test.go"
-    - "services/chat-service/internal/store/**/*_test.go"
-    - "services/chat-service/internal/ws/**/*_test.go"
     - "services/chat-service/tests/**"
-    # file-service (TypeScript / Jest)
     - "services/file-service/tests/**"
-    # message-service (Python / pytest)
     - "services/message-service/tests/**"
+    # ── Playwright e2e UI tests ──────────────────────────────────────────
+    # All files under tests/e2e-ui contain intentionally fake credentials
+    # (throwaway test users registered against a local CI environment).
+    - "tests/e2e-ui/**"
+    # ── Documentation ────────────────────────────────────────────────────
+    # Docs may include code snippets that show example/placeholder values.
+    - "docs/**"

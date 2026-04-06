@@ -17,6 +17,18 @@ MODE="${1:?Usage: e2e-lifecycle.sh <docker|k8s> [pytest-args...]}"
 shift
 PYTEST_ARGS=("$@")
 
+# Check for --ui or --all flags
+TEST_MODE="api"
+FILTERED_ARGS=()
+for arg in "${PYTEST_ARGS[@]}"; do
+    case "$arg" in
+        --ui)  TEST_MODE="ui" ;;
+        --all) TEST_MODE="all" ;;
+        *)     FILTERED_ARGS+=("$arg") ;;
+    esac
+done
+PYTEST_ARGS=("${FILTERED_ARGS[@]}")
+
 TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
 LOG_DIR="$PROJECT_ROOT/tests/e2e/logs/$TIMESTAMP"
 EXIT_CODE=0
@@ -197,28 +209,35 @@ EOF
 }
 
 k8s_wait() {
-    step "Waiting for pods to be ready..."
-    local timeout=300
-    local elapsed=0
-    while true; do
-        local not_ready
-        not_ready=$(kubectl get pods -n chatbox --no-headers 2>/dev/null \
-            | grep -v Completed \
-            | grep -v Running || true)
-        if [ -z "$not_ready" ] && kubectl get pods -n chatbox --no-headers 2>/dev/null | grep -q Running; then
-            break
-        fi
-        if [ "$elapsed" -ge "$timeout" ]; then
-            fail "Timed out waiting for pods after ${timeout}s"
-            kubectl get pods -n chatbox
-            exit 1
-        fi
-        sleep 5
-        elapsed=$((elapsed + 5))
-        echo -n "."
+    step "Waiting for deployments to roll out..."
+    # Use kubectl rollout status per deployment — more reliable than grep-polling pod
+    # phases because it understands init containers and the Ready condition.
+    # Run all waits in parallel (deployments started simultaneously) and collect
+    # failures so every timed-out deployment is reported before we exit.
+    local rollout_timeout=480s
+    local pids=() names=()
+    for deploy in auth-service chat-service message-service file-service frontend kong; do
+        kubectl rollout status deployment/"$deploy" \
+            --namespace chatbox \
+            --timeout="$rollout_timeout" &
+        pids+=($!)
+        names+=("$deploy")
     done
-    echo ""
-    success "All pods running"
+
+    local fail=0
+    for i in "${!pids[@]}"; do
+        if ! wait "${pids[$i]}"; then
+            fail "Deployment ${names[$i]} did not become ready within $rollout_timeout"
+            fail=1
+        fi
+    done
+
+    if [ "$fail" -ne 0 ]; then
+        echo ""
+        kubectl get pods -n chatbox
+        exit 1
+    fi
+    success "All deployments ready"
 
     # Wait for Kong to respond and all backend services to be routable
     elapsed=0
@@ -263,10 +282,22 @@ k8s_down() {
 # ── Test runner ──────────────────────────────────────────────────────────────
 run_tests() {
     local kong_url="$1"
-    step "Running e2e tests against $kong_url..."
-    KONG_URL="$kong_url" python3 -m pytest "$PROJECT_ROOT/tests/e2e/" \
-        -v --tb=short -c "$PROJECT_ROOT/tests/e2e/pytest.ini" \
-        "${PYTEST_ARGS[@]}" || EXIT_CODE=$?
+
+    if [ "$TEST_MODE" = "api" ] || [ "$TEST_MODE" = "all" ]; then
+        step "Running API e2e tests against $kong_url..."
+        KONG_URL="$kong_url" python3 -m pytest "$PROJECT_ROOT/tests/e2e/" \
+            -v --tb=short -c "$PROJECT_ROOT/tests/e2e/pytest.ini" \
+            "${PYTEST_ARGS[@]}" || EXIT_CODE=$?
+    fi
+
+    if [ "$TEST_MODE" = "ui" ] || [ "$TEST_MODE" = "all" ]; then
+        step "Running UI e2e tests against $kong_url..."
+        cd "$PROJECT_ROOT/tests/e2e-ui"
+        npm ci --silent 2>/dev/null || npm install --silent
+        npx playwright install chromium 2>/dev/null || true
+        BASE_URL="$kong_url" npx playwright test "${PYTEST_ARGS[@]}" || EXIT_CODE=$?
+        cd "$PROJECT_ROOT"
+    fi
 
     if [ "$EXIT_CODE" -eq 0 ]; then
         success "All tests passed!"

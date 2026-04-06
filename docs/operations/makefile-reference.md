@@ -319,3 +319,91 @@ The test suite resolves admin credentials automatically:
 3. `infra/k8s/secrets.env`
 4. `kubectl get secret auth-admin-secret`
 5. Defaults: `admin` / `changeme`
+
+## 10. E2E UI Tests (Playwright)
+
+Browser-based e2e tests using Playwright that validate the actual UI — rendering, user interactions, navigation, and visual regression. Complements the API e2e tests (Section 9) which validate backend logic.
+
+### Quick Start
+
+```bash
+# 1. Install Playwright and Chromium (one time)
+make e2e-ui-setup
+
+# 2. Run all UI tests in an isolated Docker Compose environment
+make e2e-ui-docker
+# This does: build → start → wait → Playwright tests → dump logs → tear down
+```
+
+### How It Works
+
+Same black-box lifecycle as API e2e tests:
+
+1. **Spin up** clean Docker Compose or Kind cluster
+2. **Wait** for services
+3. **Run** Playwright test suite (47 tests, Chromium, headless)
+4. **Dump** logs on failure
+5. **Tear down** everything
+
+### All Targets
+
+| Target | Description |
+|--------|-------------|
+| `make e2e-ui-setup` | Install Playwright + Chromium browser (one time) |
+| `make e2e-ui-docker` | Black box Docker Compose → Playwright → tear down (~3-5 min) |
+| `make e2e-ui-k8s` | Black box Kind cluster → Playwright → delete (~15 min) |
+| `make e2e-ui-run` | Run Playwright against already-running environment |
+| `make e2e-ui-update-snapshots` | Regenerate visual regression baseline images |
+
+### Test Categories
+
+| Spec File | Tests | Description |
+|-----------|-------|-------------|
+| `auth.spec.js` | 8 | Register, login, 2FA, logout, forgot password |
+| `chat-messaging.spec.js` | 9 | Send, edit, delete, reactions, search, markdown, links |
+| `chat-sidebar.spec.js` | 3 | Exit room, unread badges, new messages divider |
+| `files.spec.js` | 3 | Upload, download, PM files, image preview |
+| `pm.spec.js` | 5 | PM send/receive, edit/delete, reactions, room closed toast |
+| `admin.spec.js` | 6 | Close/open rooms, mute/kick, promote, create room |
+| `settings.spec.js` | 4 | Password, email, enable/disable 2FA |
+| `presence-rooms.spec.js` | 4 | Admin role, logout/refresh presence, leave offline |
+| `presence-pm.spec.js` | 2 | PM refresh/logout presence |
+| `connection.spec.js` | 1 | WebSocket disconnect/reconnect indicator |
+| `pm-typing.spec.js` | 1 | PM typing indicator |
+| `visual-regression.spec.js` | 1 | Full-page screenshots of all 5 pages |
+
+### Visual Regression
+
+Baseline screenshots are committed to `tests/e2e-ui/snapshots/`. After an intentional UI change:
+
+```bash
+# Regenerate baselines
+make e2e-ui-update-snapshots
+
+# Review diffs, then commit
+git add tests/e2e-ui/snapshots/
+git commit -m "update visual regression baselines after [change]"
+```
+
+GitHub renders image diffs in PRs so reviewers can see exactly what changed.
+
+### Running Against Your Dev Environment
+
+If your dev environment is already running:
+
+```bash
+# Point Playwright at your dev Kong
+BASE_URL=http://localhost:80 make e2e-ui-run
+```
+
+### Debugging Failed Tests
+
+On failure, Playwright saves screenshots, video, and traces to `tests/e2e-ui/test-results/`. Open the HTML report:
+
+```bash
+cd tests/e2e-ui && npx playwright show-report
+```
+
+### CI
+
+The UI e2e tests run automatically via `.github/workflows/e2e-ui.yml` on every PR and push to main that changes `frontend/**` or `tests/e2e-ui/**`.
