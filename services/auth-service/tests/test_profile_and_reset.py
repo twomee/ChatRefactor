@@ -363,10 +363,15 @@ class TestResetPassword:
         """An expired token should return 400."""
         # Create a user and an expired token directly via DAL
         user = user_dal.create(
-            db_session, "reset_exp", hash_password("password123"), email="reset_exp@example.com"
+            db_session,
+            "reset_exp",
+            hash_password("password123"),
+            email="reset_exp@example.com",
         )
         expired_time = datetime.now(timezone.utc) - timedelta(hours=2)
-        password_reset_dal.create_token(db_session, user.id, "expired-token-123", expired_time)
+        password_reset_dal.create_token(
+            db_session, user.id, "expired-token-123", expired_time
+        )
 
         resp = client.post(
             "/auth/reset-password",
@@ -377,10 +382,15 @@ class TestResetPassword:
     def test_reset_password_used_token_returns_400(self, client, db_session):
         """A token that has already been used should return 400."""
         user = user_dal.create(
-            db_session, "reset_used", hash_password("password123"), email="reset_used@example.com"
+            db_session,
+            "reset_used",
+            hash_password("password123"),
+            email="reset_used@example.com",
         )
         future_time = datetime.now(timezone.utc) + timedelta(hours=1)
-        password_reset_dal.create_token(db_session, user.id, "used-token-456", future_time)
+        password_reset_dal.create_token(
+            db_session, user.id, "used-token-456", future_time
+        )
         password_reset_dal.mark_token_used(db_session, "used-token-456")
 
         resp = client.post(
@@ -532,7 +542,9 @@ class TestPasswordResetDAL:
             db_session, "dal_user3", hash_password("password123"), email="dal3@test.com"
         )
         expired = datetime.now(timezone.utc) - timedelta(hours=1)
-        password_reset_dal.create_token(db_session, user.id, "expired-token-xyz", expired)
+        password_reset_dal.create_token(
+            db_session, user.id, "expired-token-xyz", expired
+        )
 
         found = password_reset_dal.get_valid_token(db_session, "expired-token-xyz")
         assert found is None
@@ -600,7 +612,10 @@ class TestUserDALEmail:
     def test_get_by_email_returns_user(self, db_session):
         """get_by_email should return the user when the email exists."""
         user_dal.create(
-            db_session, "emaildal1", hash_password("pass123"), email="emaildal1@test.com"
+            db_session,
+            "emaildal1",
+            hash_password("pass123"),
+            email="emaildal1@test.com",
         )
         found = user_dal.get_by_email(db_session, "emaildal1@test.com")
         assert found is not None
@@ -622,7 +637,10 @@ class TestUserDALEmail:
     def test_create_user_with_email(self, db_session):
         """create() should persist the email field."""
         user = user_dal.create(
-            db_session, "emaildal3", hash_password("pass123"), email="emaildal3@test.com"
+            db_session,
+            "emaildal3",
+            hash_password("pass123"),
+            email="emaildal3@test.com",
         )
         assert user.email == "emaildal3@test.com"
 
@@ -638,7 +656,10 @@ class TestUserDALEmail:
     def test_update_password(self, db_session):
         """update_password should change the user's password hash."""
         user = user_dal.create(
-            db_session, "emaildal5", hash_password("oldpass123"), email="emaildal5@test.com"
+            db_session,
+            "emaildal5",
+            hash_password("oldpass123"),
+            email="emaildal5@test.com",
         )
         new_hash = hash_password("newpass123")
         user_dal.update_password(db_session, user.id, new_hash)
@@ -702,7 +723,9 @@ class TestPasswordResetService:
             db_session, "prs_user3", hash_password("oldpass123"), email="prs3@test.com"
         )
         expires = datetime.now(timezone.utc) + timedelta(hours=1)
-        password_reset_dal.create_token(db_session, user.id, "reset-service-tok", expires)
+        password_reset_dal.create_token(
+            db_session, user.id, "reset-service-tok", expires
+        )
 
         result = reset_password(db_session, "reset-service-tok", "newpass123")
         assert "reset" in result["message"].lower()
@@ -712,11 +735,9 @@ class TestPasswordResetService:
         assert found is None
 
     def test_reset_password_invalid_token_raises_400(self, db_session):
-        """reset_password should raise 400 for an invalid token."""
-        from fastapi import HTTPException
-
+        """reset_password should raise BadRequestError for an invalid token."""
+        from app.services.exceptions import BadRequestError
         from app.services.password_reset_service import reset_password
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(BadRequestError):
             reset_password(db_session, "invalid-token-xyz", "newpass123")
-        assert exc_info.value.status_code == 400

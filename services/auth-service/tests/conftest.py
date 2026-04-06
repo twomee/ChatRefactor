@@ -12,6 +12,7 @@ Key design decisions:
 - Redis mock: avoids needing a real Redis instance; returns None for all gets
 - Kafka mock: avoids needing a real Kafka cluster; produce_event always returns True
 """
+
 import os
 import sys
 from unittest.mock import MagicMock, patch
@@ -52,6 +53,7 @@ Base.metadata.create_all(bind=test_engine)
 
 
 # ── Mock Redis ───────────────────────────────────────────────────────────
+
 
 class MockRedis:
     """In-memory mock for Redis. Tracks blacklisted tokens and 2FA temp tokens."""
@@ -106,12 +108,14 @@ def setup_test_environment():
     app.dependency_overrides[get_db] = override_get_db
 
     # Patch Redis
-    with patch("app.infrastructure.redis.get_redis", mock_get_redis), \
-         patch("app.core.security.get_redis", mock_get_redis, create=True), \
-         patch("app.services.two_factor_service.get_redis", mock_get_redis), \
-         patch("app.utils.totp.get_redis", mock_get_redis), \
-         patch("app.infrastructure.kafka_producer.produce_event", return_value=True) as _mock_kafka:
-
+    with (
+        patch("app.infrastructure.redis.get_redis", mock_get_redis),
+        patch("app.core.security.get_redis", mock_get_redis, create=True),
+        patch("app.services.two_factor_service.get_redis", mock_get_redis),
+        patch(
+            "app.infrastructure.kafka_producer.produce_event", return_value=True
+        ) as _mock_kafka,
+    ):
         # Also patch the import inside security.py's decode_token
         with patch("app.infrastructure.redis.redis_pool", MagicMock()):
             yield

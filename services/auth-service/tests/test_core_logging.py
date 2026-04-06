@@ -4,6 +4,7 @@ Tests for:
 - setup_logging in non-dev mode (JSON renderer)
 - get_logger returns a structlog logger
 """
+
 from unittest.mock import patch
 
 from app.core.logging import get_logger, setup_logging

@@ -4,7 +4,6 @@
 #   - decode_token: valid token, expired token, missing claims, wrong key
 #   - get_current_user: valid payload, non-integer sub, missing sub, missing username
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
 
 import pytest
 import jwt

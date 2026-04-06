@@ -19,7 +19,6 @@ from app.services.url_preview_service import (
     MetadataParser,
     _cache_key,
     _is_url_safe,
-    _resolve_safe_ip,
     _sanitize,
     _sanitize_url,
     cache_preview,
@@ -698,19 +697,10 @@ class TestPreviewEndpoint:
             "description": "An example site",
             "image": None,
         }
-        with (
-            patch("app.routers.messages.get_redis", return_value=None),
-            patch(
-                "app.routers.messages.get_cached_preview",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.routers.messages.fetch_preview",
-                new_callable=AsyncMock,
-                return_value=preview_data,
-            ),
-            patch("app.routers.messages.cache_preview", new_callable=AsyncMock),
+        with patch(
+            "app.services.preview_service.get_link_preview",
+            new_callable=AsyncMock,
+            return_value=preview_data,
         ):
             response = client.get(
                 "/messages/preview?url=https://example.com",
@@ -728,13 +718,10 @@ class TestPreviewEndpoint:
             "description": "From cache",
             "image": None,
         }
-        with (
-            patch("app.routers.messages.get_redis", return_value=MagicMock()),
-            patch(
-                "app.routers.messages.get_cached_preview",
-                new_callable=AsyncMock,
-                return_value=cached_data,
-            ),
+        with patch(
+            "app.services.preview_service.get_link_preview",
+            new_callable=AsyncMock,
+            return_value=cached_data,
         ):
             response = client.get(
                 "/messages/preview?url=https://cached.com",
@@ -744,13 +731,10 @@ class TestPreviewEndpoint:
             assert response.json()["title"] == "Cached"
 
     def test_returns_404_for_cached_miss(self, client, auth_headers):
-        with (
-            patch("app.routers.messages.get_redis", return_value=MagicMock()),
-            patch(
-                "app.routers.messages.get_cached_preview",
-                new_callable=AsyncMock,
-                return_value={"_miss": True},
-            ),
+        with patch(
+            "app.services.preview_service.get_link_preview",
+            new_callable=AsyncMock,
+            return_value=None,
         ):
             response = client.get(
                 "/messages/preview?url=https://bad.com",
@@ -775,19 +759,10 @@ class TestPreviewEndpoint:
         assert response.status_code == 401
 
     def test_returns_404_when_fetch_fails(self, client, auth_headers):
-        with (
-            patch("app.routers.messages.get_redis", return_value=None),
-            patch(
-                "app.routers.messages.get_cached_preview",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.routers.messages.fetch_preview",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch("app.routers.messages.cache_preview", new_callable=AsyncMock),
+        with patch(
+            "app.services.preview_service.get_link_preview",
+            new_callable=AsyncMock,
+            return_value=None,
         ):
             response = client.get(
                 "/messages/preview?url=https://nonexistent.example.com",

@@ -24,11 +24,10 @@ function mimeTypeFor(filename: string): string {
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import {
   uploadFile,
-  getFile,
+  getFileForDownload,
   listRoomFiles,
   FileValidationError,
 } from "../services/file.service.js";
-import { getUserByUsername } from "../clients/auth.client.js";
 import type { AuthenticatedRequest } from "../types/file.types.js";
 import { logger } from "../kafka/logger.js";
 
@@ -70,8 +69,6 @@ fileRouter.post(
       const senderName = authReq.user.username;
 
       let roomId: number | undefined;
-      let recipientId: number | undefined;
-      let recipientName: string | undefined;
 
       if (roomIdParam) {
         roomId = Number.parseInt(roomIdParam, 10);
@@ -79,15 +76,6 @@ fileRouter.post(
           res.status(400).json({ error: "Invalid room_id: must be a number" });
           return;
         }
-      } else {
-        // PM file upload: resolve recipient username to numeric ID via auth service
-        const recipient = await getUserByUsername(recipientParam!);
-        if (!recipient) {
-          res.status(404).json({ error: "Recipient not found" });
-          return;
-        }
-        recipientId = recipient.id;
-        recipientName = recipient.username;
       }
 
       const result = await uploadFile({
@@ -95,9 +83,8 @@ fileRouter.post(
         senderId,
         senderName,
         roomId,
-        recipientId,
-        recipientName,
-        isPrivate: !!recipientId,
+        recipientUsername: recipientParam,
+        isPrivate: !!recipientParam,
       });
 
       res.status(201).json(result);
@@ -124,16 +111,7 @@ fileRouter.get(
         return;
       }
 
-      const record = await getFile(fileId);
-
-      // Authorization: private files are only accessible to sender and recipient
-      if (record.isPrivate) {
-        const currentUserId: number = authReq.user.userId;
-        if (record.senderId !== currentUserId && record.recipientId !== currentUserId) {
-          res.status(403).json({ error: "Forbidden" });
-          return;
-        }
-      }
+      const record = await getFileForDownload(fileId, authReq.user.userId);
 
       // Stream the file back to the client
       // SECURITY: Use RFC 5987 filename* for safe encoding of the original name,

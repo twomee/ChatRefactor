@@ -14,11 +14,9 @@ import pytest
 
 from app.infrastructure import auth_client
 from app.infrastructure.auth_client import (
-    BACKOFF_BASE,
     FAILURE_THRESHOLD,
     MAX_RETRIES,
     RECOVERY_TIMEOUT,
-    REQUEST_TIMEOUT,
     _is_circuit_open,
     _record_failure,
     _record_success,

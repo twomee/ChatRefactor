@@ -13,11 +13,11 @@
 #   - Content truncation (DoS prevention)
 import asyncio
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from app.consumers.persistence_consumer import MAX_CONTENT_LENGTH, MessagePersistenceConsumer
+from app.consumers.persistence_consumer import MessagePersistenceConsumer
 from app.infrastructure.kafka_producer import TOPIC_MESSAGES, TOPIC_PRIVATE
 from app.models import Message
 

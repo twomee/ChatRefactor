@@ -25,7 +25,7 @@ func setupWSServerWithDelivery(t *testing.T) (srvURL string, mgr *ws.Manager, de
 		adminSet: make(map[string]bool),
 		muteSet:  make(map[string]bool),
 	}
-	wsH := NewWSHandler(manager, store, nil, del, nil, testSecret, "http://localhost:8004", logger)
+	wsH := NewWSHandler(manager, store, nil, del, nil, testSecret, nil, logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
@@ -227,7 +227,7 @@ func TestWSDeleteMessageDeliveryFailure(t *testing.T) {
 		adminSet: make(map[string]bool),
 		muteSet:  make(map[string]bool),
 	}
-	wsH := NewWSHandler(manager, store, nil, del, nil, testSecret, "http://localhost:8004", logger)
+	wsH := NewWSHandler(manager, store, nil, del, nil, testSecret, nil, logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)

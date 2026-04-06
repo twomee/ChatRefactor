@@ -7,6 +7,7 @@ Tests for:
 - hash_password / verify_password edge cases
 - create_access_token / decode_token round-trip
 """
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -117,8 +118,13 @@ class TestDecodeTokenRedisFailure:
         """In production, if Redis is down, token should be rejected (fail closed)."""
         token = create_access_token({"sub": "1", "username": "alice"})
 
-        with patch("app.core.security.APP_ENV", "prod"), \
-             patch("app.infrastructure.redis.get_redis", side_effect=Exception("Redis down")):
+        with (
+            patch("app.core.security.APP_ENV", "prod"),
+            patch(
+                "app.infrastructure.redis.get_redis",
+                side_effect=Exception("Redis down"),
+            ),
+        ):
             result = decode_token(token)
 
         assert result is None
@@ -127,8 +133,13 @@ class TestDecodeTokenRedisFailure:
         """In dev mode, if Redis is down, token should still be accepted (fail open)."""
         token = create_access_token({"sub": "1", "username": "alice"})
 
-        with patch("app.core.security.APP_ENV", "dev"), \
-             patch("app.infrastructure.redis.get_redis", side_effect=Exception("Redis down")):
+        with (
+            patch("app.core.security.APP_ENV", "dev"),
+            patch(
+                "app.infrastructure.redis.get_redis",
+                side_effect=Exception("Redis down"),
+            ),
+        ):
             result = decode_token(token)
 
         assert result is not None
@@ -139,8 +150,13 @@ class TestDecodeTokenRedisFailure:
         """In staging mode, if Redis is down, token should still be accepted."""
         token = create_access_token({"sub": "1", "username": "alice"})
 
-        with patch("app.core.security.APP_ENV", "staging"), \
-             patch("app.infrastructure.redis.get_redis", side_effect=Exception("Redis down")):
+        with (
+            patch("app.core.security.APP_ENV", "staging"),
+            patch(
+                "app.infrastructure.redis.get_redis",
+                side_effect=Exception("Redis down"),
+            ),
+        ):
             result = decode_token(token)
 
         assert result is not None

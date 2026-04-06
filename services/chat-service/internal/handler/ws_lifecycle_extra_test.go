@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/twomee/chatbox/chat-service/internal/client"
 	"github.com/twomee/chatbox/chat-service/internal/model"
 	"github.com/twomee/chatbox/chat-service/internal/store"
 	"github.com/twomee/chatbox/chat-service/internal/ws"
@@ -52,7 +53,7 @@ func TestSendHistoryWithRealMessageService(t *testing.T) {
 		adminSet: make(map[string]bool),
 		muteSet:  make(map[string]bool),
 	}
-	wsH := NewWSHandler(manager, store, nil, del, nil, testSecret, msgSvc.URL, logger)
+	wsH := NewWSHandler(manager, store, nil, del, nil, testSecret, client.NewMessageClient(msgSvc.URL, logger), logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
@@ -128,7 +129,7 @@ func TestSendHistoryMessageServiceNonOK(t *testing.T) {
 		adminSet: make(map[string]bool),
 		muteSet:  make(map[string]bool),
 	}
-	wsH := NewWSHandler(manager, roomStore, nil, del, nil, testSecret, msgSvc.URL, logger)
+	wsH := NewWSHandler(manager, roomStore, nil, del, nil, testSecret, client.NewMessageClient(msgSvc.URL, logger), logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
@@ -179,7 +180,7 @@ func TestSendHistoryMessageServiceBadJSON(t *testing.T) {
 		adminSet: make(map[string]bool),
 		muteSet:  make(map[string]bool),
 	}
-	wsH := NewWSHandler(manager, roomStore, nil, del, nil, testSecret, msgSvc.URL, logger)
+	wsH := NewWSHandler(manager, roomStore, nil, del, nil, testSecret, client.NewMessageClient(msgSvc.URL, logger), logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
@@ -243,7 +244,7 @@ func TestSendReadPositionWithData(t *testing.T) {
 			LastReadMessageID: "550e8400-e29b-41d4-a716-446655440000",
 		},
 	}
-	wsH := NewWSHandler(manager, roomStore, rpStore, del, nil, testSecret, "http://localhost:8004", logger)
+	wsH := NewWSHandler(manager, roomStore, rpStore, del, nil, testSecret, nil, logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)
@@ -319,7 +320,7 @@ func TestSendReadPositionStoreReturnsError(t *testing.T) {
 	rpStore := &mockReadPositionStoreWithData{
 		err: pgx.ErrNoRows, // first-time user has no read position
 	}
-	wsH := NewWSHandler(manager, roomStore, rpStore, del, nil, testSecret, "http://localhost:8004", logger)
+	wsH := NewWSHandler(manager, roomStore, rpStore, del, nil, testSecret, nil, logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)

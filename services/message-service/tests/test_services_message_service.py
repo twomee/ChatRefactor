@@ -3,7 +3,7 @@
 # Covers:
 #   - get_replay_messages: delegates to DAL, returns MessageResponse list
 #   - get_room_history: delegates to DAL, returns MessageResponse list
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from app.models import Message

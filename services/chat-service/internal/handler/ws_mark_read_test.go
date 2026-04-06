@@ -73,7 +73,7 @@ func setupWSServerWithReadPositions(t *testing.T) (srvURL string, mgr *ws.Manage
 		muteSet:  make(map[string]bool),
 	}
 	rpStore = &mockReadPositionStore{}
-	wsH := NewWSHandler(manager, roomStore, rpStore, del, nil, testSecret, "http://localhost:8004", logger)
+	wsH := NewWSHandler(manager, roomStore, rpStore, del, nil, testSecret, nil, logger)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)

@@ -3,6 +3,7 @@
 Tests for:
 - get_db generator yields a session and closes it
 """
+
 from unittest.mock import MagicMock, patch
 
 

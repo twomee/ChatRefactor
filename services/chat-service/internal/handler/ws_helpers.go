@@ -3,8 +3,6 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -81,32 +79,14 @@ func (h *WSHandler) produceEvent(ctx context.Context, eventType string, roomID, 
 // sendHistory fetches recent messages from the Message Service and sends them
 // to the newly connected client.
 func (h *WSHandler) sendHistory(conn *websocket.Conn, roomID int, token string) {
-	url := fmt.Sprintf("%s/messages/rooms/%d/history?limit=50", h.messageSvcURL, roomID)
-
-	client := &http.Client{Timeout: 3 * time.Second}
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		h.logger.Warn("history_request_build_failed", zap.Error(err))
-		return
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		h.logger.Warn("history_fetch_failed", zap.Error(err))
+	if h.messageClient == nil {
 		h.sendEmptyHistory(conn, roomID)
 		return
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
+	rawMessages := h.messageClient.GetRoomHistory(context.Background(), roomID, token, 50)
+	if rawMessages == nil {
 		h.sendEmptyHistory(conn, roomID)
 		return
-	}
-
-	var rawMessages []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&rawMessages); err != nil {
-		rawMessages = []map[string]interface{}{}
 	}
 
 	historyMsg := map[string]interface{}{

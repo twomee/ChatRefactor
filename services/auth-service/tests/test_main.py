@@ -8,6 +8,7 @@ Tests for:
 
 Note: Database migrations are handled by the db-init container, not on startup.
 """
+
 from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
@@ -34,15 +35,16 @@ class TestLifespan:
 
         mock_app = MagicMock()
 
-        with patch("app.main.Session") as mock_session_cls, \
-             patch("app.main.user_dal") as mock_dal, \
-             patch("app.main.init_producer", new_callable=AsyncMock) as mock_init, \
-             patch("app.main.close_producer", new_callable=AsyncMock) as mock_close, \
-             patch("app.main.ADMIN_USERNAME", "admin"), \
-             patch("app.main.ADMIN_PASSWORD", "changeme"), \
-             patch("app.main.APP_ENV", "dev"), \
-             patch("app.main.SECRET_KEY", "test-secret"):
-
+        with (
+            patch("app.main.Session") as mock_session_cls,
+            patch("app.main.user_dal") as mock_dal,
+            patch("app.main.init_producer", new_callable=AsyncMock) as mock_init,
+            patch("app.main.close_producer", new_callable=AsyncMock) as mock_close,
+            patch("app.main.ADMIN_USERNAME", "admin"),
+            patch("app.main.ADMIN_PASSWORD", "changeme"),
+            patch("app.main.APP_ENV", "dev"),
+            patch("app.main.SECRET_KEY", "test-secret"),
+        ):
             mock_db = MagicMock()
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -60,14 +62,15 @@ class TestLifespan:
 
         mock_app = MagicMock()
 
-        with patch("app.main.Session") as mock_session_cls, \
-             patch("app.main.init_producer", new_callable=AsyncMock), \
-             patch("app.main.close_producer", new_callable=AsyncMock), \
-             patch("app.main.ADMIN_USERNAME", "admin"), \
-             patch("app.main.ADMIN_PASSWORD", "changeme"), \
-             patch("app.main.APP_ENV", "dev"), \
-             patch("app.main.SECRET_KEY", "test-secret"):
-
+        with (
+            patch("app.main.Session") as mock_session_cls,
+            patch("app.main.init_producer", new_callable=AsyncMock),
+            patch("app.main.close_producer", new_callable=AsyncMock),
+            patch("app.main.ADMIN_USERNAME", "admin"),
+            patch("app.main.ADMIN_PASSWORD", "changeme"),
+            patch("app.main.APP_ENV", "dev"),
+            patch("app.main.SECRET_KEY", "test-secret"),
+        ):
             # Session raises an exception during admin seeding
             mock_session_cls.return_value.__enter__ = MagicMock(
                 side_effect=Exception("DB connection failed")
@@ -86,15 +89,16 @@ class TestLifespan:
         mock_user = MagicMock()
         mock_user.is_global_admin = False
 
-        with patch("app.main.Session") as mock_session_cls, \
-             patch("app.main.user_dal") as mock_dal, \
-             patch("app.main.init_producer", new_callable=AsyncMock), \
-             patch("app.main.close_producer", new_callable=AsyncMock), \
-             patch("app.main.ADMIN_USERNAME", "admin"), \
-             patch("app.main.ADMIN_PASSWORD", "changeme"), \
-             patch("app.main.APP_ENV", "dev"), \
-             patch("app.main.SECRET_KEY", "test-secret"):
-
+        with (
+            patch("app.main.Session") as mock_session_cls,
+            patch("app.main.user_dal") as mock_dal,
+            patch("app.main.init_producer", new_callable=AsyncMock),
+            patch("app.main.close_producer", new_callable=AsyncMock),
+            patch("app.main.ADMIN_USERNAME", "admin"),
+            patch("app.main.ADMIN_PASSWORD", "changeme"),
+            patch("app.main.APP_ENV", "dev"),
+            patch("app.main.SECRET_KEY", "test-secret"),
+        ):
             mock_db = MagicMock()
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -111,16 +115,17 @@ class TestLifespan:
 
         mock_app = MagicMock()
 
-        with patch("app.main.Session") as mock_session_cls, \
-             patch("app.main.user_dal") as mock_dal, \
-             patch("app.main.init_producer", new_callable=AsyncMock), \
-             patch("app.main.close_producer", new_callable=AsyncMock), \
-             patch("app.main.ADMIN_USERNAME", "admin"), \
-             patch("app.main.ADMIN_PASSWORD", "safe_password"), \
-             patch("app.main.APP_ENV", "dev"), \
-             patch("app.main.SECRET_KEY", "change-this-in-production"), \
-             patch("app.main.logger") as mock_logger:
-
+        with (
+            patch("app.main.Session") as mock_session_cls,
+            patch("app.main.user_dal") as mock_dal,
+            patch("app.main.init_producer", new_callable=AsyncMock),
+            patch("app.main.close_producer", new_callable=AsyncMock),
+            patch("app.main.ADMIN_USERNAME", "admin"),
+            patch("app.main.ADMIN_PASSWORD", "safe_password"),
+            patch("app.main.APP_ENV", "dev"),
+            patch("app.main.SECRET_KEY", "change-this-in-production"),
+            patch("app.main.logger") as mock_logger,
+        ):
             mock_db = MagicMock()
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -128,7 +133,8 @@ class TestLifespan:
 
             async with lifespan(mock_app):
                 mock_logger.warning.assert_any_call(
-                    "default_secret_key", msg="Using default SECRET_KEY (acceptable for dev only)"
+                    "default_secret_key",
+                    msg="Using default SECRET_KEY (acceptable for dev only)",
                 )
 
     @pytest.mark.asyncio
@@ -138,16 +144,17 @@ class TestLifespan:
 
         mock_app = MagicMock()
 
-        with patch("app.main.Session"), \
-             patch("app.main.user_dal"), \
-             patch("app.main.init_producer", new_callable=AsyncMock), \
-             patch("app.main.close_producer", new_callable=AsyncMock), \
-             patch("app.main.ADMIN_USERNAME", "admin"), \
-             patch("app.main.ADMIN_PASSWORD", "safe_password"), \
-             patch("app.main.APP_ENV", "prod"), \
-             patch("app.main.SECRET_KEY", "change-this-in-production"), \
-             patch("app.main.logger") as mock_logger:
-
+        with (
+            patch("app.main.Session"),
+            patch("app.main.user_dal"),
+            patch("app.main.init_producer", new_callable=AsyncMock),
+            patch("app.main.close_producer", new_callable=AsyncMock),
+            patch("app.main.ADMIN_USERNAME", "admin"),
+            patch("app.main.ADMIN_PASSWORD", "safe_password"),
+            patch("app.main.APP_ENV", "prod"),
+            patch("app.main.SECRET_KEY", "change-this-in-production"),
+            patch("app.main.logger") as mock_logger,
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 async with lifespan(mock_app):
                     pass  # pragma: no cover
@@ -165,16 +172,17 @@ class TestLifespan:
 
         mock_app = MagicMock()
 
-        with patch("app.main.Session"), \
-             patch("app.main.user_dal"), \
-             patch("app.main.init_producer", new_callable=AsyncMock), \
-             patch("app.main.close_producer", new_callable=AsyncMock), \
-             patch("app.main.ADMIN_USERNAME", "admin"), \
-             patch("app.main.ADMIN_PASSWORD", "changeme"), \
-             patch("app.main.APP_ENV", "prod"), \
-             patch("app.main.SECRET_KEY", "strong-production-key"), \
-             patch("app.main.logger") as mock_logger:
-
+        with (
+            patch("app.main.Session"),
+            patch("app.main.user_dal"),
+            patch("app.main.init_producer", new_callable=AsyncMock),
+            patch("app.main.close_producer", new_callable=AsyncMock),
+            patch("app.main.ADMIN_USERNAME", "admin"),
+            patch("app.main.ADMIN_PASSWORD", "changeme"),
+            patch("app.main.APP_ENV", "prod"),
+            patch("app.main.SECRET_KEY", "strong-production-key"),
+            patch("app.main.logger") as mock_logger,
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 async with lifespan(mock_app):
                     pass  # pragma: no cover
@@ -217,8 +225,10 @@ class TestReadyEndpoint:
             mock_redis = MagicMock()
             mock_redis.ping.side_effect = Exception("Redis connection refused")
 
-            with patch("app.infrastructure.redis.get_redis", return_value=mock_redis), \
-                 patch("app.main.is_kafka_available", return_value=True):
+            with (
+                patch("app.infrastructure.redis.get_redis", return_value=mock_redis),
+                patch("app.main.is_kafka_available", return_value=True),
+            ):
                 resp = client.get("/ready")
                 assert resp.status_code == 503
                 data = resp.json()
@@ -235,8 +245,10 @@ class TestReadyEndpoint:
             mock_redis = MagicMock()
             mock_redis.ping.return_value = True
 
-            with patch("app.infrastructure.redis.get_redis", return_value=mock_redis), \
-                 patch("app.main.is_kafka_available", return_value=False):
+            with (
+                patch("app.infrastructure.redis.get_redis", return_value=mock_redis),
+                patch("app.main.is_kafka_available", return_value=False),
+            ):
                 resp = client.get("/ready")
                 assert resp.status_code == 200
                 data = resp.json()
@@ -253,8 +265,12 @@ class TestReadyEndpoint:
             mock_redis = MagicMock()
             mock_redis.ping.return_value = True
 
-            with patch("app.infrastructure.redis.get_redis", return_value=mock_redis), \
-                 patch("app.main.is_kafka_available", side_effect=Exception("kafka error")):
+            with (
+                patch("app.infrastructure.redis.get_redis", return_value=mock_redis),
+                patch(
+                    "app.main.is_kafka_available", side_effect=Exception("kafka error")
+                ),
+            ):
                 resp = client.get("/ready")
                 assert resp.status_code == 200
                 data = resp.json()
@@ -271,8 +287,10 @@ class TestReadyEndpoint:
             mock_redis = MagicMock()
             mock_redis.ping.return_value = True
 
-            with patch("app.infrastructure.redis.get_redis", return_value=mock_redis), \
-                 patch("app.main.is_kafka_available", return_value=True):
+            with (
+                patch("app.infrastructure.redis.get_redis", return_value=mock_redis),
+                patch("app.main.is_kafka_available", return_value=True),
+            ):
                 resp = client.get("/ready")
                 assert resp.status_code == 200
                 data = resp.json()

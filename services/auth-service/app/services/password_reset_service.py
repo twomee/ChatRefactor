@@ -10,26 +10,31 @@ Two-step flow:
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.core.security import hash_password
 from app.dal import password_reset_dal, user_dal
-from app.services.email_service import EmailSender
+from app.services.email_service import EmailSender, create_email_sender
+from app.services.exceptions import BadRequestError
 
 logger = get_logger("services.password_reset")
 
 _TOKEN_EXPIRY_HOURS = 1
 
 
-def request_reset(db: Session, email: str, email_sender: EmailSender) -> dict:
+def request_reset(
+    db: Session, email: str, email_sender: EmailSender | None = None
+) -> dict:
     """Initiate a password-reset flow.
 
     Looks up the user by email, generates a secure token, stores it with
     a 1-hour expiry, and sends a reset email. If the email does not match
     any user, the function still returns success to prevent email enumeration.
     """
+    if email_sender is None:
+        email_sender = create_email_sender()
+
     user = user_dal.get_by_email(db, email)
     if user:
         token = secrets.token_hex(32)  # 32 bytes = 64 hex chars
@@ -68,11 +73,11 @@ def reset_password(db: Session, token: str, new_password: str) -> dict:
     """
     reset_token = password_reset_dal.get_valid_token(db, token)
     if not reset_token:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        raise BadRequestError("Invalid or expired reset token")
 
     user = user_dal.get_by_id(db, reset_token.user_id)
     if not user:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        raise BadRequestError("Invalid or expired reset token")
 
     user_dal.update_password(db, user.id, hash_password(new_password))
     password_reset_dal.mark_token_used(db, token)

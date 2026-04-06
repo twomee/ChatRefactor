@@ -11,6 +11,7 @@ from app.dal import message_dal, reaction_dal
 from app.infrastructure.auth_client import get_user_by_username
 from app.schemas.message import MessageResponse
 from app.services.clear_service import apply_clear_filter, apply_pm_deletion_filter
+from app.services.exceptions import NotFoundError, ValidationError
 
 logger = get_logger("services.message")
 
@@ -44,13 +45,12 @@ async def get_pm_history(
     filters, and enriches with reactions.
 
     Raises:
-        HTTPException: 404 if user not found, 422 if ``before`` is invalid.
+        NotFoundError: if user not found.
+        ValidationError: if ``before`` is invalid.
     """
-    from fastapi import HTTPException
-
     other = await get_user_by_username(username)
     if not other:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFoundError("User not found")
 
     other_id: int = other["id"]
 
@@ -59,9 +59,7 @@ async def get_pm_history(
         try:
             before_dt = datetime.fromisoformat(before.replace("Z", "+00:00"))
         except ValueError:
-            raise HTTPException(
-                status_code=422, detail="Invalid 'before' timestamp format"
-            )
+            raise ValidationError("Invalid 'before' timestamp format")
 
     messages = message_dal.get_pm_history(
         db, me_id=user_id, other_id=other_id, limit=limit, before=before_dt
@@ -81,22 +79,25 @@ def get_message_context(
     db: Session,
     room_id: int,
     message_id: str,
+    user_id: int,
     before: int = 25,
     after: int = 25,
 ) -> list[dict]:
     """Get messages around a target message in a room (for scroll-to-message).
 
     Returns up to ``before`` messages before and ``after`` messages after the
-    target message, sorted chronologically.
+    target message, sorted chronologically. Applies clear filters so users
+    cannot recover cleared messages via the context endpoint.
 
     Raises:
-        HTTPException: 404 if message not found in this room.
+        NotFoundError: if message not found in this room.
     """
-    from fastapi import HTTPException
-
     messages = message_dal.get_messages_around(db, room_id, message_id, before, after)
     if not messages:
-        raise HTTPException(status_code=404, detail="Message not found in this room")
+        raise NotFoundError("Message not found in this room")
+
+    validated = [MessageResponse.model_validate(m) for m in messages]
+    validated = apply_clear_filter(db, user_id, "room", room_id, validated)
 
     return [
         {
@@ -108,7 +109,7 @@ def get_message_context(
             "sent_at": m.sent_at.isoformat() if m.sent_at else None,
             "is_deleted": m.is_deleted,
         }
-        for m in messages
+        for m in validated
     ]
 
 
@@ -123,17 +124,38 @@ def get_pm_context(
 
     Returns up to ``before`` messages before and ``after`` messages after the
     target PM message in the same conversation, sorted chronologically.
+    Applies clear and deletion filters so users cannot recover cleared/deleted
+    messages via the context endpoint.
 
     Raises:
-        HTTPException: 404 if PM message not found.
+        NotFoundError: if PM message not found.
     """
-    from fastapi import HTTPException
-
     messages = message_dal.get_pm_messages_around(
         db, user_id, message_id, before, after
     )
     if not messages:
-        raise HTTPException(status_code=404, detail="PM message not found")
+        raise NotFoundError("PM message not found")
+
+    # Determine the other user's ID from the raw ORM messages before validation,
+    # since MessageResponse doesn't include recipient_id.
+    other_user_id: int | None = None
+    for m in messages:
+        if m.sender_id != user_id:
+            other_user_id = m.sender_id
+            break
+        if m.recipient_id and m.recipient_id != user_id:
+            other_user_id = m.recipient_id
+            break
+
+    # Build a mapping from message_id to recipient_id before validation,
+    # since MessageResponse doesn't include recipient_id.
+    recipient_map = {m.message_id: m.recipient_id for m in messages}
+
+    validated = [MessageResponse.model_validate(m) for m in messages]
+
+    if other_user_id is not None:
+        validated = apply_clear_filter(db, user_id, "pm", other_user_id, validated)
+        validated = apply_pm_deletion_filter(db, user_id, other_user_id, validated)
 
     return [
         {
@@ -141,11 +163,30 @@ def get_pm_context(
             "sender_id": m.sender_id,
             "sender_name": m.sender_name,
             "content": m.content,
-            "recipient_id": m.recipient_id,
+            "recipient_id": recipient_map.get(m.message_id),
             "sent_at": m.sent_at.isoformat() if m.sent_at else None,
             "is_deleted": m.is_deleted,
         }
-        for m in messages
+        for m in validated
+    ]
+
+
+def edit_message(db: Session, message_id: str, user_id: int, content: str) -> bool:
+    """Edit a message. Returns True if successful, False if not found/not owned."""
+    return message_dal.edit_message(db, message_id, user_id, content)
+
+
+def delete_message(db: Session, message_id: str, user_id: int) -> bool:
+    """Soft-delete a message. Returns True if successful, False if not found/not owned."""
+    return message_dal.soft_delete_message(db, message_id, user_id)
+
+
+def get_message_reactions(db: Session, message_id: str) -> list[dict]:
+    """Return all reactions for a specific message."""
+    reactions = reaction_dal.get_reactions_for_message(db, message_id)
+    return [
+        {"emoji": r.emoji, "username": r.username, "user_id": r.user_id}
+        for r in reactions
     ]
 
 

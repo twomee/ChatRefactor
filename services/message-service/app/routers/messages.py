@@ -19,22 +19,13 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.dal import message_dal
-from app.dal import reaction_dal
-from app.infrastructure.redis_client import get_redis
 from app.schemas.message import (
     ClearHistoryRequest,
     DeletePMConversationRequest,
     MessageWithReactionsResponse,
 )
-from app.services import message_service
-from app.services import clear_service
-from app.services import search_service
-from app.services.url_preview_service import (
-    cache_preview,
-    fetch_preview,
-    get_cached_preview,
-)
+from app.services import clear_service, message_service, preview_service, search_service
+from app.services.exceptions import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 
@@ -173,13 +164,18 @@ async def get_pm_history_endpoint(
     deleted history is never returned. Supports backward pagination via
     the `before` query parameter (ISO 8601 timestamp).
     """
-    return await message_service.get_pm_history(
-        db,
-        user_id=current_user["user_id"],
-        username=username,
-        limit=limit,
-        before=before,
-    )
+    try:
+        return await message_service.get_pm_history(
+            db,
+            user_id=current_user["user_id"],
+            username=username,
+            limit=limit,
+            before=before,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.detail)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.detail)
 
 
 # ── Context endpoints (scroll-to-message for search results) ───────
@@ -203,7 +199,12 @@ def get_message_context(
     target message, sorted chronologically. Used when a user clicks a search
     result to see the surrounding conversation context.
     """
-    return message_service.get_message_context(db, room_id, message_id, before, after)
+    try:
+        return message_service.get_message_context(
+            db, room_id, message_id, current_user["user_id"], before, after
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.detail)
 
 
 @router.get(
@@ -222,9 +223,12 @@ def get_pm_context(
     Returns up to `before` messages before and `after` messages after the
     target PM message in the same conversation, sorted chronologically.
     """
-    return message_service.get_pm_context(
-        db, current_user["user_id"], message_id, before, after
-    )
+    try:
+        return message_service.get_pm_context(
+            db, current_user["user_id"], message_id, before, after
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.detail)
 
 
 # ── Room replay & history endpoints ────────────────────────────────
@@ -301,7 +305,7 @@ def edit_message(
     Returns 404 if the message doesn't exist, is already deleted,
     or does not belong to the authenticated user.
     """
-    success = message_dal.edit_message(
+    success = message_service.edit_message(
         db, message_id, current_user["user_id"], body.content
     )
     if not success:
@@ -327,7 +331,7 @@ def delete_message(
     Returns 404 if the message doesn't exist, is already deleted,
     or does not belong to the authenticated user.
     """
-    success = message_dal.soft_delete_message(db, message_id, current_user["user_id"])
+    success = message_service.delete_message(db, message_id, current_user["user_id"])
     if not success:
         raise HTTPException(
             status_code=404, detail="Message not found or not owned by you"
@@ -345,11 +349,7 @@ def get_message_reactions(
     current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """Return all reactions for a specific message."""
-    reactions = reaction_dal.get_reactions_for_message(db, message_id)
-    return [
-        {"emoji": r.emoji, "username": r.username, "user_id": r.user_id}
-        for r in reactions
-    ]
+    return message_service.get_message_reactions(db, message_id)
 
 
 # ── Link preview endpoint ──────────────────────────────────────────
@@ -379,19 +379,7 @@ async def get_link_preview(
             status_code=400, detail="Invalid URL: must start with http:// or https://"
         )
 
-    redis_client = get_redis()
-
-    # Check cache first
-    cached = await get_cached_preview(redis_client, url)
-    if cached is not None:
-        if cached.get("_miss"):
-            raise HTTPException(status_code=404, detail="Could not generate preview")
-        return cached
-
-    # Fetch and cache
-    preview = await fetch_preview(url)
-    await cache_preview(redis_client, url, preview)
-
-    if not preview:
+    result = await preview_service.get_link_preview(url)
+    if result is None:
         raise HTTPException(status_code=404, detail="Could not generate preview")
-    return preview
+    return result
