@@ -90,7 +90,11 @@ def search_messages_endpoint(
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     return search_service.search_messages(
-        db, user_id=current_user["user_id"], query=stripped, room_id=room_id, limit=limit
+        db,
+        user_id=current_user["user_id"],
+        query=stripped,
+        room_id=room_id,
+        limit=limit,
     )
 
 
@@ -130,7 +134,9 @@ def delete_pm_conversation(
     deletion timestamp are hidden. The other user's view is unaffected.
     Idempotent: re-deleting updates the timestamp.
     """
-    clear_service.delete_pm_conversation(db, current_user["user_id"], body.other_user_id)
+    clear_service.delete_pm_conversation(
+        db, current_user["user_id"], body.other_user_id
+    )
     return {"detail": "Conversation deleted"}
 
 
@@ -168,7 +174,11 @@ async def get_pm_history_endpoint(
     the `before` query parameter (ISO 8601 timestamp).
     """
     return await message_service.get_pm_history(
-        db, user_id=current_user["user_id"], username=username, limit=limit, before=before
+        db,
+        user_id=current_user["user_id"],
+        username=username,
+        limit=limit,
+        before=before,
     )
 
 
