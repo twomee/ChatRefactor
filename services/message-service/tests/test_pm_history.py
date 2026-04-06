@@ -23,7 +23,7 @@ def _seed_pm(db, msg_id, sender_id, sender_name, recipient_id, content, sent_at=
     )
 
 
-@patch("app.routers.messages.get_user_by_username", new_callable=AsyncMock)
+@patch("app.services.message_service.get_user_by_username", new_callable=AsyncMock)
 def test_pm_history_returns_messages(mock_lookup, client, db, auth_headers):
     mock_lookup.return_value = {"id": 2, "username": "bob"}
     _seed_pm(db, "pm-h-1", sender_id=1, sender_name="alice", recipient_id=2, content="Hello Bob")
@@ -39,14 +39,14 @@ def test_pm_history_returns_messages(mock_lookup, client, db, auth_headers):
     assert "Hi Alice" in contents
 
 
-@patch("app.routers.messages.get_user_by_username", new_callable=AsyncMock)
+@patch("app.services.message_service.get_user_by_username", new_callable=AsyncMock)
 def test_pm_history_returns_404_when_user_not_found(mock_lookup, client, db, auth_headers):
     mock_lookup.return_value = None
     resp = client.get("/messages/pm/history/nobody", headers=auth_headers)
     assert resp.status_code == 404
 
 
-@patch("app.routers.messages.get_user_by_username", new_callable=AsyncMock)
+@patch("app.services.message_service.get_user_by_username", new_callable=AsyncMock)
 def test_pm_history_applies_clear_filter(mock_lookup, client, db, auth_headers):
     mock_lookup.return_value = {"id": 2, "username": "bob"}
 
@@ -69,7 +69,7 @@ def test_pm_history_applies_clear_filter(mock_lookup, client, db, auth_headers):
     assert "New message" in contents
 
 
-@patch("app.routers.messages.get_user_by_username", new_callable=AsyncMock)
+@patch("app.services.message_service.get_user_by_username", new_callable=AsyncMock)
 def test_pm_history_applies_deletion_filter(mock_lookup, client, db, auth_headers):
     mock_lookup.return_value = {"id": 2, "username": "bob"}
 
@@ -92,14 +92,14 @@ def test_pm_history_applies_deletion_filter(mock_lookup, client, db, auth_header
     assert "After delete" in contents
 
 
-@patch("app.routers.messages.get_user_by_username", new_callable=AsyncMock)
+@patch("app.services.message_service.get_user_by_username", new_callable=AsyncMock)
 def test_pm_history_requires_auth(mock_lookup, client, db):
     mock_lookup.return_value = {"id": 2, "username": "bob"}
     resp = client.get("/messages/pm/history/bob")
     assert resp.status_code == 401
 
 
-@patch("app.routers.messages.get_user_by_username", new_callable=AsyncMock)
+@patch("app.services.message_service.get_user_by_username", new_callable=AsyncMock)
 def test_pm_history_pagination_before(mock_lookup, client, db, auth_headers):
     mock_lookup.return_value = {"id": 2, "username": "bob"}
 

@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 import pyotp
 import pytest
 
-from app.services.auth_service import (
+from app.utils.totp import (
     generate_totp_secret,
     get_totp_uri,
     verify_totp,

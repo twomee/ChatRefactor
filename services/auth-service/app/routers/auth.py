@@ -35,7 +35,7 @@ from app.schemas.auth import (
     Verify2FARequest,
     VerifyLogin2FARequest,
 )
-from app.services import auth_service
+from app.services import auth_service, two_factor_service
 from app.services.email_service import create_email_sender
 from app.services import password_reset_service
 
@@ -148,7 +148,7 @@ def setup_2fa(
     Requires JWT auth. Does NOT enable 2FA — the user must call /2fa/verify-setup
     with a valid TOTP code to confirm the setup.
     """
-    return auth_service.setup_2fa(db, current_user)
+    return two_factor_service.setup_2fa(db, current_user)
 
 
 @router.post("/2fa/verify-setup")
@@ -158,7 +158,7 @@ def verify_2fa_setup(
     current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """Verify a TOTP code to confirm 2FA setup. Enables 2FA on the account."""
-    return auth_service.verify_2fa_setup(db, current_user, body.code)
+    return two_factor_service.verify_2fa_setup(db, current_user, body.code)
 
 
 @router.post("/2fa/disable")
@@ -168,7 +168,7 @@ def disable_2fa(
     current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """Disable 2FA. Requires a valid TOTP code as proof of ownership."""
-    return auth_service.disable_2fa(db, current_user, body.code)
+    return two_factor_service.disable_2fa(db, current_user, body.code)
 
 
 @router.post("/2fa/verify-login", response_model=TokenResponse)
@@ -181,7 +181,7 @@ async def verify_login_2fa(
     This is a public endpoint (no JWT required) — authentication is via
     the temp_token issued during the login step.
     """
-    return await auth_service.verify_login_2fa(db, body.temp_token, body.code)
+    return await two_factor_service.verify_login_2fa(db, body.temp_token, body.code)
 
 
 @router.get("/2fa/status")
@@ -190,7 +190,7 @@ def get_2fa_status(
     current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """Return the current 2FA status for the authenticated user."""
-    return auth_service.get_2fa_status(db, current_user)
+    return two_factor_service.get_2fa_status(db, current_user)
 
 
 # ── Internal endpoints (for inter-service communication) ──────────────────────

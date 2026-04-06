@@ -179,6 +179,10 @@ class MessagePersistenceConsumer:
                         "emoji": value.get("emoji"),
                     }
                     self._persist_remove_reaction(db, normalized)
+                elif msg_type == "edit_pm":
+                    self._handle_edit_message(db, value)
+                elif msg_type == "delete_pm":
+                    self._handle_delete_message(db, value)
                 else:
                     await self._persist_private_message(db, value)
         finally:
