@@ -50,7 +50,11 @@ logger = get_logger("routers.auth")
 # ── Public endpoints ──────────────────────────────────────────────────────────
 
 
-@router.post("/register", status_code=201)
+@router.post(
+    "/register",
+    status_code=201,
+    responses={409: {"description": "Username or email already taken"}},
+)
 async def register(body: UserRegister, db: Annotated[Session, Depends(get_db)]):
     """Register a new user account."""
     try:
@@ -59,7 +63,10 @@ async def register(body: UserRegister, db: Annotated[Session, Depends(get_db)]):
         raise HTTPException(status_code=409, detail=exc.detail) from exc
 
 
-@router.post("/login")
+@router.post(
+    "/login",
+    responses={401: {"description": "Invalid username or password"}},
+)
 async def login(body: UserLogin, db: Annotated[Session, Depends(get_db)]):
     """Authenticate and receive a JWT access token.
 
@@ -72,7 +79,7 @@ async def login(body: UserLogin, db: Annotated[Session, Depends(get_db)]):
         raise HTTPException(status_code=401, detail=exc.detail) from exc
 
 
-@router.post("/logout")
+@router.post("/logout", responses={503: {"description": "Logout partially failed"}})
 async def logout(
     token: Annotated[str, Depends(oauth2_scheme)],
     current_user: Annotated[dict, Depends(get_current_user)],
@@ -93,7 +100,11 @@ def ping(current_user: Annotated[dict, Depends(get_current_user)]):
 # ── Profile / Settings endpoints ──────────────────────────────────────────────
 
 
-@router.get("/profile", response_model=ProfileResponse)
+@router.get(
+    "/profile",
+    response_model=ProfileResponse,
+    responses={404: {"description": "User not found"}},
+)
 def get_profile(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[dict, Depends(get_current_user)],
@@ -105,7 +116,14 @@ def get_profile(
         raise HTTPException(status_code=404, detail=exc.detail) from exc
 
 
-@router.patch("/profile/email")
+@router.patch(
+    "/profile/email",
+    responses={
+        401: {"description": "Current password is incorrect"},
+        404: {"description": "User not found"},
+        409: {"description": "Email already registered"},
+    },
+)
 def update_email(
     body: UpdateEmailRequest,
     db: Annotated[Session, Depends(get_db)],
@@ -124,7 +142,13 @@ def update_email(
         raise HTTPException(status_code=409, detail=exc.detail) from exc
 
 
-@router.patch("/profile/password")
+@router.patch(
+    "/profile/password",
+    responses={
+        401: {"description": "Current password is incorrect"},
+        404: {"description": "User not found"},
+    },
+)
 def update_password(
     body: UpdatePasswordRequest,
     db: Annotated[Session, Depends(get_db)],
@@ -153,7 +177,10 @@ def forgot_password(
     return password_reset_service.request_reset(db, body.email)
 
 
-@router.post("/reset-password")
+@router.post(
+    "/reset-password",
+    responses={400: {"description": "Invalid or expired reset token"}},
+)
 def reset_password(
     body: ResetPasswordRequest,
     db: Annotated[Session, Depends(get_db)],
@@ -168,7 +195,13 @@ def reset_password(
 # ── 2FA endpoints ─────────────────────────────────────────────────────────────
 
 
-@router.post("/2fa/setup")
+@router.post(
+    "/2fa/setup",
+    responses={
+        400: {"description": "2FA is already enabled"},
+        404: {"description": "User not found"},
+    },
+)
 def setup_2fa(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[dict, Depends(get_current_user)],
@@ -186,7 +219,13 @@ def setup_2fa(
         raise HTTPException(status_code=400, detail=exc.detail) from exc
 
 
-@router.post("/2fa/verify-setup")
+@router.post(
+    "/2fa/verify-setup",
+    responses={
+        400: {"description": "Invalid TOTP code or 2FA already enabled"},
+        404: {"description": "User not found"},
+    },
+)
 def verify_2fa_setup(
     body: Verify2FARequest,
     db: Annotated[Session, Depends(get_db)],
@@ -201,7 +240,14 @@ def verify_2fa_setup(
         raise HTTPException(status_code=400, detail=exc.detail) from exc
 
 
-@router.post("/2fa/disable")
+@router.post(
+    "/2fa/disable",
+    responses={
+        400: {"description": "Invalid TOTP code or 2FA not enabled"},
+        404: {"description": "User not found"},
+        500: {"description": "Authentication state corrupted"},
+    },
+)
 def disable_2fa(
     body: Verify2FARequest,
     db: Annotated[Session, Depends(get_db)],
@@ -218,7 +264,11 @@ def disable_2fa(
         raise HTTPException(status_code=500, detail=exc.detail) from exc
 
 
-@router.post("/2fa/verify-login", response_model=TokenResponse)
+@router.post(
+    "/2fa/verify-login",
+    response_model=TokenResponse,
+    responses={401: {"description": "Invalid temp token or TOTP code"}},
+)
 async def verify_login_2fa(
     body: VerifyLogin2FARequest,
     db: Annotated[Session, Depends(get_db)],
@@ -234,7 +284,7 @@ async def verify_login_2fa(
         raise HTTPException(status_code=401, detail=exc.detail) from exc
 
 
-@router.get("/2fa/status")
+@router.get("/2fa/status", responses={404: {"description": "User not found"}})
 def get_2fa_status(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[dict, Depends(get_current_user)],
@@ -253,7 +303,11 @@ def get_2fa_status(
 # and fail with a type validation error (string can't coerce to int).
 
 
-@router.get("/users/by-username/{username}", response_model=UserResponse)
+@router.get(
+    "/users/by-username/{username}",
+    response_model=UserResponse,
+    responses={404: {"description": "User not found"}},
+)
 def get_user_by_username(username: str, db: Annotated[Session, Depends(get_db)]):
     """Internal: Look up a user by username. Used by other services."""
     try:
@@ -262,7 +316,11 @@ def get_user_by_username(username: str, db: Annotated[Session, Depends(get_db)])
         raise HTTPException(status_code=404, detail=exc.detail) from exc
 
 
-@router.get("/users/{user_id}", response_model=UserResponse)
+@router.get(
+    "/users/{user_id}",
+    response_model=UserResponse,
+    responses={404: {"description": "User not found"}},
+)
 def get_user_by_id(user_id: int, db: Annotated[Session, Depends(get_db)]):
     """Internal: Look up a user by ID. Used by other services (Chat, File, etc.)."""
     try:
