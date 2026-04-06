@@ -66,7 +66,7 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		return
 	}
 	if caller == nil || !caller.IsGlobalAdmin {
-		c.JSON(http.StatusForbidden, gin.H{"detail": "admin access required"})
+		c.JSON(http.StatusForbidden, gin.H{"detail": errAdminRequired})
 		return
 	}
 

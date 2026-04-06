@@ -13,6 +13,8 @@ import (
 	"github.com/twomee/chatbox/chat-service/internal/model"
 )
 
+const errAdminRequired = "admin access required"
+
 // isCallerRoomOrGlobalAdmin checks if the caller is a room admin or a global admin.
 // Returns true if authorized, false otherwise (and writes the HTTP error response).
 func (h *RoomHandler) isCallerRoomOrGlobalAdmin(c *gin.Context, roomID int) bool {
@@ -35,7 +37,7 @@ func (h *RoomHandler) isCallerRoomOrGlobalAdmin(c *gin.Context, roomID int) bool
 		return true
 	}
 
-	c.JSON(http.StatusForbidden, gin.H{"detail": "admin access required"})
+	c.JSON(http.StatusForbidden, gin.H{"detail": errAdminRequired})
 	return false
 }
 
@@ -111,7 +113,7 @@ func (h *RoomHandler) MuteUser(c *gin.Context) {
 	callerID, _ := c.Get(middleware.CtxUserID)
 	isAdmin, _ := h.store.IsAdmin(c.Request.Context(), roomID, callerID.(int))
 	if !isAdmin {
-		c.JSON(http.StatusForbidden, gin.H{"detail": "admin access required"})
+		c.JSON(http.StatusForbidden, gin.H{"detail": errAdminRequired})
 		return
 	}
 
@@ -148,7 +150,7 @@ func (h *RoomHandler) UnmuteUser(c *gin.Context) {
 	callerID, _ := c.Get(middleware.CtxUserID)
 	isAdmin, _ := h.store.IsAdmin(c.Request.Context(), roomID, callerID.(int))
 	if !isAdmin {
-		c.JSON(http.StatusForbidden, gin.H{"detail": "admin access required"})
+		c.JSON(http.StatusForbidden, gin.H{"detail": errAdminRequired})
 		return
 	}
 

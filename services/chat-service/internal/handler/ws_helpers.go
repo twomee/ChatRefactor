@@ -154,38 +154,46 @@ func (h *WSHandler) sendEmptyHistory(conn *websocket.Conn, roomID int) {
 func transformHistoryMessages(rawMessages []map[string]interface{}) []map[string]interface{} {
 	transformed := make([]map[string]interface{}, 0, len(rawMessages))
 	for _, m := range rawMessages {
-		isFile, _ := m["is_file"].(bool)
-		msgType := "message"
-		if isFile {
-			msgType = "file_shared"
-		}
-		msg := map[string]interface{}{
-			"type": msgType,
-			"from": m["sender_name"],
-			"text": m["content"],
-		}
-		if ts, ok := m["sent_at"]; ok {
-			msg["timestamp"] = ts
-		}
-		if mid, ok := m["message_id"]; ok {
-			msg["msg_id"] = mid
-		}
-		if editedAt, ok := m["edited_at"]; ok && editedAt != nil {
-			msg["edited_at"] = editedAt
-		}
-		if isDeleted, ok := m["is_deleted"]; ok {
-			msg["is_deleted"] = isDeleted
-		}
-		if reactions, ok := m["reactions"]; ok {
-			msg["reactions"] = reactions
-		}
-		if isFile {
-			msg["isFile"] = true
-			if fileID, ok := m["file_id"]; ok && fileID != nil {
-				msg["fileId"] = fileID
-			}
-		}
-		transformed = append(transformed, msg)
+		transformed = append(transformed, transformOneMessage(m))
 	}
 	return transformed
+}
+
+// transformOneMessage converts a single message-service record into the
+// frontend wire format.
+func transformOneMessage(m map[string]interface{}) map[string]interface{} {
+	isFile, _ := m["is_file"].(bool)
+	msgType := "message"
+	if isFile {
+		msgType = "file_shared"
+	}
+	msg := map[string]interface{}{
+		"type": msgType,
+		"from": m["sender_name"],
+		"text": m["content"],
+	}
+	copyIfPresent(msg, m, "sent_at", "timestamp")
+	copyIfPresent(msg, m, "message_id", "msg_id")
+	copyIfPresentNonNil(msg, m, "edited_at", "edited_at")
+	copyIfPresent(msg, m, "is_deleted", "is_deleted")
+	copyIfPresent(msg, m, "reactions", "reactions")
+	if isFile {
+		msg["isFile"] = true
+		copyIfPresentNonNil(msg, m, "file_id", "fileId")
+	}
+	return msg
+}
+
+// copyIfPresent copies a value from src to dst under a new key if it exists.
+func copyIfPresent(dst, src map[string]interface{}, srcKey, dstKey string) {
+	if v, ok := src[srcKey]; ok {
+		dst[dstKey] = v
+	}
+}
+
+// copyIfPresentNonNil copies a value from src to dst only if it exists and is not nil.
+func copyIfPresentNonNil(dst, src map[string]interface{}, srcKey, dstKey string) {
+	if v, ok := src[srcKey]; ok && v != nil {
+		dst[dstKey] = v
+	}
 }
