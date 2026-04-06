@@ -331,6 +331,83 @@ class TestPMReactionPersistence:
 
 
 # ══════════════════════════════════════════════════════════════════════
+# PM edit/delete persistence via _process (bug fix)
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestPMEditDeletePersistence:
+    """Tests that edit_pm and delete_pm events on TOPIC_PRIVATE are routed to
+    _handle_edit_message / _handle_delete_message instead of silently falling
+    through to _persist_private_message."""
+
+    @pytest.mark.asyncio
+    async def test_edit_pm_calls_handle_edit_message(self, db, consumer, monkeypatch):
+        """edit_pm event should route to _handle_edit_message, not _persist_private_message."""
+        monkeypatch.setattr("app.core.database.SessionLocal", lambda: db)
+
+        # Seed a PM to edit
+        from app.dal import message_dal
+
+        message_dal.create_idempotent(
+            db,
+            message_id="pm-edit-001",
+            sender_id=10,
+            sender_name="alice",
+            room_id=None,
+            content="Original PM",
+            is_private=True,
+            recipient_id=20,
+        )
+
+        await consumer._process(
+            TOPIC_PRIVATE,
+            {
+                "type": "edit_pm",
+                "msg_id": "pm-edit-001",
+                "sender_id": 10,
+                "text": "Edited PM",
+            },
+        )
+
+        msg = db.query(Message).filter(Message.message_id == "pm-edit-001").first()
+        assert msg is not None
+        assert msg.content == "Edited PM"
+
+    @pytest.mark.asyncio
+    async def test_delete_pm_calls_handle_delete_message(self, db, consumer, monkeypatch):
+        """delete_pm event should route to _handle_delete_message, not _persist_private_message."""
+        monkeypatch.setattr("app.core.database.SessionLocal", lambda: db)
+
+        # Seed a PM to delete
+        from app.dal import message_dal
+
+        message_dal.create_idempotent(
+            db,
+            message_id="pm-del-001",
+            sender_id=10,
+            sender_name="alice",
+            room_id=None,
+            content="PM to delete",
+            is_private=True,
+            recipient_id=20,
+        )
+
+        await consumer._process(
+            TOPIC_PRIVATE,
+            {
+                "type": "delete_pm",
+                "msg_id": "pm-del-001",
+                "sender_id": 10,
+            },
+        )
+
+        msg = db.query(Message).filter(Message.message_id == "pm-del-001").first()
+        assert msg is not None
+        assert msg.is_deleted is True
+        assert msg.content == "[deleted]"
+
+
+# ══════════════════════════════════════════════════════════════════════
 # DLQ routing via _process_with_retry
 # ══════════════════════════════════════════════════════════════════════
 

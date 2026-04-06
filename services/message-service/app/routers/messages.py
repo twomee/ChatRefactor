@@ -8,6 +8,8 @@
 # - No room existence check (rooms live in a different service/database)
 # - get_current_user returns a dict, not a User ORM object
 # - Sender names are NOT resolved here (would require auth service call per message)
+#
+# This router is a thin HTTP adapter — all business logic lives in the service layer.
 from datetime import datetime
 from typing import Annotated
 
@@ -19,17 +21,15 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.dal import message_dal
 from app.dal import reaction_dal
-from app.dal import clear_dal
-from app.dal import pm_deletion_dal
-from app.infrastructure.auth_client import get_user_by_username
 from app.infrastructure.redis_client import get_redis
 from app.schemas.message import (
     ClearHistoryRequest,
     DeletePMConversationRequest,
-    MessageResponse,
     MessageWithReactionsResponse,
 )
 from app.services import message_service
+from app.services import clear_service
+from app.services import search_service
 from app.services.url_preview_service import (
     cache_preview,
     fetch_preview,
@@ -89,36 +89,9 @@ def search_messages_endpoint(
     if not stripped:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    results = message_dal.search_messages(
-        db, query=stripped, room_id=room_id, limit=limit
+    return search_service.search_messages(
+        db, user_id=current_user["user_id"], query=stripped, room_id=room_id, limit=limit
     )
-    # Apply per-user clear filter so cleared messages don't appear in search results.
-    user_id = current_user["user_id"]
-    if room_id is not None:
-        # Scoped to a single room — use the single-room helper.
-        results = _apply_clear_filter(db, user_id, "room", room_id, results)
-    else:
-        # Cross-room search — fetch ALL of the user's room clear records in one
-        # query and apply them per-room without N+1 queries.
-        clears = clear_dal.get_all_clears_for_user(db, user_id, "room")
-        if clears:
-            results = [
-                m
-                for m in results
-                if m.room_id is None
-                or m.room_id not in clears
-                or m.sent_at > clears[m.room_id]
-            ]
-    return [
-        {
-            "message_id": m.message_id,
-            "sender_name": m.sender_name,
-            "content": m.content,
-            "room_id": m.room_id,
-            "sent_at": m.sent_at.isoformat() if m.sent_at else None,
-        }
-        for m in results
-    ]
 
 
 # ── Clear history endpoint ──────────────────────────────────────────
@@ -136,7 +109,7 @@ def clear_history(
     the requesting user only. Other participants are unaffected.
     Idempotent: re-clearing updates the timestamp.
     """
-    clear_dal.upsert_clear(
+    clear_service.clear_history(
         db, current_user["user_id"], body.context_type, body.context_id
     )
     return {"detail": "History cleared"}
@@ -157,7 +130,7 @@ def delete_pm_conversation(
     deletion timestamp are hidden. The other user's view is unaffected.
     Idempotent: re-deleting updates the timestamp.
     """
-    pm_deletion_dal.delete_conversation(db, current_user["user_id"], body.other_user_id)
+    clear_service.delete_pm_conversation(db, current_user["user_id"], body.other_user_id)
     return {"detail": "Conversation deleted"}
 
 
@@ -167,7 +140,7 @@ def get_deleted_pm_conversations(
     current_user: Annotated[dict, Depends(get_current_user)],
 ):
     """Return all deleted PM conversations for the current user."""
-    return pm_deletion_dal.get_deleted_conversations(db, current_user["user_id"])
+    return clear_service.get_deleted_conversations(db, current_user["user_id"])
 
 
 @router.get(
@@ -194,36 +167,9 @@ async def get_pm_history_endpoint(
     deleted history is never returned. Supports backward pagination via
     the `before` query parameter (ISO 8601 timestamp).
     """
-    other = await get_user_by_username(username)
-    if not other:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    me_id: int = current_user["user_id"]
-    other_id: int = other["id"]
-
-    before_dt: datetime | None = None
-    if before:
-        try:
-            before_dt = datetime.fromisoformat(before.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(
-                status_code=422, detail="Invalid 'before' timestamp format"
-            )
-
-    messages = message_dal.get_pm_history(
-        db, me_id=me_id, other_id=other_id, limit=limit, before=before_dt
+    return await message_service.get_pm_history(
+        db, user_id=current_user["user_id"], username=username, limit=limit, before=before
     )
-    validated = [MessageResponse.model_validate(m) for m in messages]
-
-    # Apply UserMessageClear filter
-    validated = _apply_clear_filter(db, me_id, "pm", other_id, validated)
-
-    # Apply DeletedPMConversation filter
-    deleted_at = pm_deletion_dal.get_pm_deletion_timestamp(db, me_id, other_id)
-    if deleted_at is not None:
-        validated = [m for m in validated if m.sent_at > deleted_at]
-
-    return _enrich_with_reactions(db, validated)
 
 
 # ── Context endpoints (scroll-to-message for search results) ───────
@@ -247,22 +193,7 @@ def get_message_context(
     target message, sorted chronologically. Used when a user clicks a search
     result to see the surrounding conversation context.
     """
-    messages = message_dal.get_messages_around(db, room_id, message_id, before, after)
-    if not messages:
-        raise HTTPException(status_code=404, detail="Message not found in this room")
-
-    return [
-        {
-            "message_id": m.message_id,
-            "sender_id": m.sender_id,
-            "sender_name": m.sender_name,
-            "content": m.content,
-            "room_id": m.room_id,
-            "sent_at": m.sent_at.isoformat() if m.sent_at else None,
-            "is_deleted": m.is_deleted,
-        }
-        for m in messages
-    ]
+    return message_service.get_message_context(db, room_id, message_id, before, after)
 
 
 @router.get(
@@ -281,24 +212,9 @@ def get_pm_context(
     Returns up to `before` messages before and `after` messages after the
     target PM message in the same conversation, sorted chronologically.
     """
-    messages = message_dal.get_pm_messages_around(
+    return message_service.get_pm_context(
         db, current_user["user_id"], message_id, before, after
     )
-    if not messages:
-        raise HTTPException(status_code=404, detail="PM message not found")
-
-    return [
-        {
-            "message_id": m.message_id,
-            "sender_id": m.sender_id,
-            "sender_name": m.sender_name,
-            "content": m.content,
-            "recipient_id": m.recipient_id,
-            "sent_at": m.sent_at.isoformat() if m.sent_at else None,
-            "is_deleted": m.is_deleted,
-        }
-        for m in messages
-    ]
 
 
 # ── Room replay & history endpoints ────────────────────────────────
@@ -325,10 +241,10 @@ def get_room_messages(
     only messages after cleared_at are returned.
     """
     messages = message_service.get_replay_messages(db, room_id, since, limit)
-    messages = _apply_clear_filter(
+    messages = clear_service.apply_clear_filter(
         db, current_user["user_id"], "room", room_id, messages
     )
-    return _enrich_with_reactions(db, messages)
+    return message_service.enrich_with_reactions(db, messages)
 
 
 @router.get(
@@ -350,10 +266,10 @@ def get_room_history(
     only messages after cleared_at are returned.
     """
     messages = message_service.get_room_history(db, room_id, limit)
-    messages = _apply_clear_filter(
+    messages = clear_service.apply_clear_filter(
         db, current_user["user_id"], "room", room_id, messages
     )
-    return _enrich_with_reactions(db, messages)
+    return message_service.enrich_with_reactions(db, messages)
 
 
 # ── Edit & delete endpoints ─────────────────────────────────────────
@@ -469,41 +385,3 @@ async def get_link_preview(
     if not preview:
         raise HTTPException(status_code=404, detail="Could not generate preview")
     return preview
-
-
-# ── Private helpers ─────────────────────────────────────────────────
-
-
-def _apply_clear_filter(
-    db: Session,
-    user_id: int,
-    context_type: str,
-    context_id: int,
-    messages: list[MessageResponse],
-) -> list[MessageResponse]:
-    """Filter out messages that were sent before the user's clear timestamp.
-
-    If the user has not cleared this context, returns all messages unchanged.
-    """
-    cleared_at = clear_dal.get_clear(db, user_id, context_type, context_id)
-    if cleared_at is None:
-        return messages
-
-    return [m for m in messages if m.sent_at > cleared_at]
-
-
-def _enrich_with_reactions(db: Session, messages: list[MessageResponse]) -> list[dict]:
-    """Attach reactions to each message response.
-
-    Fetches reactions in a single batch query for all message_ids, then
-    merges them into the response dicts.
-    """
-    msg_ids = [m.message_id for m in messages if m.message_id]
-    reactions_map = reaction_dal.get_reactions_for_messages(db, msg_ids)
-
-    enriched = []
-    for m in messages:
-        d = m.model_dump()
-        d["reactions"] = reactions_map.get(m.message_id, [])
-        enriched.append(d)
-    return enriched
