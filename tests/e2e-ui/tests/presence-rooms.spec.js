@@ -108,18 +108,9 @@ test.describe('Presence - Rooms', () => {
     await chatAdmin.switchRoom(TEST_ROOM);
     await pageA.waitForTimeout(1_000);
 
-    // Admin should still have admin badge after re-login
-    const adminBadgeAfter = pageB.locator(`.user-item:has-text("${ADMIN.username}") .user-item-role`).first();
-    const hasBadgeAfter = await adminBadgeAfter.isVisible().catch(() => false);
-
-    if (hasBadge) {
-      expect(hasBadgeAfter).toBe(true);
-    } else {
-      const adminInList = await chatB.isUserInList(ADMIN.username);
-      expect(adminInList).toBe(true);
-    }
-
-    // Refresh the stored admin token so later tests (visual-regression) can use it
+    // Refresh the stored admin token BEFORE assertions — logout() blacklisted the old
+    // token, and if an assertion below throws, the token file would be left with a
+    // blacklisted token, breaking the visual-regression test that runs after this.
     const BASE_URL = process.env.BASE_URL || 'http://localhost:8090';
     const loginRes = await fetch(`${BASE_URL}/auth/login`, {
       method: 'POST',
@@ -134,6 +125,17 @@ test.describe('Presence - Rooms', () => {
       const tokens = JSON.parse(fs.readFileSync(tokensPath, 'utf-8'));
       tokens.admin.token = loginData.access_token;
       fs.writeFileSync(tokensPath, JSON.stringify(tokens, null, 2));
+    }
+
+    // Admin should still have admin badge after re-login
+    const adminBadgeAfter = pageB.locator(`.user-item:has-text("${ADMIN.username}") .user-item-role`).first();
+    const hasBadgeAfter = await adminBadgeAfter.isVisible().catch(() => false);
+
+    if (hasBadge) {
+      expect(hasBadgeAfter).toBe(true);
+    } else {
+      const adminInList = await chatB.isUserInList(ADMIN.username);
+      expect(adminInList).toBe(true);
     }
 
     await ctxA.close();
@@ -162,8 +164,9 @@ test.describe('Presence - Rooms', () => {
     await authA.logout();
     await pageA.waitForURL('**/login', { timeout: 10_000 });
 
-    // B should see A removed from user list
-    await pageB.waitForTimeout(3_000);
+    // B should see A removed from user list — wait for element to disappear rather
+    // than sleeping a fixed amount, which is fragile in slow (K8s) environments.
+    await pageB.locator(`.user-item:has-text("${logoutUsername}")`).waitFor({ state: 'hidden', timeout: 8_000 }).catch(() => {});
     const aStillInList = await chatB.isUserInList(logoutUsername);
     expect(aStillInList).toBe(false);
 

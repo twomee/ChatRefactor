@@ -184,17 +184,20 @@ test.describe('PM', () => {
       const toastText = await toast.textContent();
       expect(toastText.toLowerCase()).toMatch(/closed|room/i);
     } finally {
-      // Always reopen so subsequent tests aren't blocked.
-      // Re-navigate to admin in case the page moved away after closing the room.
+      // Always ensure the room is open so subsequent tests aren't blocked.
+      // Re-navigate to get a fresh view of the room's actual state — don't assume
+      // it was successfully closed (the close API call may have been slow/failed).
       await admin.goto();
-      // Wait for the "Open" button specifically — this confirms the close has
-      // propagated through the API and the fresh page reflects the closed state.
-      await pageA
-        .locator(`tr:has-text("${TEST_ROOM}")`)
-        .locator('button:has-text("Open")')
-        .first()
-        .waitFor({ timeout: 15_000 });
-      await admin.openRoom(TEST_ROOM);
+      // Load the row and check which button is visible to determine current state.
+      const row = pageA.locator(`tr:has-text("${TEST_ROOM}")`).first();
+      await row.waitFor({ timeout: 20_000 });
+      const openBtn = row.locator('button:has-text("Open")').first();
+      const isRoomClosed = await openBtn.isVisible().catch(() => false);
+      if (isRoomClosed) {
+        // Room is closed — reopen it
+        await admin.openRoom(TEST_ROOM);
+      }
+      // If room is already open (closeRoom failed or API eventually failed), nothing to do.
 
       await ctxA.close();
       await ctxB.close();

@@ -136,10 +136,13 @@ test('register all test users and save tokens', async () => {
     const adminRooms = await adminRoomsRes.json();
     const testRoom = adminRooms.find(r => r.name === TEST_ROOM);
     if (testRoom && !testRoom.is_active) {
-      await fetch(`${baseURL}/admin/rooms/${testRoom.id}/open`, {
+      const openRes = await fetch(`${baseURL}/admin/rooms/${testRoom.id}/open`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${tokens.admin.token}` },
-      });
+      }).catch(() => null);
+      if (!openRes?.ok) {
+        console.warn(`WARNING: Failed to open test room "${TEST_ROOM}" (status: ${openRes?.status}). Tests that need an open room may fail.`);
+      }
     }
   }
 

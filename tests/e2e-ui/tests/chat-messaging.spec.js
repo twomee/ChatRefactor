@@ -106,14 +106,15 @@ test.describe('Chat Messaging', () => {
     await chat.clearHistory();
     await page.waitForTimeout(1_000);
 
-    // No messages container should be empty or show empty state
-    const messages = page.locator('.msg');
+    // Only count user messages — system messages (join/leave) are not cleared
+    // by clearHistory and have the .msg-system class.
+    const messages = page.locator('.msg:not(.msg-system)');
     const msgCount = await messages.count();
     expect(msgCount).toBe(0);
 
     await refreshAndWait(page);
     await chat.switchRoom(TEST_ROOM);
-    const messagesAfter = page.locator('.msg');
+    const messagesAfter = page.locator('.msg:not(.msg-system)');
     const msgCountAfter = await messagesAfter.count();
     expect(msgCountAfter).toBe(0);
   });

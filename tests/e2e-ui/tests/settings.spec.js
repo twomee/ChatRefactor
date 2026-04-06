@@ -17,6 +17,12 @@ function generateTOTP(secret) {
 // Note: the password is unique per test suite run
 let echoNewPassword = `NewPass${Date.now()}!`;
 
+// Track the 2FA secret between tests — Test 37 enables 2FA and saves the secret,
+// Test 38 reuses it to generate a TOTP code for disable. Without this, Test 38
+// would try to call /auth/login as a 2FA-enabled user, get requires_2fa:true
+// instead of an access_token, and never be able to obtain the TOTP secret.
+let userDTOTPSecret = null;
+
 test.describe('Settings', () => {
   test('Test 35: change password', async ({ page, context }) => {
     await fastLogin(context, page, 'userE');
@@ -96,10 +102,11 @@ test.describe('Settings', () => {
     const qr = page.locator('img[alt*="QR"], canvas');
     await expect(qr.first()).toBeVisible({ timeout: 5_000 });
 
-    // Get manual key
+    // Get manual key and save it for Test 38 (which needs it to disable 2FA)
     const secret = await settings.getManualKey();
     expect(secret).toBeTruthy();
     expect(secret.length).toBeGreaterThan(0);
+    userDTOTPSecret = secret;
 
     // Generate TOTP
     const code = generateTOTP(secret);
@@ -129,54 +136,32 @@ test.describe('Settings', () => {
   });
 
   test('Test 38: disable 2FA', async ({ page, context }) => {
-    // Use the fresh timestamped userD created in global.setup (not the static USER_D.username)
-    const tokens = loadTokens();
-    const userDUsername = tokens.userD.user.username;
+    // Test 37 saved the TOTP secret in userDTOTPSecret so we can generate a valid code.
+    // Without it, Test 38 cannot disable 2FA: calling /auth/login for a 2FA-enabled
+    // user returns requires_2fa:true (no access_token), and /auth/2fa/setup with
+    // an invalid token returns 401, so manual_entry_key is never obtained.
+    if (!userDTOTPSecret) {
+      test.skip(true, 'Test 37 did not save the TOTP secret; cannot generate a code to disable 2FA');
+      return;
+    }
 
-    // Get a fresh token to call the 2FA setup API
-    const loginRes = await fetch(`${BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: userDUsername, password: USER_D.password }),
-    });
-    const loginData = await loginRes.json();
-    const token = loginData.access_token;
-
-    // Get setup info (may fail if not in setup flow — use existing secret from Test 37)
-    // We'll disable using the settings UI after fastLogin sets the session
     await fastLogin(context, page, 'userD');
     const settings = new SettingsPage(page);
     await settings.goto();
 
-    // We need the secret to generate TOTP — try to get it from setup again
-    const setupRes = await fetch(`${BASE_URL}/auth/2fa/setup`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-    const setupData = await setupRes.json();
-    const secret = setupData.manual_entry_key;
+    const code = generateTOTP(userDTOTPSecret);
+    await settings.disable2FA(code);
 
-    if (secret) {
-      const code = generateTOTP(secret);
-      await settings.disable2FA(code);
+    const msg = await settings.getStatusMessage();
+    expect(msg).toBeTruthy();
+    expect(msg.toLowerCase()).toMatch(/disabled|removed|success/i);
 
-      const msg = await settings.getStatusMessage();
-      expect(msg).toBeTruthy();
-      expect(msg.toLowerCase()).toMatch(/disabled|removed|success/i);
+    // Navigate back to settings to verify
+    await settings.goto();
+    await page.waitForTimeout(500);
 
-      // Navigate back to settings to verify
-      await settings.goto();
-      await page.waitForTimeout(500);
-
-      // Enable button should be visible (indicating 2FA is disabled)
-      const enableBtn = page.locator('button:has-text("Enable 2FA")');
-      await expect(enableBtn).toBeVisible({ timeout: 5_000 });
-    } else {
-      // Secret not returned by setup endpoint — 2FA state is unknown, skip assertion
-      test.skip(true, '2FA setup endpoint did not return a secret; cannot generate TOTP to disable');
-    }
+    // Enable button should be visible (indicating 2FA is disabled)
+    const enableBtn = page.locator('button:has-text("Enable 2FA")');
+    await expect(enableBtn).toBeVisible({ timeout: 5_000 });
   });
 });

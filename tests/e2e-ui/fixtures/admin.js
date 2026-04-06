@@ -26,7 +26,7 @@ class AdminPage {
         }
       }
       if (bodyText.includes('rate limit') || bodyText.includes('429')) {
-        await this.page.waitForTimeout(5_000);
+        await this.page.waitForTimeout(30_000);
         continue;
       }
     }
@@ -39,17 +39,46 @@ class AdminPage {
   }
 
   async closeRoom(name) {
-    const row = this.page.locator(`tr:has-text("${name}")`).first();
-    await row.locator('button:has-text("Close")').click();
-    // Wait for the UI to confirm the close propagated (button flips to "Open")
-    await row.locator('button:has-text("Open")').waitFor({ timeout: 10_000 });
+    await this._toggleRoom(name, 'Close', 'Open');
   }
 
   async openRoom(name) {
+    await this._toggleRoom(name, 'Open', 'Close');
+  }
+
+  /**
+   * Click a room action button and wait for the UI to confirm the state flip.
+   * In K8s, the admin panel's fire-and-forget loadData() can take >20s, and
+   * navigating away to reload can abort the in-flight API request. So we:
+   *  1. Click the button and wait up to 15s for the in-page update.
+   *  2. If that times out, wait for the API to settle (the request is still
+   *     in-flight), then reload to check the actual server state.
+   *  3. If the reload shows the operation didn't complete (e.g. request was
+   *     somehow lost), re-click and wait with a generous timeout.
+   */
+  async _toggleRoom(name, clickLabel, expectLabel) {
     const row = this.page.locator(`tr:has-text("${name}")`).first();
-    await row.locator('button:has-text("Open")').click();
-    // Wait for the UI to confirm the open propagated (button flips to "Close")
-    await row.locator('button:has-text("Close")').waitFor({ timeout: 10_000 });
+    await row.locator(`button:has-text("${clickLabel}")`).click();
+
+    // 1. Wait for in-page update (loadData callback)
+    const flipped = await row.locator(`button:has-text("${expectLabel}")`)
+      .waitFor({ timeout: 15_000 }).then(() => true).catch(() => false);
+    if (flipped) return;
+
+    // 2. Give the API request a moment to finish server-side before navigating
+    await this.page.waitForTimeout(3_000);
+    await this.goto();
+    const freshRow = this.page.locator(`tr:has-text("${name}")`).first();
+    await freshRow.waitFor({ timeout: 15_000 });
+
+    const done = await freshRow.locator(`button:has-text("${expectLabel}")`)
+      .isVisible().catch(() => false);
+    if (done) return;
+
+    // 3. Operation didn't land — re-click and wait with a longer timeout
+    await freshRow.locator(`button:has-text("${clickLabel}")`).click();
+    await freshRow.locator(`button:has-text("${expectLabel}")`)
+      .waitFor({ timeout: 30_000 });
   }
 
   async getRoomStatus(name) {

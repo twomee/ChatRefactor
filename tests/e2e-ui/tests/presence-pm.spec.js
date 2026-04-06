@@ -87,12 +87,10 @@ test.describe('Presence - PM', () => {
     await authA.logout();
     await pageA.waitForURL('**/login', { timeout: 10_000 });
 
-    // B should see offline status
-    await pageB.waitForTimeout(3_000);
-
+    // B should see offline banner — wait for it to appear via WebSocket rather than
+    // sleeping a fixed amount, which is fragile in slow (K8s) environments.
     const offlineAfter = await chatB.getPMOfflineBanner();
-    const isOfflineAfter = await offlineAfter.isVisible().catch(() => false);
-    expect(isOfflineAfter).toBe(true);
+    await expect(offlineAfter).toBeVisible({ timeout: 8_000 });
 
     await ctxA.close();
     await ctxB.close();

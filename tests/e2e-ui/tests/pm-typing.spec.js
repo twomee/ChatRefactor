@@ -37,12 +37,11 @@ test.describe('PM Typing', () => {
 
     // A stops typing (clear input using triple-click + backspace to trigger onChange)
     await pageA.locator('.message-input').fill('');
-    await pageA.waitForTimeout(4_000);
 
-    // Typing indicator should be empty (no one typing)
-    const text = await typingIndicator.textContent();
-    // After timeout, typing should clear — text should be empty or very short (just dots)
-    expect(text.includes('is typing')).toBe(false);
+    // Typing indicator should clear within the server's typing-expiry window (~3s).
+    // Use toHaveText with a negation retry instead of a fixed sleep so slow CI
+    // environments still pass and fast ones don't waste time.
+    await expect(typingIndicator).not.toHaveText(/is typing/, { timeout: 8_000 });
 
     await ctxA.close();
     await ctxB.close();

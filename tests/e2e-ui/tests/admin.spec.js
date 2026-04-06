@@ -48,13 +48,10 @@ test.describe('Admin', () => {
     await pageA.locator(`.user-item:has-text("${USER_B.username}") .user-item-menu-btn`)
       .waitFor({ timeout: 15_000 });
 
-    // Admin mutes B
+    // Admin mutes B — wait for muted banner on B's page (WebSocket propagation)
     await chatAdmin.muteUser(USER_B.username);
-    await pageB.waitForTimeout(3_000);
-
-    // B sees muted banner
     const mutedBanner = await chatB.getMutedBanner();
-    await expect(mutedBanner).toBeVisible({ timeout: 8_000 });
+    await expect(mutedBanner).toBeVisible({ timeout: 12_000 });
 
     // Admin kicks B
     await chatAdmin.kickUser(USER_B.username);
@@ -82,8 +79,10 @@ test.describe('Admin', () => {
 
     await chatAdmin.switchRoom(TEST_ROOM);
     await chatB.switchRoom(TEST_ROOM);
-    // Wait for WebSocket to propagate user list and admin status
-    await pageA.waitForTimeout(2_000);
+    // Wait for the promoteTarget to appear in admin's user list before promoting.
+    // This ensures the WebSocket presence event has propagated — more reliable than
+    // a fixed sleep because it retries until the element is visible.
+    await pageA.locator(`.user-item:has-text("${promoteUsername}")`).waitFor({ timeout: 15_000 });
 
     // Admin promotes the throwaway user
     await chatAdmin.promoteUser(promoteUsername);
