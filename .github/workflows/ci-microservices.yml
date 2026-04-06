@@ -26,7 +26,7 @@ jobs:
     name: Validate Kong Config
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Validate Kong config syntax
         run: |
@@ -40,7 +40,7 @@ jobs:
     name: Validate Docker Compose
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Validate compose file syntax
         run: docker compose config --quiet
