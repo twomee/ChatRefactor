@@ -26,7 +26,14 @@ RUN npm run build
 FROM node:22-alpine AS runner
 
 # Keep base image up to date (security)
-RUN apk upgrade --no-cache
+# Patch picomatch CVE-2026-33671 in npm's bundled copy (node-gyp → tinyglobby → picomatch).
+# node:22-alpine ships npm 10.9.7 which bundles picomatch 4.0.3; fixed in 4.0.4.
+# Remove this once the base image ships npm with picomatch ≥4.0.4.
+RUN apk upgrade --no-cache && \
+    cd /usr/local/lib/node_modules/npm/node_modules/picomatch && \
+    npm pack picomatch@4.0.4 --pack-destination /tmp && \
+    tar xzf /tmp/picomatch-4.0.4.tgz --strip-components=1 && \
+    rm /tmp/picomatch-4.0.4.tgz
 
 WORKDIR /app
 
