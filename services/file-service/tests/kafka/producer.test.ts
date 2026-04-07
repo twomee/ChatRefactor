@@ -17,9 +17,9 @@ vi.mock("kafkajs", () => {
     disconnect: mockProducerDisconnect,
   };
   return {
-    Kafka: vi.fn().mockImplementation(() => ({
-      producer: vi.fn().mockReturnValue(mockProducer),
-    })),
+    Kafka: vi.fn().mockImplementation(function () {
+      return { producer: vi.fn().mockReturnValue(mockProducer) };
+    }),
     logLevel: { WARN: 4 },
   };
 });
