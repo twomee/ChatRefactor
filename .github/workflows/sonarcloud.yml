@@ -44,6 +44,10 @@ jobs:
         working-directory: services/file-service
         run: npm ci
 
+      - name: Generate Prisma client
+        working-directory: services/file-service
+        run: npx prisma generate
+
       - name: Generate file-service coverage report
         working-directory: services/file-service
         run: npm run test:coverage
