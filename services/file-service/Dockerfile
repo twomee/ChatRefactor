@@ -10,11 +10,12 @@ WORKDIR /app
 # Copy dependency manifests first (Docker layer caching)
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
+COPY prisma.config.ts ./
 
 # Install all dependencies (including devDependencies for tsc)
 RUN npm ci
 
-# Generate Prisma client
+# Generate Prisma client (Prisma 7 requires explicit generation)
 RUN npx prisma generate
 
 # Copy source code and compile TypeScript
