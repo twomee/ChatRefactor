@@ -248,3 +248,7 @@ class TestFileServiceSecurity:
         assert 429 in statuses, (
             f"Expected a 429 after 65 rapid requests but got only: {set(statuses)}"
         )
+
+        # Wait for the rate-limit window to reset so subsequent tests in other
+        # files (e.g. test_pm.py) don't inherit an exhausted counter.
+        time.sleep(62)
