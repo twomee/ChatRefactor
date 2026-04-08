@@ -12,6 +12,62 @@ import { getRedisClient } from "../clients/redis.client.js";
 import type { AuthenticatedRequest, JwtPayload } from "../types/file.types.js";
 import { logger } from "../kafka/logger.js";
 
+/** Extract JWT string from Authorization header or ?token= query param. */
+function extractToken(req: Request): string | undefined {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
+    return authHeader.slice(7);
+  }
+  if (typeof req.query.token === "string") {
+    return req.query.token;
+  }
+  return undefined;
+}
+
+/** Verify JWT and return the parsed user, or null if invalid/expired. */
+function verifyJwt(
+  token: string,
+  correlationId: string | undefined
+): { userId: number; username: string } | null {
+  try {
+    const decoded = jwt.verify(token, config.secretKey, {
+      algorithms: [config.algorithm],
+    }) as JwtPayload;
+
+    if (!decoded.sub || !decoded.username) return null;
+    const userId = parseInt(decoded.sub, 10);
+    if (isNaN(userId)) return null;
+    return { userId, username: decoded.username };
+  } catch (error) {
+    logger.debug("JWT verification failed", {
+      error: error instanceof Error ? error.message : String(error),
+      correlationId,
+    });
+    return null;
+  }
+}
+
+type BlacklistStatus = "revoked" | "valid" | "unavailable";
+
+/** Check the Redis blacklist. Returns 'unavailable' if Redis is down. */
+async function checkBlacklist(
+  token: string,
+  correlationId: string | undefined
+): Promise<BlacklistStatus> {
+  const rdb = getRedisClient();
+  if (!rdb) return "valid";
+  try {
+    const revoked = await rdb.get(`blacklist:${token}`);
+    return revoked !== null ? "revoked" : "valid";
+  } catch (err) {
+    logger.warn("Redis blacklist check failed", {
+      error: err instanceof Error ? err.message : String(err),
+      correlationId,
+    });
+    return "unavailable";
+  }
+}
+
 /**
  * Express middleware that:
  * 1. Extracts JWT from Authorization: Bearer header OR ?token= query param
@@ -33,72 +89,29 @@ export async function authMiddleware(
   next: NextFunction
 ): Promise<void> {
   const authReq = req as AuthenticatedRequest;
-  let token: string | undefined;
 
-  // Try Authorization header first
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
-    token = authHeader.slice(7);
-  }
-
-  // Fall back to ?token= query param (used by download endpoint)
-  if (!token && typeof req.query.token === "string") {
-    token = req.query.token;
-  }
-
+  const token = extractToken(req);
   if (!token) {
     res.status(401).json({ error: "Authentication required" });
     return;
   }
 
-  let decoded: JwtPayload;
-  try {
-    decoded = jwt.verify(token, config.secretKey, {
-      algorithms: [config.algorithm],
-    }) as JwtPayload;
-
-    if (!decoded.sub || !decoded.username) {
-      res.status(401).json({ error: "Invalid token payload" });
-      return;
-    }
-
-    const userId = parseInt(decoded.sub, 10);
-    if (isNaN(userId)) {
-      res.status(401).json({ error: "Invalid token payload" });
-      return;
-    }
-
-    authReq.user = { userId, username: decoded.username };
-  } catch (error) {
-    logger.debug("JWT verification failed", {
-      error: error instanceof Error ? error.message : String(error),
-      correlationId: authReq.correlationId,
-    });
+  const user = verifyJwt(token, authReq.correlationId);
+  if (!user) {
     res.status(401).json({ error: "Invalid or expired token" });
     return;
   }
 
-  // Check Redis blacklist for revoked tokens
-  const rdb = getRedisClient();
-  if (rdb) {
-    try {
-      const revoked = await rdb.get(`blacklist:${token}`);
-      if (revoked !== null) {
-        res.status(401).json({ error: "Token has been revoked" });
-        return;
-      }
-    } catch (err) {
-      logger.warn("Redis blacklist check failed", {
-        error: err instanceof Error ? err.message : String(err),
-        correlationId: authReq.correlationId,
-      });
-      if (config.nodeEnv === "production") {
-        res.status(503).json({ error: "Authentication service unavailable" });
-        return;
-      }
-      // dev/test: fail open — skip blacklist check
-    }
+  const blacklistStatus = await checkBlacklist(token, authReq.correlationId);
+  if (blacklistStatus === "revoked") {
+    res.status(401).json({ error: "Token has been revoked" });
+    return;
+  }
+  if (blacklistStatus === "unavailable" && config.nodeEnv === "production") {
+    res.status(503).json({ error: "Authentication service unavailable" });
+    return;
   }
 
+  authReq.user = user;
   next();
 }

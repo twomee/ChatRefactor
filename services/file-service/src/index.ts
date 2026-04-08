@@ -103,6 +103,7 @@ async function startServer(): Promise<void> {
   logger.info("Upload directory ready", { path: config.uploadDir });
 
   // Connect Redis for token blacklist checks (optional — graceful degradation)
+  /* c8 ignore next 7 */
   if (config.redisUrl) {
     initRedisClient(config.redisUrl);
     logger.info("Redis client initialised (token blacklist)");

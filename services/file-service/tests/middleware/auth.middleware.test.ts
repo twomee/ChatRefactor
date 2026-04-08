@@ -165,7 +165,7 @@ describe("middleware/auth.middleware", () => {
       .set("Authorization", `Bearer ${tokenNoSub}`);
 
     expect(res.status).toBe(401);
-    expect(res.body.error).toContain("Invalid token payload");
+    expect(res.body.error).toContain("Invalid or expired token");
   });
 
   it("should reject token missing username claim", async () => {
@@ -180,7 +180,7 @@ describe("middleware/auth.middleware", () => {
       .set("Authorization", `Bearer ${tokenNoUsername}`);
 
     expect(res.status).toBe(401);
-    expect(res.body.error).toContain("Invalid token payload");
+    expect(res.body.error).toContain("Invalid or expired token");
   });
 
   it("should reject token with non-numeric sub (NaN userId)", async () => {
@@ -195,7 +195,7 @@ describe("middleware/auth.middleware", () => {
       .set("Authorization", `Bearer ${tokenBadSub}`);
 
     expect(res.status).toBe(401);
-    expect(res.body.error).toContain("Invalid token payload");
+    expect(res.body.error).toContain("Invalid or expired token");
   });
 
   it("should reject Authorization header without Bearer prefix", async () => {

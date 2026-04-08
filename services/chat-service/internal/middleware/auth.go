@@ -59,13 +59,11 @@ func JWTAuth(secretKey string, rdb *redis.Client, isProd bool) gin.HandlerFunc {
 		}
 
 		// Check Redis blacklist — rejects tokens revoked on logout
-		if rdb != nil {
-			if blacklisted := isBlacklisted(c.Request.Context(), rdb, tokenStr, isProd); blacklisted {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-					"detail": "Token has been revoked",
-				})
-				return
-			}
+		if rdb != nil && isBlacklisted(c.Request.Context(), rdb, tokenStr, isProd) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"detail": "Token has been revoked",
+			})
+			return
 		}
 
 		c.Set(CtxUserID, claims.UserID)
