@@ -91,7 +91,8 @@ class TestProcessWithRetryDLQ:
             mock_process.side_effect = Exception("DB error")
             mock_dlq.return_value = True
 
-            await consumer._process_with_retry(mock_msg)
+            mock_kafka_consumer = AsyncMock()
+            await consumer._process_with_retry(mock_msg, mock_kafka_consumer)
 
             # Should have been called MAX_RETRIES times
             assert mock_process.call_count == 3
@@ -102,6 +103,8 @@ class TestProcessWithRetryDLQ:
             dlq_value = dlq_call_args.kwargs["value"]
             assert dlq_value["original_topic"] == TOPIC_MESSAGES
             assert dlq_value["error"] == "max_retries_exhausted"
+            # Commit should NOT be called when processing fails
+            mock_kafka_consumer.commit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_no_dlq_on_success(self, consumer):
@@ -110,14 +113,17 @@ class TestProcessWithRetryDLQ:
         mock_msg.topic = TOPIC_MESSAGES
         mock_msg.value = {"msg_id": "ok-msg", "text": "success"}
 
+        mock_kafka_consumer = AsyncMock()
         with (
             patch.object(consumer, "_process", new_callable=AsyncMock) as mock_process,
             patch("app.consumers.persistence_consumer.produce_to_dlq", new_callable=AsyncMock) as mock_dlq,
         ):
-            await consumer._process_with_retry(mock_msg)
+            await consumer._process_with_retry(mock_msg, mock_kafka_consumer)
 
             mock_process.assert_called_once()
             mock_dlq.assert_not_called()
+            # Offset committed after successful processing
+            mock_kafka_consumer.commit.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_retry_then_success(self, consumer):
@@ -134,14 +140,16 @@ class TestProcessWithRetryDLQ:
             if call_count < 2:
                 raise Exception("Transient error")
 
+        mock_kafka_consumer = AsyncMock()
         with (
             patch.object(consumer, "_process", side_effect=flaky_process) as mock_process,
             patch("app.consumers.persistence_consumer.produce_to_dlq", new_callable=AsyncMock) as mock_dlq,
         ):
-            await consumer._process_with_retry(mock_msg)
+            await consumer._process_with_retry(mock_msg, mock_kafka_consumer)
 
             assert call_count == 2  # Failed once, succeeded on retry
             mock_dlq.assert_not_called()
+            mock_kafka_consumer.commit.assert_called_once()
 
 
 # ══════════════════════════════════════════════════════════════════════

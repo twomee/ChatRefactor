@@ -1,7 +1,8 @@
 // tests/middleware/auth.middleware.test.ts — Integration tests for JWT auth middleware
 //
 // Tests the auth middleware behavior through the Express app. Verifies token
-// validation, extraction from header/query, and rejection of invalid tokens.
+// validation, extraction from header/query, rejection of invalid tokens, and
+// rejection of blacklisted (revoked) tokens via the Redis blacklist check.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
@@ -22,6 +23,15 @@ const { mockExistsSync, mockCreateReadStream, mockWriteFileSync, mockMkdirSync }
   mockCreateReadStream: vi.fn(),
   mockWriteFileSync: vi.fn(),
   mockMkdirSync: vi.fn(),
+}));
+
+// Mock the Redis client — returns null by default (no Redis configured).
+// Individual tests can override mockRedisGet to simulate blacklisted tokens.
+const mockRedisGet = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+vi.mock("../../src/clients/redis.client.js", () => ({
+  getRedisClient: () => ({ get: mockRedisGet }),
+  initRedisClient: vi.fn(),
+  closeRedisClient: vi.fn(),
 }));
 
 vi.mock("@prisma/client", () => {
@@ -155,7 +165,7 @@ describe("middleware/auth.middleware", () => {
       .set("Authorization", `Bearer ${tokenNoSub}`);
 
     expect(res.status).toBe(401);
-    expect(res.body.error).toContain("Invalid token payload");
+    expect(res.body.error).toContain("Invalid or expired token");
   });
 
   it("should reject token missing username claim", async () => {
@@ -170,7 +180,7 @@ describe("middleware/auth.middleware", () => {
       .set("Authorization", `Bearer ${tokenNoUsername}`);
 
     expect(res.status).toBe(401);
-    expect(res.body.error).toContain("Invalid token payload");
+    expect(res.body.error).toContain("Invalid or expired token");
   });
 
   it("should reject token with non-numeric sub (NaN userId)", async () => {
@@ -185,7 +195,7 @@ describe("middleware/auth.middleware", () => {
       .set("Authorization", `Bearer ${tokenBadSub}`);
 
     expect(res.status).toBe(401);
-    expect(res.body.error).toContain("Invalid token payload");
+    expect(res.body.error).toContain("Invalid or expired token");
   });
 
   it("should reject Authorization header without Bearer prefix", async () => {
@@ -195,5 +205,30 @@ describe("middleware/auth.middleware", () => {
 
     expect(res.status).toBe(401);
     expect(res.body.error).toContain("Authentication required");
+  });
+
+  it("should reject a blacklisted (revoked) token", async () => {
+    // Simulate Redis returning a blacklist entry for this token
+    mockRedisGet.mockResolvedValueOnce("1");
+
+    const res = await request(app)
+      .get("/files/room/1")
+      .set("Authorization", `Bearer ${validToken}`);
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toContain("Token has been revoked");
+  });
+
+  it("should allow a valid non-blacklisted token", async () => {
+    // Redis returns null — token not in blacklist
+    mockRedisGet.mockResolvedValueOnce(null);
+    mockPrismaFile.findMany.mockResolvedValueOnce([]);
+
+    const res = await request(app)
+      .get("/files/room/1")
+      .set("Authorization", `Bearer ${validToken}`);
+
+    // 200 means auth passed; the route returned an empty list
+    expect(res.status).toBe(200);
   });
 });

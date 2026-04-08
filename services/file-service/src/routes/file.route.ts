@@ -6,8 +6,19 @@
 
 import { Router } from "express";
 import type { Request, Response } from "express";
+import rateLimit from "express-rate-limit";
 import fs from "node:fs";
 import path from "node:path";
+
+// Rate limit: 60 requests per minute per IP for all file endpoints.
+// Prevents brute-force enumeration of file IDs and bandwidth exhaustion.
+const fileLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later" },
+});
 
 const IMAGE_MIME: Record<string, string> = {
   ".png": "image/png",
@@ -42,6 +53,7 @@ export const fileRouter = Router();
  */
 fileRouter.post(
   "/upload",
+  fileLimiter,
   authMiddleware as never,
   async (req: Request, res: Response): Promise<void> => {
     const authReq = req as AuthenticatedRequest;
@@ -101,6 +113,7 @@ fileRouter.post(
  */
 fileRouter.get(
   "/download/:fileId",
+  fileLimiter,
   authMiddleware as never,
   async (req: Request, res: Response): Promise<void> => {
     const authReq = req as AuthenticatedRequest;
@@ -157,6 +170,7 @@ fileRouter.get(
  */
 fileRouter.get(
   "/room/:roomId",
+  fileLimiter,
   authMiddleware as never,
   async (req: Request, res: Response): Promise<void> => {
     const authReq = req as AuthenticatedRequest;

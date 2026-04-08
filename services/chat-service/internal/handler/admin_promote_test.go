@@ -27,7 +27,7 @@ func TestPromoteUserInAllRoomsSuccess(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/promote", h.PromoteUserInAllRooms)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/promote?username=bob", nil)
@@ -48,7 +48,7 @@ func TestPromoteUserMissingUsername(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/promote", h.PromoteUserInAllRooms)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/promote", nil)
@@ -69,7 +69,7 @@ func TestPromoteUserNotFound(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/promote", h.PromoteUserInAllRooms)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/promote?username=nobody", nil)
@@ -92,7 +92,7 @@ func TestPromoteUserAuthServiceError(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/promote", h.PromoteUserInAllRooms)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/promote?username=bob", nil)
@@ -121,7 +121,7 @@ func TestPromoteUserLookupNotFound(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/promote", h.PromoteUserInAllRooms)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/promote?username=nobody", nil)
@@ -148,7 +148,7 @@ func TestPromoteUserLookupError(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/promote", h.PromoteUserInAllRooms)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/promote?username=bob", nil)
@@ -183,7 +183,7 @@ func TestPromoteUserAlreadyAdminInRoom(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/promote", h.PromoteUserInAllRooms)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/promote?username=bob", nil)
@@ -223,7 +223,7 @@ func TestPromoteUserInRoomSuccess(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/promote", h.PromoteUserInAllRooms)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/promote?username=bob", nil)
@@ -259,7 +259,7 @@ func TestPromoteUserNotConnectedInAnyRoom(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/promote", h.PromoteUserInAllRooms)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/promote?username=bob", nil)

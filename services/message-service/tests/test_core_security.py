@@ -4,8 +4,10 @@
 #   - decode_token: valid token, expired token, missing claims, wrong key
 #   - get_current_user: valid payload, non-integer sub, missing sub, missing username
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
+import pytest_asyncio
 import jwt
 
 from app.core.config import ALGORITHM, SECRET_KEY
@@ -100,7 +102,8 @@ class TestDecodeToken:
 class TestGetCurrentUser:
     """Tests for the get_current_user dependency."""
 
-    def test_valid_token_returns_user_dict(self):
+    @pytest.mark.asyncio
+    async def test_valid_token_returns_user_dict(self):
         """Should return a dict with user_id and username for a valid token."""
         payload = {
             "sub": "42",
@@ -109,11 +112,13 @@ class TestGetCurrentUser:
         }
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-        result = get_current_user(token)
+        with patch("app.core.security.get_redis", return_value=None):
+            result = await get_current_user(token)
 
         assert result == {"user_id": 42, "username": "alice"}
 
-    def test_non_integer_sub_raises_401(self):
+    @pytest.mark.asyncio
+    async def test_non_integer_sub_raises_401(self):
         """JWT with non-integer 'sub' should raise HTTPException 401."""
         from fastapi import HTTPException
 
@@ -124,12 +129,14 @@ class TestGetCurrentUser:
         }
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-        with pytest.raises(HTTPException) as exc_info:
-            get_current_user(token)
+        with patch("app.core.security.get_redis", return_value=None):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_user(token)
 
         assert exc_info.value.status_code == 401
 
-    def test_expired_token_raises_401(self):
+    @pytest.mark.asyncio
+    async def test_expired_token_raises_401(self):
         """Expired token should raise HTTPException 401."""
         from fastapi import HTTPException
 
@@ -140,19 +147,106 @@ class TestGetCurrentUser:
         }
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-        with pytest.raises(HTTPException) as exc_info:
-            get_current_user(token)
+        with patch("app.core.security.get_redis", return_value=None):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_user(token)
 
         assert exc_info.value.status_code == 401
 
-    def test_invalid_token_raises_401(self):
+    @pytest.mark.asyncio
+    async def test_invalid_token_raises_401(self):
         """Malformed token should raise HTTPException 401."""
         from fastapi import HTTPException
 
-        with pytest.raises(HTTPException) as exc_info:
-            get_current_user("not-a-valid-jwt")
+        with patch("app.core.security.get_redis", return_value=None):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_user("not-a-valid-jwt")
 
         assert exc_info.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_blacklisted_token_raises_401(self):
+        """Token in Redis blacklist should raise HTTPException 401."""
+        from fastapi import HTTPException
+        from unittest.mock import AsyncMock
+
+        payload = {
+            "sub": "1",
+            "username": "alice",
+            "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+        }
+        token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+        mock_rdb = AsyncMock()
+        mock_rdb.get.return_value = "1"  # blacklisted
+        with patch("app.core.security.get_redis", return_value=mock_rdb):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_user(token)
+
+        assert exc_info.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_valid_token_not_in_blacklist_passes(self):
+        """Token absent from Redis blacklist should pass through."""
+        from unittest.mock import AsyncMock
+
+        payload = {
+            "sub": "7",
+            "username": "bob",
+            "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+        }
+        token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+        mock_rdb = AsyncMock()
+        mock_rdb.get.return_value = None  # not blacklisted
+        with patch("app.core.security.get_redis", return_value=mock_rdb):
+            result = await get_current_user(token)
+
+        assert result == {"user_id": 7, "username": "bob"}
+
+    @pytest.mark.asyncio
+    async def test_redis_error_prod_raises_401(self):
+        """Redis error in production → fail closed → raise 401."""
+        from fastapi import HTTPException
+        from unittest.mock import AsyncMock
+
+        payload = {
+            "sub": "1",
+            "username": "alice",
+            "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+        }
+        token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+        mock_rdb = AsyncMock()
+        mock_rdb.get.side_effect = Exception("Redis connection refused")
+
+        with patch("app.core.security.get_redis", return_value=mock_rdb):
+            with patch("app.core.security.APP_ENV", "prod"):
+                with pytest.raises(HTTPException) as exc_info:
+                    await get_current_user(token)
+
+        assert exc_info.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_redis_error_dev_passes(self):
+        """Redis error in dev → fail open → return user dict."""
+        from unittest.mock import AsyncMock
+
+        payload = {
+            "sub": "3",
+            "username": "charlie",
+            "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+        }
+        token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+        mock_rdb = AsyncMock()
+        mock_rdb.get.side_effect = Exception("Redis down")
+
+        with patch("app.core.security.get_redis", return_value=mock_rdb):
+            with patch("app.core.security.APP_ENV", "dev"):
+                result = await get_current_user(token)
+
+        assert result == {"user_id": 3, "username": "charlie"}
 
     def test_token_without_sub_raises_401(self, client):
         """JWT missing 'sub' claim should return 401 via the endpoint."""

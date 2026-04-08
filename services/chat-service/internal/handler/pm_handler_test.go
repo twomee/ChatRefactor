@@ -25,7 +25,7 @@ func TestSendPMSuccess(t *testing.T) {
 	pmH := NewPMHandler(manager, authClient, del, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/pm/send", pmH.SendPM)
 
 	body := `{"to": "bob", "text": "hello bob"}`
@@ -48,7 +48,7 @@ func TestSendPMBadBody(t *testing.T) {
 	pmH := NewPMHandler(ws.NewManager(logger), nil, nil, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/pm/send", pmH.SendPM)
 
 	req := httptest.NewRequest(http.MethodPost, "/pm/send", strings.NewReader("bad"))
@@ -68,7 +68,7 @@ func TestSendPMRecipientNotFound(t *testing.T) {
 	pmH := NewPMHandler(ws.NewManager(logger), authClient, nil, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/pm/send", pmH.SendPM)
 
 	body := `{"to": "unknown", "text": "hello"}`
@@ -89,7 +89,7 @@ func TestSendPMAuthServiceError(t *testing.T) {
 	pmH := NewPMHandler(ws.NewManager(logger), authClient, nil, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/pm/send", pmH.SendPM)
 
 	body := `{"to": "bob", "text": "hello"}`

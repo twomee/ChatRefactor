@@ -117,7 +117,7 @@ User A sends message
 ```
 SET blacklist:<token> "1" EX 86400
 ```
-On every authenticated request, the auth-service (or any service validating tokens) checks if the token is blacklisted before accepting it.
+On every authenticated request **to the auth-service**, the token is checked against the Redis blacklist before being accepted. Other services (chat, message, file) validate the JWT signature and expiry but do not currently check the blacklist — this is a documented architectural trade-off. See the security audit for context and the planned remediation.
 
 **Why Redis (not the database)?** This check happens on every single API request across all services. Redis responds in ~0.1ms from memory. PostgreSQL would be ~1-5ms with disk I/O. At 100 requests/second, that's the difference between 10ms and 500ms of cumulative overhead.
 

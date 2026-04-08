@@ -26,7 +26,7 @@ func TestCloseRoomSuccess(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/rooms/:id/close", h.CloseRoom)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/rooms/1/close", nil)
@@ -47,7 +47,7 @@ func TestCloseRoomInvalidID(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/rooms/:id/close", h.CloseRoom)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/rooms/abc/close", nil)
@@ -68,7 +68,7 @@ func TestCloseRoomNonAdminRejected(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/rooms/:id/close", h.CloseRoom)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/rooms/1/close", nil)
@@ -89,7 +89,7 @@ func TestCloseRoomStoreError(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/rooms/:id/close", h.CloseRoom)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/rooms/1/close", nil)
@@ -114,7 +114,7 @@ func TestOpenRoomSuccess(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/rooms/:id/open", h.OpenRoom)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/rooms/1/open", nil)
@@ -135,7 +135,7 @@ func TestOpenRoomInvalidID(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/rooms/:id/open", h.OpenRoom)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/rooms/abc/open", nil)
@@ -156,7 +156,7 @@ func TestOpenRoomNonAdminRejected(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/rooms/:id/open", h.OpenRoom)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/rooms/1/open", nil)
@@ -177,7 +177,7 @@ func TestOpenRoomStoreError(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/admin/rooms/:id/open", h.OpenRoom)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/rooms/1/open", nil)

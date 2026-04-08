@@ -232,8 +232,8 @@ func main() {
 	healthH := handler.NewHealthHandler(dbPool, rdb, kafkaProducer, brokers)
 	roomH := handler.NewRoomHandler(roomStore, wsManager, authClient, logger)
 	messageClient := client.NewMessageClient(cfg.MessageServiceURL, logger)
-	wsH := handler.NewWSHandler(wsManager, roomStore, readPositionStore, deliveryStrategy, authClient, cfg.SecretKey, messageClient, logger)
-	lobbyH := handler.NewLobbyHandler(wsManager, cfg.SecretKey, logger)
+	wsH := handler.NewWSHandler(wsManager, roomStore, readPositionStore, deliveryStrategy, authClient, cfg.SecretKey, messageClient, logger, rdb, cfg.IsProd())
+	lobbyH := handler.NewLobbyHandler(wsManager, cfg.SecretKey, logger, rdb, cfg.IsProd())
 	pmH := handler.NewPMHandler(wsManager, authClient, deliveryStrategy, logger)
 	pmActionsH := handler.NewPMActionsHandler(wsManager, deliveryStrategy, logger)
 	adminH := handler.NewAdminHandler(roomStore, wsManager, authClient, logger)
@@ -258,7 +258,7 @@ func main() {
 
 	// Authenticated REST endpoints.
 	auth := r.Group("/")
-	auth.Use(middleware.JWTAuth(cfg.SecretKey))
+	auth.Use(middleware.JWTAuth(cfg.SecretKey, rdb, cfg.IsProd()))
 	{
 		auth.GET("/rooms", roomH.ListRooms)
 		auth.POST("/rooms", roomH.CreateRoom)

@@ -110,10 +110,15 @@ class UserResponse(BaseModel):
 
 
 class Setup2FAResponse(BaseModel):
-    """Response when initiating 2FA setup — contains secret and URI for QR code."""
+    """Response when initiating 2FA setup.
 
-    secret: str  # base32 secret for manual entry
-    otpauth_uri: str  # URI for QR code generation
+    qr_code: data URI (PNG) for the QR code — scan with any TOTP app (Google Authenticator, Authy).
+    manual_entry_key: raw base32 secret for apps that can't scan QR codes.
+    Note: the raw otpauth:// URI is intentionally not returned; QR code is generated server-side.
+    """
+
+    qr_code: str  # data:image/png;base64,... — ready to render as <img src=...>
+    manual_entry_key: str  # base32 TOTP secret for manual authenticator entry
 
 
 class Verify2FARequest(BaseModel):

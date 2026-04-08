@@ -23,7 +23,7 @@ func TestAddAdminConflict(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms/:id/admins", h.AddAdmin)
 
 	body := `{"user_id": 2}`
@@ -44,7 +44,7 @@ func TestRemoveAdminSuccess(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/rooms/:id/admins/:userId", h.RemoveAdmin)
 
 	req := httptest.NewRequest(http.MethodDelete, "/rooms/1/admins/2", nil)
@@ -63,7 +63,7 @@ func TestRemoveAdminInvalidRoomID(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/rooms/:id/admins/:userId", h.RemoveAdmin)
 
 	req := httptest.NewRequest(http.MethodDelete, "/rooms/abc/admins/2", nil)
@@ -82,7 +82,7 @@ func TestRemoveAdminInvalidUserID(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/rooms/:id/admins/:userId", h.RemoveAdmin)
 
 	req := httptest.NewRequest(http.MethodDelete, "/rooms/1/admins/abc", nil)
@@ -101,7 +101,7 @@ func TestRemoveAdminNotFound(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/rooms/:id/admins/:userId", h.RemoveAdmin)
 
 	req := httptest.NewRequest(http.MethodDelete, "/rooms/1/admins/999", nil)
@@ -120,7 +120,7 @@ func TestRemoveAdminDBError(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/rooms/:id/admins/:userId", h.RemoveAdmin)
 
 	req := httptest.NewRequest(http.MethodDelete, "/rooms/1/admins/2", nil)

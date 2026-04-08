@@ -150,7 +150,7 @@ func TestWSMuteDatabaseError(t *testing.T) {
 		adminSet: make(map[string]bool),
 		muteSet:  make(map[string]bool),
 	}
-	wsH := NewWSHandler(manager, store, nil, del, nil, testSecret, nil, logger)
+	wsH := NewWSHandler(manager, store, nil, del, nil, testSecret, nil, logger, nil, false)
 
 	r := gin.New()
 	r.GET("/ws/:roomId", wsH.HandleRoomWS)

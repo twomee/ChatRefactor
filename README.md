@@ -11,11 +11,11 @@ A production-ready, real-time chat application with multi-room support, private 
 | Frontend | React 19, Vite 8, Axios, React Router |
 | API Gateway | Kong (routes, auth, rate limiting) |
 | Auth Service | Python, FastAPI, Argon2, JWT |
-| Chat Service | Go, gorilla/websocket, Redis pub/sub |
+| Chat Service | Go, Gin, gorilla/websocket |
 | Message Service | Python, FastAPI, SQLAlchemy, Alembic |
 | File Service | Node.js, TypeScript, Express, Multer |
 | Database | PostgreSQL 16 (database per service) |
-| Cache & PubSub | Redis 7 |
+| Cache | Redis 7 (token blacklist, rate limiting, URL preview cache) |
 | Message Queue | Apache Kafka (KRaft) |
 | Reverse Proxy | Nginx 1.25 (frontend), Kong (API gateway) |
 | Containerization | Docker, Docker Compose |
@@ -153,7 +153,7 @@ Register additional accounts from the login page.
 
 ### Core
 - **Multi-room chat** — Three default rooms (politics, sports, movies) + create custom rooms
-- **Real-time messaging** — Native WebSocket with Redis pub/sub relay for multi-worker support
+- **Real-time messaging** — Native WebSocket with in-memory fan-out (single-instance); Redis pub/sub is the planned path for horizontal scaling
 - **Private messages** — Direct messaging between users with online/offline presence indicators
 - **File sharing** — Upload and download files in rooms (up to 150 MB)
 - **Durable persistence** — Messages flow through Kafka for async database writes with DLQ support

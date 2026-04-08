@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	"github.com/twomee/chatbox/chat-service/internal/client"
@@ -109,6 +110,8 @@ type WSHandler struct {
 	logger            *zap.Logger
 	limiter           *rateLimiter
 	messageClient     client.HistoryFetcher
+	rdb               *redis.Client
+	isProd            bool
 
 	// lifecycleState manages mutex-guarded maps for connection lifecycle
 	// tracking (kicked users, intentional leaves, pending leave timers).
@@ -125,6 +128,8 @@ func NewWSHandler(
 	secretKey string,
 	messageClient client.HistoryFetcher,
 	logger *zap.Logger,
+	rdb *redis.Client,
+	isProd bool,
 ) *WSHandler {
 	h := &WSHandler{
 		manager:           manager,
@@ -137,6 +142,8 @@ func NewWSHandler(
 		limiter:           newRateLimiter(),
 		messageClient:     messageClient,
 		lifecycleState:    newLifecycleState(),
+		rdb:               rdb,
+		isProd:            isProd,
 	}
 
 	// When a user fully logs out (last lobby closes), cancel any pending
@@ -170,6 +177,12 @@ func (h *WSHandler) HandleRoomWS(c *gin.Context) {
 	userID, username, err := middleware.ParseTokenFromString(token, h.secretKey)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "invalid token"})
+		return
+	}
+
+	// Check Redis blacklist — reject tokens revoked on logout
+	if middleware.CheckBlacklist(c.Request.Context(), h.rdb, token, h.isProd) {
+		c.JSON(http.StatusUnauthorized, gin.H{"detail": "Token has been revoked"})
 		return
 	}
 

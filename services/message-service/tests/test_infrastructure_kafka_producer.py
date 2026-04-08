@@ -194,7 +194,7 @@ class TestCreateConsumer:
         assert "topic2" in call_args.args
         assert call_args.kwargs["group_id"] == "test-group"
         assert call_args.kwargs["auto_offset_reset"] == "earliest"
-        assert call_args.kwargs["enable_auto_commit"] is True
+        assert call_args.kwargs["enable_auto_commit"] is False
 
 
 # ══════════════════════════════════════════════════════════════════════

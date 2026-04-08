@@ -22,7 +22,7 @@ func TestCreateRoomInvalidName(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms", h.CreateRoom)
 
 	body := `{"name":"bad@name!"}`
@@ -45,7 +45,7 @@ func TestCreateRoomNonAdminForbidden(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 2, Username: "bob", IsGlobalAdmin: false}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms", h.CreateRoom)
 
 	body := `{"name":"test-room"}`
@@ -68,7 +68,7 @@ func TestCreateRoomAuthClientError(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{err: fmt.Errorf("auth unavailable")}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms", h.CreateRoom)
 
 	body := `{"name":"test-room"}`
@@ -138,7 +138,7 @@ func TestGetRoomUsersETagNotModified(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.GET("/rooms/:id/users", h.GetRoomUsers)
 
 	// First request to get the ETag.

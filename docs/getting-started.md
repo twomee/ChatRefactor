@@ -205,8 +205,9 @@ docker compose -f docker-compose.dev.yml down -v
           |          |          |          |
      +----+---+ +---+----+ +--+-----+ +--+-----+
      |Postgres| | Redis  | |Postgres| |Postgres|
-     | (auth) | | PubSub | | (msgs) | | (files)|
-     +--------+ +--------+ +--------+ +--------+
+     | (auth) | |(cache/ | | (msgs) | | (files)|
+     +--------+ |blacklst| +--------+ +--------+
+                +--------+
                      |
                   +--+---+
                   | Kafka |
@@ -214,6 +215,8 @@ docker compose -f docker-compose.dev.yml down -v
 ```
 
 Each service owns its own database and communicates asynchronously via Kafka.
+Redis is used by the auth-service for token blacklisting and rate-limit state.
+WebSocket fan-out currently runs in-process; Redis pub/sub is planned for horizontal scaling.
 
 For the full architecture deep-dive, see [Architecture Overview](architecture/overview.md).
 

@@ -1,14 +1,17 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 )
 
 const testSecret = "test-secret-key-for-ci"
@@ -31,7 +34,8 @@ func makeToken(userID int, username string, exp time.Time, method jwt.SigningMet
 
 func setupAuthRouter() *gin.Engine {
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	// nil rdb and isProd=false: no Redis blacklist check in unit tests
+	r.Use(JWTAuth(testSecret, nil, false))
 	r.GET("/protected", func(c *gin.Context) {
 		userID, _ := c.Get(CtxUserID)
 		username, _ := c.Get(CtxUsername)
@@ -234,5 +238,106 @@ func TestParseTokenFromStringWrongSecret(t *testing.T) {
 	_, _, err := ParseTokenFromString(token, "wrong-secret")
 	if err == nil {
 		t.Error("expected error for wrong secret")
+	}
+}
+
+// ── Redis blacklist tests ──────────────────────────────────────────────────
+
+// newTestRedis starts an in-memory Redis server and returns the client.
+// The server is automatically closed when the test finishes.
+func newTestRedis(t *testing.T) *redis.Client {
+	t.Helper()
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
+	t.Cleanup(mr.Close)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	return rdb
+}
+
+func TestJWTAuthBlacklistedToken(t *testing.T) {
+	rdb := newTestRedis(t)
+	token := makeToken(1, "alice", time.Now().Add(time.Hour), jwt.SigningMethodHS256)
+
+	// Add token to blacklist
+	_ = rdb.Set(context.Background(), "blacklist:"+token, "1", time.Hour)
+
+	r := gin.New()
+	r.Use(JWTAuth(testSecret, rdb, false))
+	r.GET("/protected", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for blacklisted token, got %d", w.Code)
+	}
+}
+
+func TestJWTAuthNonBlacklistedToken(t *testing.T) {
+	rdb := newTestRedis(t)
+	token := makeToken(1, "alice", time.Now().Add(time.Hour), jwt.SigningMethodHS256)
+
+	// Token NOT in blacklist — should pass through
+	r := gin.New()
+	r.Use(JWTAuth(testSecret, rdb, false))
+	r.GET("/protected", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for valid non-blacklisted token, got %d", w.Code)
+	}
+}
+
+func TestIsBlacklistedFound(t *testing.T) {
+	rdb := newTestRedis(t)
+	_ = rdb.Set(context.Background(), "blacklist:mytoken", "1", time.Hour)
+
+	if !isBlacklisted(context.Background(), rdb, "mytoken", false) {
+		t.Error("expected token to be blacklisted")
+	}
+}
+
+func TestIsBlacklistedNotFound(t *testing.T) {
+	rdb := newTestRedis(t)
+
+	if isBlacklisted(context.Background(), rdb, "notinlist", false) {
+		t.Error("expected token to not be blacklisted")
+	}
+}
+
+func TestIsBlacklistedRedisErrorProd(t *testing.T) {
+	rdb := newTestRedis(t)
+	// Close the Redis to force a connection error
+	_ = rdb.Close()
+
+	// In prod, Redis error → fail closed (return true)
+	if !isBlacklisted(context.Background(), rdb, "anytoken", true) {
+		t.Error("expected fail-closed (true) when Redis is unavailable in prod")
+	}
+}
+
+func TestIsBlacklistedRedisErrorDev(t *testing.T) {
+	rdb := newTestRedis(t)
+	_ = rdb.Close()
+
+	// In dev, Redis error → fail open (return false)
+	if isBlacklisted(context.Background(), rdb, "anytoken", false) {
+		t.Error("expected fail-open (false) when Redis is unavailable in dev")
+	}
+}
+
+func TestCheckBlacklistNilRdb(t *testing.T) {
+	// nil rdb always returns false (no Redis configured)
+	if CheckBlacklist(context.Background(), nil, "token", true) {
+		t.Error("expected false for nil rdb")
 	}
 }

@@ -21,7 +21,7 @@ func TestEditPMSuccess(t *testing.T) {
 	h := NewPMActionsHandler(manager, del, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.PATCH("/pm/edit/:msg_id", h.EditPM)
 
 	// msg_id format: pm-{senderID}-{recipientID}-{timestamp}
@@ -47,7 +47,7 @@ func TestEditPMUnauthorized(t *testing.T) {
 	h := NewPMActionsHandler(manager, del, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.PATCH("/pm/edit/:msg_id", h.EditPM)
 
 	// User 3 trying to edit a message from user 1
@@ -69,7 +69,7 @@ func TestEditPMMissingText(t *testing.T) {
 	h := NewPMActionsHandler(manager, &mockDelivery{}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.PATCH("/pm/edit/:msg_id", h.EditPM)
 
 	body := `{}`
@@ -90,7 +90,7 @@ func TestEditPMInvalidMsgID(t *testing.T) {
 	h := NewPMActionsHandler(manager, &mockDelivery{}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.PATCH("/pm/edit/:msg_id", h.EditPM)
 
 	body := `{"text": "hello"}`
@@ -112,7 +112,7 @@ func TestDeletePMSuccess(t *testing.T) {
 	h := NewPMActionsHandler(manager, del, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/pm/delete/:msg_id", h.DeletePM)
 
 	req := httptest.NewRequest(http.MethodDelete, "/pm/delete/pm-1-2-1234567890", nil)
@@ -134,7 +134,7 @@ func TestDeletePMUnauthorized(t *testing.T) {
 	h := NewPMActionsHandler(manager, &mockDelivery{}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/pm/delete/:msg_id", h.DeletePM)
 
 	req := httptest.NewRequest(http.MethodDelete, "/pm/delete/pm-1-2-1234567890", nil)
@@ -154,7 +154,7 @@ func TestAddPMReactionSuccess(t *testing.T) {
 	h := NewPMActionsHandler(manager, del, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/pm/reaction/:msg_id", h.AddPMReaction)
 
 	body := `{"emoji": "👍"}`
@@ -178,7 +178,7 @@ func TestAddPMReactionMissingEmoji(t *testing.T) {
 	h := NewPMActionsHandler(manager, &mockDelivery{}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/pm/reaction/:msg_id", h.AddPMReaction)
 
 	body := `{}`
@@ -200,7 +200,7 @@ func TestRemovePMReactionSuccess(t *testing.T) {
 	h := NewPMActionsHandler(manager, del, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/pm/reaction/:msg_id/:emoji", h.RemovePMReaction)
 
 	req := httptest.NewRequest(http.MethodDelete, "/pm/reaction/pm-1-2-1234567890/%F0%9F%91%8D", nil)
@@ -222,7 +222,7 @@ func TestRemovePMReactionInvalidMsgID(t *testing.T) {
 	h := NewPMActionsHandler(manager, &mockDelivery{}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/pm/reaction/:msg_id/:emoji", h.RemovePMReaction)
 
 	req := httptest.NewRequest(http.MethodDelete, "/pm/reaction/bad-id/emoji", nil)

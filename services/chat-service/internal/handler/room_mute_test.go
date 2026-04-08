@@ -27,7 +27,7 @@ func TestMuteUserSuccess(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms/:id/mutes", h.MuteUser)
 
 	body := `{"user_id": 5}`
@@ -48,7 +48,7 @@ func TestMuteUserForbidden(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms/:id/mutes", h.MuteUser)
 
 	body := `{"user_id": 5}`
@@ -69,7 +69,7 @@ func TestMuteUserInvalidRoomID(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms/:id/mutes", h.MuteUser)
 
 	body := `{"user_id": 5}`
@@ -90,7 +90,7 @@ func TestMuteUserBadBody(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms/:id/mutes", h.MuteUser)
 
 	req := httptest.NewRequest(http.MethodPost, "/rooms/1/mutes", strings.NewReader("bad"))
@@ -110,7 +110,7 @@ func TestMuteUserConflict(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms/:id/mutes", h.MuteUser)
 
 	body := `{"user_id": 5}`
@@ -131,7 +131,7 @@ func TestUnmuteUserSuccess(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/rooms/:id/mutes/:userId", h.UnmuteUser)
 
 	req := httptest.NewRequest(http.MethodDelete, "/rooms/1/mutes/5", nil)
@@ -150,7 +150,7 @@ func TestUnmuteUserForbidden(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/rooms/:id/mutes/:userId", h.UnmuteUser)
 
 	req := httptest.NewRequest(http.MethodDelete, "/rooms/1/mutes/5", nil)
@@ -169,7 +169,7 @@ func TestUnmuteUserInvalidRoomID(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/rooms/:id/mutes/:userId", h.UnmuteUser)
 
 	req := httptest.NewRequest(http.MethodDelete, "/rooms/abc/mutes/5", nil)
@@ -188,7 +188,7 @@ func TestUnmuteUserInvalidUserID(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/rooms/:id/mutes/:userId", h.UnmuteUser)
 
 	req := httptest.NewRequest(http.MethodDelete, "/rooms/1/mutes/abc", nil)
@@ -207,7 +207,7 @@ func TestUnmuteUserNotFound(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/rooms/:id/mutes/:userId", h.UnmuteUser)
 
 	req := httptest.NewRequest(http.MethodDelete, "/rooms/1/mutes/999", nil)
@@ -226,7 +226,7 @@ func TestUnmuteUserDBError(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/rooms/:id/mutes/:userId", h.UnmuteUser)
 
 	req := httptest.NewRequest(http.MethodDelete, "/rooms/1/mutes/5", nil)
