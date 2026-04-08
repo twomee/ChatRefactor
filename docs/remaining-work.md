@@ -159,7 +159,50 @@ in-memory approach works fine for a single instance and is already documented.
 
 ---
 
-## 3. Frontend — Toast / Notification System
+## 3. Message Service — DLQ Leaks Private Message Content (MSG-07)
+
+**What:** When a Kafka message fails all retries, `_send_to_dlq()` forwards
+the full original payload (`original_value: msg.value`) to the `chat.dlq` topic.
+For private messages this includes sender, recipient, and full message text —
+visible to anyone with Kafka access.
+
+**Where:** `services/message-service/app/consumers/persistence_consumer.py:383–389`
+
+```python
+# Current — leaks full content
+dlq_payload = {
+    "original_topic": msg.topic,
+    "original_key": msg.key,
+    "original_value": msg.value,   # ← full private message here
+    "error": "max_retries_exhausted",
+    "timestamp": datetime.now(timezone.utc).isoformat(),
+}
+```
+
+**Fix:** Strip the message body, keep only metadata needed for debugging:
+
+```python
+original = msg.value or {}
+dlq_payload = {
+    "original_topic": msg.topic,
+    "original_key": msg.key,
+    "message_id": original.get("message_id"),
+    "sender_id": original.get("sender_id"),
+    "room_id": original.get("room_id"),
+    "is_private": original.get("is_private", False),
+    "error": "max_retries_exhausted",
+    "timestamp": datetime.now(timezone.utc).isoformat(),
+}
+```
+
+Update the corresponding test in `tests/consumers/test_persistence_consumer.py`
+to assert `"content"` is absent from the DLQ payload.
+
+**Effort:** Low (30 minutes)
+
+---
+
+## 4. Frontend — Toast / Notification System
 
 **What:** All in-app alerts (kicked from room, room closed, errors) use the
 browser's unstyled `globalThis.alert()`. There is no "you are muted" feedback.
@@ -193,11 +236,12 @@ as modified but not staged. Review and commit or discard.
 | Priority | Item | Why |
 |----------|------|-----|
 | 1 | Toast system (frontend) | Most visible in a demo |
-| 2 | Email service | Forgot-password is broken end-to-end |
-| 3 | CHAT-04 (blacklist on WebSocket) | Closes the last auth bypass |
-| 4 | MSG-01 (room membership) | Real data isolation gap |
-| 5 | FE-01 (CSP localhost) | Quick win, looks professional |
-| 6 | INFRA-01 (K8s secrets) | Pre-commit hook is a good practice signal |
-| 7 | CHAT-05 (auto-admin) | Design decision more than a bug |
-| 8 | Redis pub/sub | Only matters at scale |
-| 9 | INFRA-02 (Kafka auth) | Lowest priority, acceptable as documented debt |
+| 2 | MSG-07 (DLQ content redaction) | 30-min fix, private message leak |
+| 3 | Email service | Forgot-password is broken end-to-end |
+| 4 | CHAT-04 (blacklist on WebSocket) | Closes the last auth bypass |
+| 5 | MSG-01 (room membership) | Real data isolation gap |
+| 6 | FE-01 (CSP localhost) | Quick win, looks professional |
+| 7 | INFRA-01 (K8s secrets) | Pre-commit hook is a good practice signal |
+| 8 | CHAT-05 (auto-admin) | Design decision more than a bug |
+| 9 | Redis pub/sub | Only matters at scale |
+| 10 | INFRA-02 (Kafka auth) | Lowest priority, acceptable as documented debt |
