@@ -13,7 +13,7 @@ echo "========================================="
 
 # Step 1: Create kind cluster
 echo ""
-echo "[1/7] Creating kind cluster..."
+echo "[1/8] Creating kind cluster..."
 if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
   echo "  Cluster '$CLUSTER_NAME' already exists, skipping..."
 else
@@ -37,13 +37,24 @@ fi
 
 # Step 2: Create namespaces
 echo ""
-echo "[2/7] Creating namespaces..."
+echo "[2/8] Creating namespaces..."
 kubectl apply -f "$K8S_DIR/base/namespace.yaml"
 kubectl apply -f "$K8S_DIR/infra/namespace.yaml"
 
-# Step 3: Install infrastructure via Helm
+# Step 3: Install monitoring stack (must be first — provides ServiceMonitor CRD used by Postgres/Redis)
 echo ""
-echo "[3/7] Installing infrastructure (Helm)..."
+echo "[3/8] Installing monitoring stack (Prometheus + Grafana)..."
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>/dev/null || true
+helm repo update
+helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace chatbox-monitoring \
+  --values "$K8S_DIR/infra/helm-values/monitoring.yaml" \
+  --version 82.14.1 \
+  --wait --timeout 300s
+
+# Step 4: Install infrastructure via Helm
+echo ""
+echo "[4/8] Installing infrastructure (Helm)..."
 helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true
 helm repo update
 
@@ -79,14 +90,14 @@ echo "  Installing Kafka..."
 kubectl apply -f "$K8S_DIR/infra/kafka.yaml"
 kubectl rollout status deployment/kafka --namespace chatbox-infra --timeout=120s
 
-# Step 4: Generate and apply secrets
+# Step 5: Generate and apply secrets
 echo ""
-echo "[4/7] Applying secrets..."
+echo "[5/8] Applying secrets..."
 bash "$K8S_DIR/scripts/generate-secrets.sh"
 
-# Step 5: Run init jobs
+# Step 6: Run init jobs
 echo ""
-echo "[5/7] Running init jobs..."
+echo "[6/8] Running init jobs..."
 kubectl delete job db-init --namespace chatbox --ignore-not-found
 kubectl delete job kafka-init --namespace chatbox --ignore-not-found
 kubectl apply -f "$K8S_DIR/jobs/db-init-job.yaml"
@@ -96,14 +107,14 @@ kubectl wait --for=condition=complete job/db-init --namespace chatbox --timeout=
 echo "  Waiting for kafka-init job..."
 kubectl wait --for=condition=complete job/kafka-init --namespace chatbox --timeout=120s
 
-# Step 6: Build and load images
+# Step 7: Build and load images
 echo ""
-echo "[6/7] Building and loading Docker images..."
+echo "[7/8] Building and loading Docker images..."
 bash "$K8S_DIR/scripts/build-images.sh"
 
-# Step 7: Deploy application
+# Step 8: Deploy application
 echo ""
-echo "[7/7] Deploying application..."
+echo "[8/8] Deploying application..."
 kubectl apply -k "$K8S_DIR/overlays/dev"
 
 echo ""
@@ -111,8 +122,9 @@ echo "========================================="
 echo "  Setup complete!"
 echo "========================================="
 echo ""
-echo "  Frontend: http://localhost:30000"
+echo "  Frontend:  http://localhost:30000"
 echo "  API (Kong): http://localhost:30080"
+echo "  Grafana:   http://localhost:30030  (admin / admin)"
 echo ""
 echo "  Check status: make k8s-status"
 echo "  View logs: make k8s-logs SVC=auth-service"
