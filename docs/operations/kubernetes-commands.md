@@ -29,14 +29,16 @@ make k8s-setup-local
 
 This single command will:
 1. Create a local Kubernetes cluster using `kind`
-2. Install PostgreSQL and Redis via Helm, Kafka via plain manifest
-3. Create databases and Kafka topics
-4. Build all Docker images
-5. Deploy all application services
+2. Install the monitoring stack (Prometheus + Grafana) — **must run before infra** because PostgreSQL and Redis Helm charts create `ServiceMonitor` resources that require the Prometheus Operator CRDs to exist
+3. Install PostgreSQL and Redis via Helm, Kafka via plain manifest
+4. Create databases and Kafka topics
+5. Build all Docker images
+6. Deploy all application services
 
 When it's done:
 - **Frontend:** http://localhost:30000
 - **API (Kong):** http://localhost:30080
+- **Grafana:** http://localhost:30030 (admin / admin)
 
 ### Prerequisites
 
@@ -316,7 +318,27 @@ kubectl get namespaces
 # Should show: chatbox, chatbox-infra, chatbox-monitoring
 ```
 
-### Step 3: Install Infrastructure
+### Step 3: Install Monitoring Stack
+
+> **Must run before infra.** The PostgreSQL and Redis Helm charts create `ServiceMonitor` resources. These are a custom resource type (CRD) defined by the Prometheus Operator. If the monitoring stack isn't installed first, Helm will fail with: `no matches for kind "ServiceMonitor" in version "monitoring.coreos.com/v1"`.
+
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace chatbox-monitoring \
+  --values infra/k8s/infra/helm-values/monitoring.yaml \
+  --version 82.14.1 \
+  --wait --timeout 300s
+```
+
+Verify:
+```bash
+kubectl get pods -n chatbox-monitoring
+# Should show: prometheus, grafana, operator, node-exporter — all Running
+```
+
+### Step 4: Install Infrastructure
 
 ```bash
 # Add the Bitnami Helm repository
@@ -354,7 +376,7 @@ kubectl get pods -n chatbox-infra
 # All pods should be Running and Ready (1/1)
 ```
 
-### Step 4: Apply Secrets
+### Step 5: Apply Secrets
 
 ```bash
 bash infra/k8s/scripts/generate-secrets.sh
@@ -362,7 +384,7 @@ bash infra/k8s/scripts/generate-secrets.sh
 
 This creates K8s Secret objects from your environment variables. If you haven't created a `infra/k8s/secrets.env` file, it uses the defaults from `infra/k8s/base/secrets.env.example`.
 
-### Step 5: Run Init Jobs
+### Step 6: Run Init Jobs
 
 ```bash
 # Delete any previous runs first (jobs are not re-runnable by default)
@@ -383,7 +405,7 @@ kubectl get jobs -n chatbox
 # Both jobs should show COMPLETIONS: 1/1
 ```
 
-### Step 6: Build Docker Images
+### Step 7: Build Docker Images
 
 ```bash
 # Option A: script (builds all 5 and loads into kind)
@@ -412,7 +434,7 @@ Verify:
 docker exec chatbox-control-plane crictl images | grep -E "auth|chat|message|file|frontend"
 ```
 
-### Step 7: Deploy Application
+### Step 8: Deploy Application
 
 ```bash
 kubectl apply -k infra/k8s/overlays/dev
@@ -429,10 +451,11 @@ kubectl get pods -n chatbox
 # Init containers run first — this may take 1-2 minutes
 ```
 
-### Step 8: Access the App
+### Step 9: Access the App
 
 - **Frontend:** http://localhost:30000
 - **API:** http://localhost:30080
+- **Grafana:** http://localhost:30030 (admin / admin)
 - **Test the API:** `curl http://localhost:30080/auth/ping`
 
 ---
@@ -775,11 +798,18 @@ kubectl rollout undo deployment/auth-service -n chatbox
 
 ### Install Monitoring Stack
 
+The monitoring stack is **included in `make k8s-setup-local`** — you don't need to install it separately for a local cluster.
+
+If you need to install it on its own (e.g., you already have a cluster with infra running):
+
 ```bash
 make k8s-monitoring-setup
 ```
 
 This installs Prometheus (metrics collection) and Grafana (dashboards).
+
+> **Why monitoring must come before infra:** The PostgreSQL and Redis Helm charts have `metrics.serviceMonitor.enabled: true` in their Helm values, which creates `ServiceMonitor` custom resources. The `ServiceMonitor` CRD is installed by the Prometheus Operator (part of `kube-prometheus-stack`). If you install Postgres/Redis before the monitoring stack, Helm fails with `no matches for kind "ServiceMonitor"`.
+
 
 ### Access Grafana
 

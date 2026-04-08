@@ -28,10 +28,9 @@ const { mockExistsSync, mockCreateReadStream, mockWriteFileSync, mockMkdirSync }
 // ── Mock Prisma ────────────────────────────────────────────────────────────
 vi.mock("@prisma/client", () => {
   return {
-    PrismaClient: vi.fn().mockImplementation(() => ({
-      file: mockPrismaFile,
-      $queryRaw: mockQueryRaw,
-    })),
+    PrismaClient: vi.fn().mockImplementation(function () {
+      return { file: mockPrismaFile, $queryRaw: mockQueryRaw };
+    }),
   };
 });
 
@@ -47,9 +46,9 @@ vi.mock("kafkajs", () => {
     disconnect: mockProducerDisconnect,
   };
   return {
-    Kafka: vi.fn().mockImplementation(() => ({
-      producer: vi.fn().mockReturnValue(mockProducer),
-    })),
+    Kafka: vi.fn().mockImplementation(function () {
+      return { producer: vi.fn().mockReturnValue(mockProducer) };
+    }),
     logLevel: { WARN: 4 },
   };
 });

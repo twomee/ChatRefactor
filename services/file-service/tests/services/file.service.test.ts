@@ -32,10 +32,9 @@ const mockProduceEvent = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockGetUserByUsername = vi.hoisted(() => vi.fn());
 
 vi.mock("@prisma/client", () => ({
-  PrismaClient: vi.fn().mockImplementation(() => ({
-    file: mockPrismaFile,
-    $queryRaw: mockQueryRaw,
-  })),
+  PrismaClient: vi.fn().mockImplementation(function () {
+    return { file: mockPrismaFile, $queryRaw: mockQueryRaw };
+  }),
 }));
 
 vi.mock("node:fs", () => ({

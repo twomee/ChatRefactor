@@ -17,6 +17,7 @@ import { mkdir, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { v4 as uuidv4 } from "uuid";
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 import { config } from "../config/env.config.js";
 import {
@@ -32,7 +33,8 @@ import { filesUploadedTotal, fileUploadSizeBytes, filesDownloadedTotal } from ".
 import type { FileUploadResult, FileRecord, FileMetadataResponse } from "../types/file.types.js";
 import { getUserByUsername } from "../clients/auth.client.js";
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
 
 /** Parameters for uploadFile — exactly one of roomId or recipientUsername must be set. */
 export interface UploadFileParams {

@@ -10,11 +10,12 @@ WORKDIR /app
 # Copy dependency manifests first (Docker layer caching)
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
+COPY prisma.config.ts ./
 
 # Install all dependencies (including devDependencies for tsc)
 RUN npm ci
 
-# Generate Prisma client
+# Generate Prisma client (Prisma 7 requires explicit generation)
 RUN npx prisma generate
 
 # Copy source code and compile TypeScript
@@ -41,10 +42,11 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 
-# Copy Prisma schema + generated client from builder.
-# Schema is needed for `prisma migrate deploy` in the K8s init container.
+# Copy Prisma schema, config, and generated client from builder.
+# Schema + config are needed for `prisma migrate deploy` in the K8s init container.
 # Generated client avoids installing the prisma CLI (devDep) in prod.
 COPY --from=builder /app/prisma ./prisma/
+COPY --from=builder /app/prisma.config.ts ./
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma

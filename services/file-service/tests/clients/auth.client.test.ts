@@ -18,12 +18,13 @@ describe("auth.client / getUserByUsername", () => {
   const mockFetch = vi.fn();
 
   beforeEach(() => {
+    mockFetch.mockClear();
     vi.stubGlobal("fetch", mockFetch);
     clearAuthCache(); // start each test with empty cache
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("fetches user from auth service when not cached", async () => {
@@ -90,7 +91,7 @@ describe("auth.client / clearAuthCache", () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     clearAuthCache();
   });
 

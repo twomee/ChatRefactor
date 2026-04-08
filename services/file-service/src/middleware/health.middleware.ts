@@ -8,9 +8,11 @@
 
 import type { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { isKafkaAvailable } from "../kafka/producer.js";
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
 
 /**
  * Liveness probe — if this responds, the process is alive.
