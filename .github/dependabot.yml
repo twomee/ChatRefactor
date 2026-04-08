@@ -1,16 +1,5 @@
 version: 2
 updates:
-  # Backend Python dependencies (monolith)
-  - package-ecosystem: pip
-    directory: /backend
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    labels:
-      - dependencies
-      - backend
-
   # Auth Service Python dependencies
   - package-ecosystem: pip
     directory: /services/auth-service

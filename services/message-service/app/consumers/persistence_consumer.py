@@ -88,7 +88,7 @@ class MessagePersistenceConsumer:
                 async for msg in consumer:
                     if self._stop_event.is_set():
                         break
-                    await self._process_with_retry(msg)
+                    await self._process_with_retry(msg, consumer)
 
             except asyncio.CancelledError:
                 break
@@ -106,8 +106,14 @@ class MessagePersistenceConsumer:
                     except Exception:
                         pass
 
-    async def _process_with_retry(self, msg):
-        """Process a single message with retry + DLQ routing."""
+    async def _process_with_retry(self, msg, consumer):
+        """Process a single message with retry + DLQ routing.
+
+        Commits the Kafka offset only after the message is successfully persisted
+        to PostgreSQL. With enable_auto_commit=False this ensures at-least-once
+        delivery: a crash mid-write causes the message to be re-consumed on restart
+        rather than silently dropped.
+        """
         for attempt in range(1, MAX_RETRIES + 1):
             try:
                 start = time.time()
@@ -117,6 +123,8 @@ class MessagePersistenceConsumer:
                 kafka_messages_consumed_total.labels(
                     topic=msg.topic, status="success"
                 ).inc()
+                # Commit offset only after successful DB write
+                await consumer.commit()
                 return
             except Exception as e:
                 kafka_messages_consumed_total.labels(

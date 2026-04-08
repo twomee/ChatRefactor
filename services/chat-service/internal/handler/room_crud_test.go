@@ -30,7 +30,7 @@ func TestListRoomsSuccess(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.GET("/rooms", h.ListRooms)
 
 	req := httptest.NewRequest(http.MethodGet, "/rooms", nil)
@@ -54,7 +54,7 @@ func TestListRoomsEmpty(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.GET("/rooms", h.ListRooms)
 
 	req := httptest.NewRequest(http.MethodGet, "/rooms", nil)
@@ -77,7 +77,7 @@ func TestListRoomsError(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.GET("/rooms", h.ListRooms)
 
 	req := httptest.NewRequest(http.MethodGet, "/rooms", nil)
@@ -96,7 +96,7 @@ func TestCreateRoomSuccess(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms", h.CreateRoom)
 
 	body := `{"name":"test-room"}`
@@ -117,7 +117,7 @@ func TestCreateRoomBadBody(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms", h.CreateRoom)
 
 	body := `{"invalid": true}`
@@ -138,7 +138,7 @@ func TestCreateRoomConflict(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms", h.CreateRoom)
 
 	body := `{"name":"duplicate"}`
@@ -160,7 +160,7 @@ func TestGetRoomUsersSuccess(t *testing.T) {
 	h := NewRoomHandler(store, manager, &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.GET("/rooms/:id/users", h.GetRoomUsers)
 
 	req := httptest.NewRequest(http.MethodGet, "/rooms/1/users", nil)
@@ -179,7 +179,7 @@ func TestGetRoomUsersInvalidID(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.GET("/rooms/:id/users", h.GetRoomUsers)
 
 	req := httptest.NewRequest(http.MethodGet, "/rooms/abc/users", nil)
@@ -198,7 +198,7 @@ func TestSetActiveSuccess(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.PUT("/rooms/:id/active", h.SetActive)
 
 	body := `{"is_active": false}`
@@ -219,7 +219,7 @@ func TestSetActiveInvalidID(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.PUT("/rooms/:id/active", h.SetActive)
 
 	body := `{"is_active": false}`
@@ -240,7 +240,7 @@ func TestSetActiveBadBody(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.PUT("/rooms/:id/active", h.SetActive)
 
 	req := httptest.NewRequest(http.MethodPut, "/rooms/1/active", strings.NewReader("not json"))
@@ -260,7 +260,7 @@ func TestSetActiveNotFound(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.PUT("/rooms/:id/active", h.SetActive)
 
 	body := `{"is_active": false}`
@@ -281,7 +281,7 @@ func TestSetActiveDBError(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.PUT("/rooms/:id/active", h.SetActive)
 
 	body := `{"is_active": false}`
@@ -304,7 +304,7 @@ func TestAddAdminSuccess(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms/:id/admins", h.AddAdmin)
 
 	body := `{"user_id": 2}`
@@ -325,7 +325,7 @@ func TestAddAdminInvalidRoomID(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms/:id/admins", h.AddAdmin)
 
 	body := `{"user_id": 2}`
@@ -346,7 +346,7 @@ func TestAddAdminBadBody(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), &mockAuthClient{user: &client.UserResponse{ID: 1, Username: "alice", IsGlobalAdmin: true}}, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms/:id/admins", h.AddAdmin)
 
 	req := httptest.NewRequest(http.MethodPost, "/rooms/1/admins", strings.NewReader("bad"))

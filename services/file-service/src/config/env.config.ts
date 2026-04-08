@@ -55,6 +55,10 @@ export const config = {
     10
   ),
 
+  // Redis — optional; used to check the token blacklist set by the auth-service on logout.
+  // If not configured, logout revocation is NOT enforced by this service (fire-and-forget).
+  redisUrl: process.env.REDIS_URL || "",
+
   // Downstream service URLs
   authServiceUrl: requireEnv("AUTH_SERVICE_URL"), // NOSONAR — service-mesh internal traffic; TLS terminated at ingress
 

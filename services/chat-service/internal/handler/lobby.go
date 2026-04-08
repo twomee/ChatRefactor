@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	"github.com/twomee/chatbox/chat-service/internal/middleware"
@@ -29,14 +30,18 @@ type LobbyHandler struct {
 	manager   *ws.Manager
 	secretKey string
 	logger    *zap.Logger
+	rdb       *redis.Client
+	isProd    bool
 }
 
 // NewLobbyHandler creates a LobbyHandler.
-func NewLobbyHandler(manager *ws.Manager, secretKey string, logger *zap.Logger) *LobbyHandler {
+func NewLobbyHandler(manager *ws.Manager, secretKey string, logger *zap.Logger, rdb *redis.Client, isProd bool) *LobbyHandler {
 	return &LobbyHandler{
 		manager:   manager,
 		secretKey: secretKey,
 		logger:    logger,
+		rdb:       rdb,
+		isProd:    isProd,
 	}
 }
 
@@ -52,6 +57,12 @@ func (h *LobbyHandler) HandleLobbyWS(c *gin.Context) {
 	userID, username, err := middleware.ParseTokenFromString(token, h.secretKey)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "invalid token"})
+		return
+	}
+
+	// Check Redis blacklist — reject tokens revoked on logout
+	if middleware.CheckBlacklist(c.Request.Context(), h.rdb, token, h.isProd) {
+		c.JSON(http.StatusUnauthorized, gin.H{"detail": "Token has been revoked"})
 		return
 	}
 

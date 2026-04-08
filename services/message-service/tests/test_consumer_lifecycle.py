@@ -239,7 +239,7 @@ class TestConsumerRunLoop:
                     except asyncio.CancelledError:
                         pass
 
-                mock_process.assert_called_once_with(mock_msg)
+                mock_process.assert_called_once_with(mock_msg, mock_kafka_consumer)
 
 
 # ══════════════════════════════════════════════════════════════════════

@@ -89,7 +89,10 @@ def create_consumer(group_id: str, topics: list[str]):
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
         key_deserializer=lambda k: k.decode("utf-8") if k else None,
         auto_offset_reset="earliest",
-        enable_auto_commit=True,
+        # Manual commit: offsets are committed only after successful DB write.
+        # This guarantees at-least-once delivery — if the process crashes mid-write,
+        # the message is re-consumed on restart rather than silently lost.
+        enable_auto_commit=False,
     )
 
 

@@ -20,6 +20,7 @@ import {
 } from "./middleware/health.middleware.js";
 import { fileRouter } from "./routes/file.route.js";
 import { initProducer, shutdownProducer } from "./kafka/producer.js";
+import { initRedisClient, closeRedisClient } from "./clients/redis.client.js";
 import { logger } from "./kafka/logger.js";
 
 // ── Express app setup ──────────────────────────────────────────────────────
@@ -101,6 +102,14 @@ async function startServer(): Promise<void> {
   fs.mkdirSync(config.uploadDir, { recursive: true });
   logger.info("Upload directory ready", { path: config.uploadDir });
 
+  // Connect Redis for token blacklist checks (optional — graceful degradation)
+  if (config.redisUrl) {
+    initRedisClient(config.redisUrl);
+    logger.info("Redis client initialised (token blacklist)");
+  } else {
+    logger.warn("REDIS_URL not set — token revocation not enforced by file-service");
+  }
+
   // Connect Kafka producer (graceful degradation — failure doesn't block start)
   await initProducer();
 
@@ -118,6 +127,7 @@ async function startServer(): Promise<void> {
       resolve();
     }));
     await shutdownProducer();
+    await closeRedisClient();
     process.exit(0);
   };
 

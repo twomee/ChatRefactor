@@ -4,8 +4,10 @@
 #   - decode_token: valid token, expired token, missing claims, wrong key
 #   - get_current_user: valid payload, non-integer sub, missing sub, missing username
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
+import pytest_asyncio
 import jwt
 
 from app.core.config import ALGORITHM, SECRET_KEY
@@ -100,7 +102,8 @@ class TestDecodeToken:
 class TestGetCurrentUser:
     """Tests for the get_current_user dependency."""
 
-    def test_valid_token_returns_user_dict(self):
+    @pytest.mark.asyncio
+    async def test_valid_token_returns_user_dict(self):
         """Should return a dict with user_id and username for a valid token."""
         payload = {
             "sub": "42",
@@ -109,11 +112,13 @@ class TestGetCurrentUser:
         }
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-        result = get_current_user(token)
+        with patch("app.core.security.get_redis", return_value=None):
+            result = await get_current_user(token)
 
         assert result == {"user_id": 42, "username": "alice"}
 
-    def test_non_integer_sub_raises_401(self):
+    @pytest.mark.asyncio
+    async def test_non_integer_sub_raises_401(self):
         """JWT with non-integer 'sub' should raise HTTPException 401."""
         from fastapi import HTTPException
 
@@ -124,12 +129,14 @@ class TestGetCurrentUser:
         }
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-        with pytest.raises(HTTPException) as exc_info:
-            get_current_user(token)
+        with patch("app.core.security.get_redis", return_value=None):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_user(token)
 
         assert exc_info.value.status_code == 401
 
-    def test_expired_token_raises_401(self):
+    @pytest.mark.asyncio
+    async def test_expired_token_raises_401(self):
         """Expired token should raise HTTPException 401."""
         from fastapi import HTTPException
 
@@ -140,17 +147,20 @@ class TestGetCurrentUser:
         }
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-        with pytest.raises(HTTPException) as exc_info:
-            get_current_user(token)
+        with patch("app.core.security.get_redis", return_value=None):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_user(token)
 
         assert exc_info.value.status_code == 401
 
-    def test_invalid_token_raises_401(self):
+    @pytest.mark.asyncio
+    async def test_invalid_token_raises_401(self):
         """Malformed token should raise HTTPException 401."""
         from fastapi import HTTPException
 
-        with pytest.raises(HTTPException) as exc_info:
-            get_current_user("not-a-valid-jwt")
+        with patch("app.core.security.get_redis", return_value=None):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_user("not-a-valid-jwt")
 
         assert exc_info.value.status_code == 401
 

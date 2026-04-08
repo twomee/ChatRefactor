@@ -28,7 +28,7 @@ func TestAddAdminNonAdminReturns403(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms/:id/admins", h.AddAdmin)
 
 	body := `{"user_id": 2}`
@@ -53,7 +53,7 @@ func TestAddAdminRoomAdminSucceeds(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms/:id/admins", h.AddAdmin)
 
 	body := `{"user_id": 2}`
@@ -77,7 +77,7 @@ func TestAddAdminGlobalAdminSucceeds(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms/:id/admins", h.AddAdmin)
 
 	body := `{"user_id": 2}`
@@ -101,7 +101,7 @@ func TestAddAdminAuthServiceFailureReturns502(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.POST("/rooms/:id/admins", h.AddAdmin)
 
 	body := `{"user_id": 2}`
@@ -125,7 +125,7 @@ func TestRemoveAdminNonAdminReturns403(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/rooms/:id/admins/:userId", h.RemoveAdmin)
 
 	req := httptest.NewRequest(http.MethodDelete, "/rooms/1/admins/2", nil)
@@ -147,7 +147,7 @@ func TestSetActiveNonAdminReturns403(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.PUT("/rooms/:id/active", h.SetActive)
 
 	body := `{"is_active": false}`
@@ -171,7 +171,7 @@ func TestSetActiveGlobalAdminSucceeds(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.PUT("/rooms/:id/active", h.SetActive)
 
 	body := `{"is_active": false}`
@@ -195,7 +195,7 @@ func TestSetActiveRoomAdminSucceeds(t *testing.T) {
 	h := NewRoomHandler(store, ws.NewManager(logger), authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.PUT("/rooms/:id/active", h.SetActive)
 
 	body := `{"is_active": true}`

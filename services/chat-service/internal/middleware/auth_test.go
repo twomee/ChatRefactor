@@ -31,7 +31,8 @@ func makeToken(userID int, username string, exp time.Time, method jwt.SigningMet
 
 func setupAuthRouter() *gin.Engine {
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	// nil rdb and isProd=false: no Redis blacklist check in unit tests
+	r.Use(JWTAuth(testSecret, nil, false))
 	r.GET("/protected", func(c *gin.Context) {
 		userID, _ := c.Get(CtxUserID)
 		username, _ := c.Get(CtxUsername)

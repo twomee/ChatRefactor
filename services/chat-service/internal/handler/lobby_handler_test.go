@@ -19,7 +19,7 @@ import (
 func TestLobbyHandlerRejectsWithoutToken(t *testing.T) {
 	logger := newLogger()
 	manager := ws.NewManager(logger)
-	lobbyH := NewLobbyHandler(manager, testSecret, logger)
+	lobbyH := NewLobbyHandler(manager, testSecret, logger, nil, false)
 
 	r := gin.New()
 	r.GET("/ws/lobby", lobbyH.HandleLobbyWS)
@@ -36,7 +36,7 @@ func TestLobbyHandlerRejectsWithoutToken(t *testing.T) {
 func TestLobbyHandlerRejectsInvalidToken(t *testing.T) {
 	logger := newLogger()
 	manager := ws.NewManager(logger)
-	lobbyH := NewLobbyHandler(manager, testSecret, logger)
+	lobbyH := NewLobbyHandler(manager, testSecret, logger, nil, false)
 
 	r := gin.New()
 	r.GET("/ws/lobby", lobbyH.HandleLobbyWS)
@@ -53,7 +53,7 @@ func TestLobbyHandlerRejectsInvalidToken(t *testing.T) {
 func TestLobbyWSUpgrade(t *testing.T) {
 	logger := newLogger()
 	manager := ws.NewManager(logger)
-	lobbyH := NewLobbyHandler(manager, testSecret, logger)
+	lobbyH := NewLobbyHandler(manager, testSecret, logger, nil, false)
 
 	r := gin.New()
 	r.GET("/ws/lobby", lobbyH.HandleLobbyWS)
@@ -106,7 +106,7 @@ func drainLobby(conn *websocket.Conn, n int) {
 func TestLobbyTypingPMForwarded(t *testing.T) {
 	logger := newLogger()
 	manager := ws.NewManager(logger)
-	lobbyH := NewLobbyHandler(manager, testSecret, logger)
+	lobbyH := NewLobbyHandler(manager, testSecret, logger, nil, false)
 
 	r := gin.New()
 	r.GET("/ws/lobby", lobbyH.HandleLobbyWS)
@@ -156,7 +156,7 @@ func TestLobbyTypingPMForwarded(t *testing.T) {
 func TestLobbyTypingPMNotSentToSender(t *testing.T) {
 	logger := newLogger()
 	manager := ws.NewManager(logger)
-	lobbyH := NewLobbyHandler(manager, testSecret, logger)
+	lobbyH := NewLobbyHandler(manager, testSecret, logger, nil, false)
 
 	r := gin.New()
 	r.GET("/ws/lobby", lobbyH.HandleLobbyWS)
@@ -205,7 +205,7 @@ func TestLobbyTypingPMNotSentToSender(t *testing.T) {
 func TestLobbyTypingPMDroppedForOfflineRecipient(t *testing.T) {
 	logger := newLogger()
 	manager := ws.NewManager(logger)
-	lobbyH := NewLobbyHandler(manager, testSecret, logger)
+	lobbyH := NewLobbyHandler(manager, testSecret, logger, nil, false)
 
 	r := gin.New()
 	r.GET("/ws/lobby", lobbyH.HandleLobbyWS)

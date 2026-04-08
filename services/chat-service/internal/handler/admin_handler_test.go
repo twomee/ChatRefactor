@@ -30,7 +30,7 @@ func TestListOnlineUsersSuccess(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.GET("/admin/users", h.ListOnlineUsers)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/users", nil)
@@ -59,7 +59,7 @@ func TestListOnlineUsersNonAdminRejected(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.GET("/admin/users", h.ListOnlineUsers)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/users", nil)
@@ -80,7 +80,7 @@ func TestListOnlineUsersDBError(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.GET("/admin/users", h.ListOnlineUsers)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/users", nil)
@@ -102,7 +102,7 @@ func TestResetDatabaseSuccessDev(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/admin/db", h.ResetDatabase)
 
 	req := httptest.NewRequest(http.MethodDelete, "/admin/db", nil)
@@ -124,7 +124,7 @@ func TestResetDatabaseForbiddenProd(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/admin/db", h.ResetDatabase)
 
 	req := httptest.NewRequest(http.MethodDelete, "/admin/db", nil)
@@ -146,7 +146,7 @@ func TestResetDatabaseDBError(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.DELETE("/admin/db", h.ResetDatabase)
 
 	req := httptest.NewRequest(http.MethodDelete, "/admin/db", nil)
@@ -169,7 +169,7 @@ func TestRequireGlobalAdminAuthError(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.GET("/admin/rooms", h.ListAllRooms)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/rooms", nil)
@@ -190,7 +190,7 @@ func TestRequireGlobalAdminNotAdmin(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.GET("/admin/rooms", h.ListAllRooms)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/rooms", nil)
@@ -211,7 +211,7 @@ func TestRequireGlobalAdminNilUser(t *testing.T) {
 	h := NewAdminHandler(store, mgr, authClient, logger)
 
 	r := gin.New()
-	r.Use(middleware.JWTAuth(testSecret))
+	r.Use(middleware.JWTAuth(testSecret, nil, false))
 	r.GET("/admin/rooms", h.ListAllRooms)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/rooms", nil)
