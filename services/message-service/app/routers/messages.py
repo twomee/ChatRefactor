@@ -61,20 +61,18 @@ def search_messages_endpoint(
     ] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
-    """Search messages by text content within a specific room.
+    """Search messages by text content using PostgreSQL full-text search (tsvector + GIN index).
 
-    Uses PostgreSQL full-text search (tsvector + GIN index) for relevance-ranked
-    results. Only public, non-deleted messages are searched.
-
-    `room_id` is required: callers must specify which room to search. This prevents
-    authenticated users from enumerating messages in rooms they have not joined —
-    the chat-service's WebSocket join authorization is the membership enforcement
-    point, and requiring room_id here keeps the search scoped to a single room.
+    Returns relevance-ranked results. Only public, non-deleted messages are searched.
 
     Query params:
       - q: search terms (2-200 chars); min of 2 chars avoids full GIN index scans
-      - room_id: room to search (required)
+      - room_id: optional — filter results to a specific room; omit to search all rooms
       - limit: max results (1-100, default 20)
+
+    Note: room membership is not currently enforced at this layer — any authenticated user
+    can search across all rooms. Scoping by room_id is the caller's responsibility.
+    Room membership enforcement is tracked as a future improvement (MSG-01).
     """
     stripped = q.strip()
     if not stripped:

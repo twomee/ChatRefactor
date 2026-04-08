@@ -25,6 +25,7 @@ from app.schemas.auth import (
     ForgotPasswordRequest,
     ProfileResponse,
     ResetPasswordRequest,
+    Setup2FAResponse,
     TokenResponse,
     UpdateEmailRequest,
     UpdatePasswordRequest,
@@ -197,6 +198,7 @@ def reset_password(
 
 @router.post(
     "/2fa/setup",
+    response_model=Setup2FAResponse,
     responses={
         400: {"description": "2FA is already enabled"},
         404: {"description": "User not found"},
@@ -206,10 +208,10 @@ def setup_2fa(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[dict, Depends(get_current_user)],
 ):
-    """Generate a TOTP secret. Returns secret + otpauth URI for QR code.
+    """Initiate 2FA setup. Returns a QR code (data URI) and a manual entry key.
 
     Requires JWT auth. Does NOT enable 2FA — the user must call /2fa/verify-setup
-    with a valid TOTP code to confirm the setup.
+    with a valid TOTP code to confirm they scanned/entered it correctly.
     """
     try:
         return two_factor_service.setup_2fa(db, current_user)

@@ -123,16 +123,30 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
 def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     """FastAPI dependency — ensures the current user is a global admin.
 
-    Note: In the microservice architecture, admin status is checked by looking up the user
-    in the DB for admin-only endpoints. This is acceptable because admin endpoints are
-    infrequent. For high-frequency endpoints, consider adding is_admin to the JWT claims.
-    """
-    # For admin check, we need to verify against the DB since admin status
-    # could have changed since the token was issued
+    Admin status must be verified against the database because it can change after a token
+    is issued (e.g., an admin grants or revokes another user's admin status). Adding
+    `is_admin` to the JWT payload would be stale within the token's lifetime.
 
-    # This is a workaround — in practice, admin-only routes will inject db separately
-    # and check admin status. This dependency is kept for backward compatibility.
+    Usage: inject `db: Session` alongside this dependency and call `user_dal.get_by_id()`
+    to verify `user.is_global_admin`. Example:
+
+        @router.get("/admin/users")
+        def list_users(
+            current_user: dict = Depends(get_current_user),
+            db: Session = Depends(get_db),
+        ):
+            user = user_dal.get_by_id(db, current_user["user_id"])
+            if not user or not user.is_global_admin:
+                raise HTTPException(status_code=403, detail="Admin access required")
+            ...
+
+    This function is intentionally not used as a FastAPI dependency directly — it would
+    require a `db` parameter that security.py should not import (circular dependency risk).
+    Admin authorization is handled inline in each admin route.
+    """
+    # NOTE: This function is a documented pattern guide, not a callable dependency.
+    # Admin routes perform their own DB-backed check. See routers/auth.py for examples.
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="Admin verification requires database check — use route-level admin verification",
+        detail="Admin access required",
     )
