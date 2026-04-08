@@ -10,24 +10,11 @@ Pick up any item at any time — each section is self-contained.
 These were documented in the security audit but require architectural changes.
 They are the highest-value items for making the project interview-ready.
 
-### CHAT-04 — Redis blacklist not enforced by chat-service WebSocket
+### ~~CHAT-04 — Redis blacklist not enforced by chat-service WebSocket~~ ✅ Already fixed
 
-**What:** When a user logs out, the auth-service blacklists their JWT in Redis.
-The file-service and message-service now check that blacklist — but the
-**chat-service WebSocket** does not. A logged-out token can still open a
-WebSocket connection.
-
-**Where:** `services/chat-service/internal/ws/hub.go` (WebSocket upgrade)
-and `services/chat-service/internal/middleware/auth.go` (`CheckBlacklist`
-is exported but not called on every message, only at connect time).
-
-**Fix approach:**
-- At WebSocket upgrade (`ServeWS`), call `CheckBlacklist` against Redis
-  before accepting the connection.
-- Optionally re-check on a ticker (e.g., every 60s) while the socket is
-  open, so a mid-session logout takes effect without waiting for a reconnect.
-
-**Effort:** Medium (1–2 hours)
+`services/chat-service/internal/handler/websocket.go:184` calls
+`middleware.CheckBlacklist()` at WebSocket upgrade. This was already
+implemented — the audit summary incorrectly marked it as deferred.
 
 ---
 
@@ -238,10 +225,9 @@ as modified but not staged. Review and commit or discard.
 | 1 | Toast system (frontend) | Most visible in a demo |
 | 2 | MSG-07 (DLQ content redaction) | 30-min fix, private message leak |
 | 3 | Email service | Forgot-password is broken end-to-end |
-| 4 | CHAT-04 (blacklist on WebSocket) | Closes the last auth bypass |
-| 5 | MSG-01 (room membership) | Real data isolation gap |
-| 6 | FE-01 (CSP localhost) | Quick win, looks professional |
-| 7 | INFRA-01 (K8s secrets) | Pre-commit hook is a good practice signal |
-| 8 | CHAT-05 (auto-admin) | Design decision more than a bug |
-| 9 | Redis pub/sub | Only matters at scale |
-| 10 | INFRA-02 (Kafka auth) | Lowest priority, acceptable as documented debt |
+| 4 | MSG-01 (room membership) | Real data isolation gap |
+| 5 | FE-01 (CSP localhost) | Quick win, looks professional |
+| 6 | INFRA-01 (K8s secrets) | Pre-commit hook is a good practice signal |
+| 7 | CHAT-05 (auto-admin) | Design decision more than a bug |
+| 8 | Redis pub/sub | Only matters at scale |
+| 9 | INFRA-02 (Kafka auth) | Lowest priority, acceptable as documented debt |
